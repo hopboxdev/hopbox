@@ -1,7 +1,7 @@
 # Binaries
 /bin
 /hop
-/hop-agent
+/hop-agent*
 dist/
 
 # Go build artifacts
@@ -28,6 +28,7 @@ Thumbs.db
 
 # Config (contains keys)
 ~/.config/hopbox/
+hopbox.yaml
 
 # goreleaser build output
 dist/
