@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.zx2c4.com/wireguard/conn"
@@ -20,10 +21,11 @@ import (
 // It requires CAP_NET_ADMIN. Traffic routes through the kernel directly;
 // DialContext is not available.
 type ServerTunnel struct {
-	cfg    Config
-	dev    *device.Device
-	ifName string
-	ready  chan struct{}
+	cfg      Config
+	dev      *device.Device
+	ifName   string
+	ready    chan struct{}
+	stopOnce sync.Once
 }
 
 // NewServerTunnel creates a new (not yet started) server tunnel.
@@ -79,14 +81,17 @@ func (t *ServerTunnel) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop tears down the WireGuard device and interface.
+// Stop tears down the WireGuard device and interface. Safe to call
+// concurrently or more than once; the actual close runs exactly once.
 func (t *ServerTunnel) Stop() {
-	if t.dev != nil {
-		t.dev.Close()
-		t.dev = nil
-	}
-	// Best-effort cleanup of the interface.
-	_ = run("ip", "link", "del", t.ifName)
+	t.stopOnce.Do(func() {
+		if t.dev != nil {
+			t.dev.Close()
+			t.dev = nil
+		}
+		// Best-effort cleanup of the interface.
+		_ = run("ip", "link", "del", t.ifName)
+	})
 }
 
 // Status returns current tunnel metrics.

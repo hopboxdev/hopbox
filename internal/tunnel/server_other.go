@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.zx2c4.com/wireguard/conn"
@@ -19,10 +20,11 @@ import (
 // ServerTunnel is the non-Linux fallback: uses netstack (userspace) just like
 // the client. This enables macOS development and testing without a Linux VPS.
 type ServerTunnel struct {
-	cfg   Config
-	dev   *device.Device
-	tnet  *netstack.Net
-	ready chan struct{}
+	cfg      Config
+	dev      *device.Device
+	tnet     *netstack.Net
+	ready    chan struct{}
+	stopOnce sync.Once
 }
 
 // NewServerTunnel creates a new (not yet started) server tunnel.
@@ -75,13 +77,16 @@ func (t *ServerTunnel) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop tears down the WireGuard device.
+// Stop tears down the WireGuard device. Safe to call concurrently or more
+// than once; the actual close runs exactly once.
 func (t *ServerTunnel) Stop() {
-	if t.dev != nil {
-		t.dev.Close()
-		t.dev = nil
-		t.tnet = nil
-	}
+	t.stopOnce.Do(func() {
+		if t.dev != nil {
+			t.dev.Close()
+			t.dev = nil
+			t.tnet = nil
+		}
+	})
 }
 
 // Status returns current tunnel metrics.

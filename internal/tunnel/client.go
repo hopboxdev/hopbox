@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.zx2c4.com/wireguard/conn"
@@ -17,9 +18,10 @@ import (
 // ClientTunnel is a userspace WireGuard tunnel for the hop client.
 // It uses gVisor's netstack so it requires no root privileges.
 type ClientTunnel struct {
-	cfg  Config
-	dev  *device.Device
-	tnet *netstack.Net
+	cfg      Config
+	dev      *device.Device
+	tnet     *netstack.Net
+	stopOnce sync.Once
 }
 
 // NewClientTunnel creates a new (not yet started) client tunnel.
@@ -67,13 +69,16 @@ func (t *ClientTunnel) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop tears down the WireGuard device.
+// Stop tears down the WireGuard device. Safe to call concurrently or more
+// than once; the actual close runs exactly once.
 func (t *ClientTunnel) Stop() {
-	if t.dev != nil {
-		t.dev.Close()
-		t.dev = nil
-		t.tnet = nil
-	}
+	t.stopOnce.Do(func() {
+		if t.dev != nil {
+			t.dev.Close()
+			t.dev = nil
+			t.tnet = nil
+		}
+	})
 }
 
 // Status returns current tunnel metrics parsed from IpcGet output.
