@@ -348,20 +348,20 @@ func (c *VersionCmd) Run() error {
 
 // CLI is the top-level Kong struct.
 type CLI struct {
-	Verbose  bool   `short:"v" help:"Verbose output."`
-	Host     string `short:"H" help:"Host name from ~/.config/hopbox/hosts/."`
+	Verbose bool   `short:"v" help:"Verbose output."`
+	Host    string `short:"H" help:"Host name from ~/.config/hopbox/hosts/."`
 
-	Setup    SetupCmd    `cmd:"" help:"Bootstrap a new remote host."`
-	Up       UpCmd       `cmd:"" help:"Bring up WireGuard tunnel and bridges."`
-	Down     DownCmd     `cmd:"" help:"Tear down tunnel (use Ctrl-C in foreground mode)."`
-	Status   StatusCmd   `cmd:"" help:"Show tunnel and workspace health."`
-	Services ServicesCmd `cmd:"" help:"Manage workspace services."`
-	Logs     LogsCmd     `cmd:"" help:"Stream service logs."`
-	Shell    ShellCmd    `cmd:"" help:"Drop into remote shell."`
-	RunScript RunCmd     `cmd:"" name:"run" help:"Execute a script from hopbox.yaml."`
-	Hosts    HostCmd     `cmd:"" name:"host" help:"Manage host registry."`
-	Init     InitCmd     `cmd:"" help:"Generate hopbox.yaml scaffold."`
-	Version  VersionCmd  `cmd:"" help:"Print version."`
+	Setup     SetupCmd    `cmd:"" help:"Bootstrap a new remote host."`
+	Up        UpCmd       `cmd:"" help:"Bring up WireGuard tunnel and bridges."`
+	Down      DownCmd     `cmd:"" help:"Tear down tunnel (use Ctrl-C in foreground mode)."`
+	Status    StatusCmd   `cmd:"" help:"Show tunnel and workspace health."`
+	Services  ServicesCmd `cmd:"" help:"Manage workspace services."`
+	Logs      LogsCmd     `cmd:"" help:"Stream service logs."`
+	Shell     ShellCmd    `cmd:"" help:"Drop into remote shell."`
+	RunScript RunCmd      `cmd:"" name:"run" help:"Execute a script from hopbox.yaml."`
+	Hosts     HostCmd     `cmd:"" name:"host" help:"Manage host registry."`
+	Init      InitCmd     `cmd:"" help:"Generate hopbox.yaml scaffold."`
+	Version   VersionCmd  `cmd:"" help:"Print version."`
 }
 
 func main() {

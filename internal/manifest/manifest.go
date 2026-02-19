@@ -30,14 +30,14 @@ type Package struct {
 
 // Service declares a background process managed by the agent.
 type Service struct {
-	Type        string            `yaml:"type"`                  // "docker", "kubernetes", "native"
-	Image       string            `yaml:"image,omitempty"`       // docker image
-	Command     string            `yaml:"command,omitempty"`     // native command
-	Ports       []int             `yaml:"ports,omitempty"`
-	Env         map[string]string `yaml:"env,omitempty"`
-	Health      *HealthCheck      `yaml:"health,omitempty"`
-	Data        []DataMount       `yaml:"data,omitempty"`
-	DependsOn   []string          `yaml:"depends_on,omitempty"`
+	Type      string            `yaml:"type"`              // "docker", "kubernetes", "native"
+	Image     string            `yaml:"image,omitempty"`   // docker image
+	Command   string            `yaml:"command,omitempty"` // native command
+	Ports     []int             `yaml:"ports,omitempty"`
+	Env       map[string]string `yaml:"env,omitempty"`
+	Health    *HealthCheck      `yaml:"health,omitempty"`
+	Data      []DataMount       `yaml:"data,omitempty"`
+	DependsOn []string          `yaml:"depends_on,omitempty"`
 }
 
 // HealthCheck configures how the agent verifies a service is ready.

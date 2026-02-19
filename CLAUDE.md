@@ -26,6 +26,10 @@ go test ./internal/tunnel/... -run TestLoopbackWireGuard
 # Lint (golangci-lint)
 golangci-lint run
 
+# Pre-commit hooks (prek)
+prek install        # install git hooks once
+prek run --all-files  # run all hooks manually
+
 # Cross-compile releases
 goreleaser build --snapshot
 ```
@@ -97,6 +101,10 @@ hop init                        Generate hopbox.yaml scaffold
 ## Agent Control API
 
 HTTP/JSON-RPC on `10.hop.0.2:4200`. Port discovery uses `/proc/net/tcp` polling. Only reachable over the Wireguard tunnel.
+
+## Coding Conventions
+
+- Error variables must always be named `err`. Never use suffixed names like `werr`, `rerr`, `cerr`, etc. Use shadowing or restructure to avoid conflicts.
 
 ## Technical Decisions
 

@@ -82,11 +82,11 @@ func (b *CDPBridge) proxy(_ context.Context, remote net.Conn) {
 
 	done := make(chan struct{}, 2)
 	go func() {
-		_, _ = copyConn(remote, local)
+		copyConn(remote, local)
 		done <- struct{}{}
 	}()
 	go func() {
-		_, _ = copyConn(local, remote)
+		copyConn(local, remote)
 		done <- struct{}{}
 	}()
 	<-done
@@ -108,20 +108,17 @@ func (b *CDPBridge) Status() string {
 	return "CDP bridge stopped"
 }
 
-func copyConn(dst, src net.Conn) (int64, error) {
+func copyConn(dst, src net.Conn) {
 	buf := make([]byte, 32*1024)
-	var total int64
 	for {
 		n, err := src.Read(buf)
 		if n > 0 {
-			written, werr := dst.Write(buf[:n])
-			total += int64(written)
-			if werr != nil {
-				return total, werr
+			if _, err := dst.Write(buf[:n]); err != nil {
+				return
 			}
 		}
 		if err != nil {
-			return total, err
+			return
 		}
 	}
 }

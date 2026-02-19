@@ -3,8 +3,8 @@ package setup_test
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"net"
+	"strconv"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -50,8 +50,7 @@ func TestBootstrapKeyExchange(t *testing.T) {
 	// Verify mock server is listening
 	addr := listener.Addr().String()
 	_, portStr, _ := net.SplitHostPort(addr)
-	port := 0
-	fmt.Sscanf(portStr, "%d", &port)
+	port, _ := strconv.Atoi(portStr)
 	if port == 0 {
 		t.Fatal("mock server port is 0")
 	}

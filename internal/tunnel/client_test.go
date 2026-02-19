@@ -23,10 +23,11 @@ import (
 // through WireGuard and verifies the response.
 //
 // The bindtest.ChannelBind has pre-wired endpoints:
-//   binds[0].target4 = ChannelEndpoint(1)  → client sends to "127.0.0.1:1"
-//   binds[1].rx4 receives whatever binds[0] sends to target4
-//   binds[1].target6 = ChannelEndpoint(4)  → server replies via target6
-//   binds[0].rx6 receives whatever binds[1] sends to target6
+//
+//	binds[0].target4 = ChannelEndpoint(1)  → client sends to "127.0.0.1:1"
+//	binds[1].rx4 receives whatever binds[0] sends to target4
+//	binds[1].target6 = ChannelEndpoint(4)  → server replies via target6
+//	binds[0].rx6 receives whatever binds[1] sends to target6
 func TestLoopbackWireGuard(t *testing.T) {
 	// Generate fresh key pairs for both sides.
 	clientKP, err := wgkey.Generate()

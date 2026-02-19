@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/hopboxdev/hopbox/internal/service"
 )
@@ -132,13 +131,4 @@ func writeRPCError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(rpcResponse{Error: msg})
-}
-
-// parseHostPort splits "host:port" for use in URLs.
-func parseHostPort(addr string) (host, port string) {
-	i := strings.LastIndex(addr, ":")
-	if i < 0 {
-		return addr, ""
-	}
-	return addr[:i], addr[i+1:]
 }

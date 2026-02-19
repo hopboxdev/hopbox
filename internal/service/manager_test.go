@@ -166,5 +166,5 @@ func TestManagerListStatusWithError(t *testing.T) {
 type errorBackend struct{ err error }
 
 func (e *errorBackend) Start(_ context.Context, _ string) error { return nil }
-func (e *errorBackend) Stop(_ string) error                      { return nil }
-func (e *errorBackend) IsRunning(_ string) (bool, error)         { return false, e.err }
+func (e *errorBackend) Stop(_ string) error                     { return nil }
+func (e *errorBackend) IsRunning(_ string) (bool, error)        { return false, e.err }

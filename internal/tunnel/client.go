@@ -123,26 +123,3 @@ func (t *ClientTunnel) DialContext(ctx context.Context, network, addr string) (n
 	}
 	return t.tnet.DialContext(ctx, network, addr)
 }
-
-// parseListenPort reads the actual listen_port from IpcGet output.
-// Used in tests when ListenPort was 0 (ephemeral).
-func parseListenPort(dev *device.Device) (int, error) {
-	raw, err := dev.IpcGet()
-	if err != nil {
-		return 0, err
-	}
-	for _, line := range strings.Split(raw, "\n") {
-		k, v, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		if k == "listen_port" {
-			port, err := strconv.Atoi(v)
-			if err != nil {
-				return 0, fmt.Errorf("parse listen_port: %w", err)
-			}
-			return port, nil
-		}
-	}
-	return 0, fmt.Errorf("listen_port not found in IpcGet output")
-}

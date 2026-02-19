@@ -3,12 +3,12 @@ package tunnel
 import "time"
 
 const (
-	DefaultMTU              = 1420
-	DefaultPort             = 51820
-	ClientIP                = "10.10.0.1"
-	ServerIP                = "10.10.0.2"
-	DefaultKeepalive        = 25 * time.Second
-	AgentAPIPort            = 4200
+	DefaultMTU       = 1420
+	DefaultPort      = 51820
+	ClientIP         = "10.10.0.1"
+	ServerIP         = "10.10.0.2"
+	DefaultKeepalive = 25 * time.Second
+	AgentAPIPort     = 4200
 )
 
 // Config holds all parameters needed to bring up a WireGuard tunnel endpoint.
