@@ -194,6 +194,43 @@ func TestToTunnelConfigConvertsKeys(t *testing.T) {
 	}
 }
 
+func TestValidateName(t *testing.T) {
+	withTempConfigDir(t)
+
+	good := []string{"mybox", "box1", "my-box", "my_box", "A1", "abc123"}
+	for _, name := range good {
+		if err := makeConfig(name).Save(); err != nil {
+			t.Errorf("Save(%q) unexpected error: %v", name, err)
+		}
+	}
+
+	bad := []string{
+		"",
+		"../evil",
+		"../../etc/passwd",
+		"/etc/cron.d/evil",
+		"a b",
+		"-startswithdash",
+		"_startswithunderscore",
+		"has/slash",
+		"has\x00null",
+	}
+	for _, name := range bad {
+		err := makeConfig(name).Save()
+		if err == nil {
+			t.Errorf("Save(%q) expected error, got nil", name)
+		}
+		_, err = hostconfig.Load(name)
+		if err == nil {
+			t.Errorf("Load(%q) expected error, got nil", name)
+		}
+		err = hostconfig.Delete(name)
+		if err == nil {
+			t.Errorf("Delete(%q) expected error, got nil", name)
+		}
+	}
+}
+
 func TestToTunnelConfigInvalidKey(t *testing.T) {
 	cfg := makeConfig("badkey")
 	// makeConfig uses fake base64 values that are not valid 32-byte keys.

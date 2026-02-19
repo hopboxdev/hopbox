@@ -38,6 +38,32 @@ type GlobalConfig struct {
 	DefaultHost string `yaml:"default_host,omitempty"`
 }
 
+// validateName rejects host names that could escape the config directory.
+// Only letters, digits, hyphens, and underscores are allowed; the first
+// character must be a letter or digit.
+func validateName(name string) error {
+	if name == "" {
+		return fmt.Errorf("host name must not be empty")
+	}
+	for i, r := range name {
+		isLetter := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+		isDigit := r >= '0' && r <= '9'
+		isDash := r == '-' || r == '_'
+		switch {
+		case isLetter || isDigit:
+			// always allowed
+		case isDash && i > 0:
+			// allowed after the first character
+		default:
+			if i == 0 {
+				return fmt.Errorf("host name %q must start with a letter or digit", name)
+			}
+			return fmt.Errorf("host name %q contains invalid character %q (only letters, digits, - and _ allowed)", name, string(r))
+		}
+	}
+	return nil
+}
+
 // hopboxDir returns the base config directory (~/.config/hopbox).
 func hopboxDir() (string, error) {
 	home, err := os.UserHomeDir()
@@ -95,6 +121,9 @@ func (c *GlobalConfig) Save() error {
 
 // SetDefaultHost sets default_host in ~/.config/hopbox/config.yaml.
 func SetDefaultHost(name string) error {
+	if err := validateName(name); err != nil {
+		return err
+	}
 	cfg, err := LoadGlobalConfig()
 	if err != nil {
 		return err
@@ -105,6 +134,9 @@ func SetDefaultHost(name string) error {
 
 // Save writes the config to ~/.config/hopbox/hosts/<name>.yaml.
 func (c *HostConfig) Save() error {
+	if err := validateName(c.Name); err != nil {
+		return err
+	}
 	dir, err := ConfigDir()
 	if err != nil {
 		return err
@@ -122,6 +154,9 @@ func (c *HostConfig) Save() error {
 
 // Load reads a host config by name.
 func Load(name string) (*HostConfig, error) {
+	if err := validateName(name); err != nil {
+		return nil, err
+	}
 	dir, err := ConfigDir()
 	if err != nil {
 		return nil, err
@@ -162,6 +197,9 @@ func List() ([]string, error) {
 
 // Delete removes a host config by name.
 func Delete(name string) error {
+	if err := validateName(name); err != nil {
+		return err
+	}
 	dir, err := ConfigDir()
 	if err != nil {
 		return err
