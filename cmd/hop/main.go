@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -111,7 +112,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 		for _, b := range ws.Bridges {
 			switch b.Type {
 			case "clipboard":
-				br := bridge.NewClipboardBridge(cfg.AgentIP)
+				br := bridge.NewClipboardBridge("127.0.0.1")
 				bridges = append(bridges, br)
 				go func(br bridge.Bridge) {
 					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
@@ -119,7 +120,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 					}
 				}(br)
 			case "cdp":
-				br := bridge.NewCDPBridge(cfg.AgentIP)
+				br := bridge.NewCDPBridge("127.0.0.1")
 				bridges = append(bridges, br)
 				go func(br bridge.Bridge) {
 					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
@@ -180,6 +181,79 @@ func (c *UpCmd) Run(globals *CLI) error {
 		}
 	}
 
+	// Start TCP proxies so other hop commands can reach the agent via the OS network.
+	// On macOS, 10.10.0.2 only exists inside this process (netstack); proxies expose
+	// the tunnel on localhost so external processes can use it.
+	var proxies []*tunnel.Proxy
+	defer func() {
+		for _, p := range proxies {
+			p.Stop()
+		}
+	}()
+
+	startProxy := func(label, localAddr, remoteAddr string) *tunnel.Proxy {
+		p, proxyErr := tunnel.StartProxy(ctx, tunnel.ProxyConfig{
+			LocalAddr:  localAddr,
+			RemoteAddr: remoteAddr,
+			Label:      label,
+		}, tun.DialContext)
+		if proxyErr != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Warning: proxy %s: %v\n", label, proxyErr)
+			return nil
+		}
+		proxies = append(proxies, p)
+		return p
+	}
+
+	agentProxy := startProxy("agent-api",
+		"127.0.0.1:4200",
+		fmt.Sprintf("%s:%d", cfg.AgentIP, tunnel.AgentAPIPort))
+	if agentProxy != nil {
+		fmt.Printf("Forwarding %s → agent API\n", agentProxy.LocalAddr())
+	}
+
+	sshProxy := startProxy("ssh", "127.0.0.1:2222", cfg.AgentIP+":22")
+	if sshProxy != nil {
+		fmt.Printf("Forwarding %s → SSH\n", sshProxy.LocalAddr())
+	}
+
+	// Start proxies for declared service ports.
+	servicePorts := make(map[string]string)
+	if ws != nil {
+		for svcName, svc := range ws.Services {
+			for _, port := range svc.Ports {
+				label := fmt.Sprintf("%s:%d", svcName, port)
+				p := startProxy(label,
+					fmt.Sprintf("127.0.0.1:%d", port),
+					fmt.Sprintf("%s:%d", cfg.AgentIP, port))
+				if p != nil {
+					addr := p.LocalAddr().String()
+					fmt.Printf("Forwarding %s → %s\n", addr, label)
+					servicePorts[label] = addr
+				}
+			}
+		}
+	}
+
+	// Write tunnel state so other hop commands (hop status, hop shell, etc.) can
+	// find the proxy addresses without needing kernel WireGuard routing.
+	state := &tunnel.TunnelState{
+		PID:          os.Getpid(),
+		Host:         hostName,
+		ServicePorts: servicePorts,
+		StartedAt:    time.Now(),
+	}
+	if agentProxy != nil {
+		state.AgentAPIAddr = agentProxy.LocalAddr().String()
+	}
+	if sshProxy != nil {
+		state.SSHAddr = sshProxy.LocalAddr().String()
+	}
+	if err := tunnel.WriteState(state); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: write tunnel state: %v\n", err)
+	}
+	defer func() { _ = tunnel.RemoveState(hostName) }()
+
 	if globals.Verbose {
 		for _, br := range bridges {
 			fmt.Println(br.Status())
@@ -228,8 +302,13 @@ func (c *StatusCmd) Run(globals *CLI) error {
 	_, _ = fmt.Fprintf(tw, "ENDPOINT\t%s\n", cfg.Endpoint)
 	_, _ = fmt.Fprintf(tw, "AGENT-IP\t%s\n", cfg.AgentIP)
 
-	agentURL := fmt.Sprintf("http://%s:%d/health", cfg.AgentIP, tunnel.AgentAPIPort)
-	resp, err := http.Get(agentURL)
+	healthAddr := fmt.Sprintf("%s:%d", cfg.AgentIP, tunnel.AgentAPIPort)
+	if state, _ := tunnel.LoadState(hostName); state != nil && state.AgentAPIAddr != "" {
+		healthAddr = state.AgentAPIAddr
+	}
+	agentURL := "http://" + healthAddr + "/health"
+	healthClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := healthClient.Get(agentURL)
 	if err != nil {
 		_, _ = fmt.Fprintf(tw, "AGENT\tunreachable: %v\n", err)
 		_ = tw.Flush()
@@ -359,7 +438,18 @@ func (c *ShellCmd) Run(globals *CLI) error {
 		user = "root"
 	}
 
-	sshArgs := []string{"-t", user + "@" + cfg.AgentIP}
+	sshHost := cfg.AgentIP
+	var sshExtraArgs []string
+	if state, _ := tunnel.LoadState(hostName); state != nil && state.SSHAddr != "" {
+		proxyHost, proxyPort, splitErr := net.SplitHostPort(state.SSHAddr)
+		if splitErr == nil {
+			sshHost = proxyHost
+			sshExtraArgs = []string{"-p", proxyPort, "-o", "NoHostAuthenticationForLocalhost=yes"}
+		}
+	}
+
+	sshArgs := append([]string{"-t"}, sshExtraArgs...)
+	sshArgs = append(sshArgs, user+"@"+sshHost)
 
 	// Attach to session manager if a local hopbox.yaml specifies one.
 	if ws, wsErr := manifest.Parse("hopbox.yaml"); wsErr == nil && ws.Session != nil {
@@ -776,11 +866,44 @@ func rpcCallResultVia(client *http.Client, hostName, method string, params any) 
 	return rpcResp.Result, nil
 }
 
+// rpcCallResultToAddr makes an RPC request to addr (e.g. "127.0.0.1:4200")
+// without requiring host config lookup. Used when the tunnel state file provides
+// a local proxy address.
+func rpcCallResultToAddr(client *http.Client, addr, method string, params any) (json.RawMessage, error) {
+	reqBody, _ := json.Marshal(map[string]any{
+		"method": method,
+		"params": params,
+	})
+	url := "http://" + addr + "/rpc"
+	resp, err := client.Post(url, "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("RPC call: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+	var rpcResp struct {
+		Result json.RawMessage `json:"result"`
+		Error  string          `json:"error"`
+	}
+	if err := json.Unmarshal(body, &rpcResp); err != nil {
+		return nil, fmt.Errorf("parse RPC response: %w", err)
+	}
+	if rpcResp.Error != "" {
+		return nil, fmt.Errorf("RPC error: %s", rpcResp.Error)
+	}
+	return rpcResp.Result, nil
+}
+
 // rpcCallResult makes an RPC request to the agent and returns the result JSON.
-// Uses the OS network stack; only works when a kernel WireGuard interface is
-// active. For in-process tunnel calls use rpcCallResultVia with tun.DialContext.
+// Checks the tunnel state file for a local proxy address first; falls back to
+// direct OS-stack dial (works on Linux with kernel WireGuard).
 func rpcCallResult(hostName, method string, params any) (json.RawMessage, error) {
-	return rpcCallResultVia(&http.Client{Timeout: 5 * time.Second}, hostName, method, params)
+	client := &http.Client{Timeout: 5 * time.Second}
+	if state, _ := tunnel.LoadState(hostName); state != nil && state.AgentAPIAddr != "" {
+		return rpcCallResultToAddr(client, state.AgentAPIAddr, method, params)
+	}
+	return rpcCallResultVia(client, hostName, method, params)
 }
 
 // rpcCall makes an RPC request to the agent and prints the result.
