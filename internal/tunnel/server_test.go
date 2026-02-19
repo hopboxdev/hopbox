@@ -46,7 +46,12 @@ func TestServerTunnelLifecycle(t *testing.T) {
 
 	s := srv.Status()
 	if !s.IsUp {
-		t.Error("server tunnel should be up after Start")
+		// On Linux CI without CAP_NET_ADMIN, kernel TUN creation fails.
+		cancel()
+		if err := <-done; err != nil {
+			t.Skipf("skipping: TUN device unavailable: %v", err)
+		}
+		t.Fatal("server tunnel should be up after Start")
 	}
 
 	cancel()
@@ -88,12 +93,21 @@ func TestServerTunnelDialContext(t *testing.T) {
 	defer cancel()
 
 	started := make(chan struct{})
+	errCh := make(chan error, 1)
 	go func() {
 		close(started)
-		_ = srv.Start(ctx)
+		errCh <- srv.Start(ctx)
 	}()
 	<-started
 	time.Sleep(100 * time.Millisecond)
+
+	// On Linux CI without CAP_NET_ADMIN, kernel TUN creation fails.
+	if s := srv.Status(); !s.IsUp {
+		cancel()
+		if err := <-errCh; err != nil {
+			t.Skipf("skipping: TUN device unavailable: %v", err)
+		}
+	}
 
 	// DialContext should fail with "tunnel not started" only if Start hasn't
 	// been called yet. Since we've started it, it should attempt to connect.

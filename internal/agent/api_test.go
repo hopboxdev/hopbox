@@ -265,34 +265,22 @@ func TestRPCMethodNotAllowed(t *testing.T) {
 }
 
 // TestAgentRun verifies the agent starts and its /health endpoint responds.
+// Uses RunOnListener to avoid requiring a WireGuard TUN device.
 func TestAgentRun(t *testing.T) {
-	kp, _ := wgkey.Generate()
-	peer, _ := wgkey.Generate()
-	cfg := tunnel.Config{
-		PrivateKey:    kp.PrivateKeyHex(),
-		PeerPublicKey: peer.PublicKeyHex(),
-		LocalIP:       tunnel.ServerIP + "/24",
-		PeerIP:        tunnel.ClientIP + "/32",
-		ListenPort:    0,
-		MTU:           tunnel.DefaultMTU,
-	}
+	a := newTestAgent(t)
 
-	a := agent.New(cfg)
-
-	// Give agent a random free port so it doesn't need the WireGuard IP.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
-	_ = ln.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	done := make(chan error, 1)
 	go func() {
-		done <- a.RunOnAddr(ctx, "127.0.0.1", port)
+		done <- a.RunOnListener(ctx, ln)
 	}()
 
 	// Poll until the server responds.
