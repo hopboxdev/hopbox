@@ -24,9 +24,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: v1.64.8
+      - uses: golangci/golangci-lint-action@v9.2.0
 
   pre-commit:
     name: Pre-commit
