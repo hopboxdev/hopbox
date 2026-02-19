@@ -115,10 +115,14 @@ func scpFile(client *ssh.Client, remotePath string, data []byte, mode os.FileMod
 	}
 	defer func() { _ = sess.Close() }()
 
-	// Use sudo tee so non-root SSH users with sudo access can write to
-	// system paths like /usr/local/bin and /etc/systemd.
+	// Write to a temp file then mv atomically into place.
+	// Direct overwrite fails with "text file busy" if the binary is running.
+	tmpPath := remotePath + ".new"
 	sess.Stdin = &progressReader{data: data, total: len(data), out: out}
-	cmd := fmt.Sprintf("sudo tee %q > /dev/null && sudo chmod %o %q", remotePath, mode, remotePath)
+	cmd := fmt.Sprintf(
+		"sudo tee %q > /dev/null && sudo chmod %o %q && sudo mv -f %q %q",
+		tmpPath, mode, tmpPath, tmpPath, remotePath,
+	)
 	if cmdOut, err := sess.CombinedOutput(cmd); err != nil {
 		return fmt.Errorf("upload %q: %w (output: %s)", remotePath, err, cmdOut)
 	}

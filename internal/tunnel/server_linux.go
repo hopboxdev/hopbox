@@ -23,11 +23,19 @@ type ServerTunnel struct {
 	cfg    Config
 	dev    *device.Device
 	ifName string
+	ready  chan struct{}
 }
 
 // NewServerTunnel creates a new (not yet started) server tunnel.
 func NewServerTunnel(cfg Config) *ServerTunnel {
-	return &ServerTunnel{cfg: cfg, ifName: "wg0"}
+	return &ServerTunnel{cfg: cfg, ifName: "wg0", ready: make(chan struct{})}
+}
+
+// Ready returns a channel that is closed once the WireGuard interface is up
+// and the IP address has been assigned. Callers that need to bind on the
+// tunnel IP must wait on this before calling net.Listen.
+func (t *ServerTunnel) Ready() <-chan struct{} {
+	return t.ready
 }
 
 // Start brings up the kernel TUN interface and WireGuard device.
@@ -64,6 +72,7 @@ func (t *ServerTunnel) Start(ctx context.Context) error {
 	}
 
 	t.dev = dev
+	close(t.ready)
 
 	<-ctx.Done()
 	t.Stop()

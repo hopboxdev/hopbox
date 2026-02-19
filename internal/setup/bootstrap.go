@@ -74,11 +74,20 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 	}
 
 	logf("Generating server WireGuard keys...")
-	serverPubKeyB64, err := runRemote(client, "sudo hop-agent setup")
-	if err != nil {
+	if _, err := runRemote(client, "sudo hop-agent setup"); err != nil {
 		return nil, fmt.Errorf("hop-agent setup (phase 1): %w", err)
 	}
-	serverPubKeyB64 = strings.TrimSpace(serverPubKeyB64)
+	// Read the public key from the file it wrote rather than capturing stdout.
+	// SSH stdout capture after a large binary upload is unreliable — the
+	// key file is the authoritative source of truth anyway.
+	pubKeyLine, err := runRemote(client, "sudo grep '^public=' /etc/hopbox/agent.key")
+	if err != nil {
+		return nil, fmt.Errorf("read agent public key: %w", err)
+	}
+	serverPubKeyB64 := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(pubKeyLine), "public="))
+	if _, err := wgkey.KeyB64ToHex(serverPubKeyB64); err != nil {
+		return nil, fmt.Errorf("agent key file contains invalid public key %q: %w", serverPubKeyB64, err)
+	}
 
 	logf("Generating client WireGuard keys...")
 	clientKP, err := wgkey.Generate()
@@ -92,8 +101,11 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 		return nil, fmt.Errorf("hop-agent setup (phase 2): %w", err)
 	}
 
-	logf("Enabling hop-agent service...")
-	_, err = runRemote(client, "sudo systemctl enable --now hop-agent")
+	// Enable at boot, then force a restart so the service picks up the
+	// freshly-written peer.pub. A running service won't reload keys on its
+	// own; `enable --now` only starts it if it isn't already running.
+	logf("Restarting hop-agent service...")
+	_, err = runRemote(client, "sudo systemctl enable hop-agent && sudo systemctl restart hop-agent")
 	if err != nil {
 		logf("Warning: systemctl failed (non-systemd host?): %v", err)
 	}

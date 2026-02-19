@@ -19,14 +19,20 @@ import (
 // ServerTunnel is the non-Linux fallback: uses netstack (userspace) just like
 // the client. This enables macOS development and testing without a Linux VPS.
 type ServerTunnel struct {
-	cfg  Config
-	dev  *device.Device
-	tnet *netstack.Net
+	cfg   Config
+	dev   *device.Device
+	tnet  *netstack.Net
+	ready chan struct{}
 }
 
 // NewServerTunnel creates a new (not yet started) server tunnel.
 func NewServerTunnel(cfg Config) *ServerTunnel {
-	return &ServerTunnel{cfg: cfg}
+	return &ServerTunnel{cfg: cfg, ready: make(chan struct{})}
+}
+
+// Ready returns a channel that is closed once the WireGuard device is up.
+func (t *ServerTunnel) Ready() <-chan struct{} {
+	return t.ready
 }
 
 // Start brings up the userspace WireGuard device using netstack.
@@ -62,6 +68,7 @@ func (t *ServerTunnel) Start(ctx context.Context) error {
 
 	t.dev = dev
 	t.tnet = tnet
+	close(t.ready)
 
 	<-ctx.Done()
 	t.Stop()

@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Phase 0 implemented (Milestones 0a–0c). WireGuard tunnel, agent control API,
 service management, bridges, and CLI commands are all in place.
+`hop setup` + `hop up` verified working end-to-end.
 
 ## Build & Development Commands
 
@@ -15,7 +16,10 @@ go build ./cmd/hop/...
 go build ./cmd/hop-agent/...
 
 # Cross-compile agent for Linux (required for deployment)
-CGO_ENABLED=0 GOOS=linux go build ./cmd/hop-agent/...
+CGO_ENABLED=0 GOOS=linux go build -o dist/hop-agent-linux ./cmd/hop-agent/...
+
+# Dev workflow: use a local agent binary during hop setup
+HOP_AGENT_BINARY=./dist/hop-agent-linux hop setup mybox -a <ip> -u debian -k ~/.ssh/key
 
 # Run tests
 go test ./...
@@ -69,7 +73,11 @@ Do **not** use Tailscale's magicsock/DERP, tsnet, or libp2p — these are explic
 
 The user-facing config file placed in a project directory. Declares everything for a workspace: `packages` (backend: nix/apt/static), `services` (type: docker/kubernetes/native), `bridges` (clipboard, chrome CDP, xdg-open), `env`, `secrets`, `scripts`, `backup`, `editor`, `session`.
 
-Host connection config is stored at `~/.config/hopbox/hosts/<name>.yaml` (Wireguard keys, tunnel IPs, endpoint).
+The `host:` field in `hopbox.yaml` pins which registered host to use for this workspace.
+
+Config files:
+- `~/.config/hopbox/hosts/<name>.yaml` — per-host (WireGuard keys, tunnel IPs, SSH endpoint, SSH host key)
+- `~/.config/hopbox/config.yaml` — global user settings (`default_host`)
 
 ## Bridge System
 
@@ -82,29 +90,76 @@ The bridge system implements only category 2.
 ## CLI Commands
 
 ```
-hop setup <name> --host <ip>    Bootstrap: install agent, exchange WG keys, verify tunnel
-hop up [workspace]              Bring up Wireguard tunnel + bridges + services
-hop down                        Tear down tunnel and bridges
-hop status                      Show tunnel, services, bridges health (TUI dashboard)
-hop shell                       Drop into remote shell (zellij/tmux session)
+hop setup <name> -a <ip> [-u user] [-k keyfile] [-p port]
+                                Bootstrap: install agent, exchange WG keys, save host config
+hop up [workspace]              Bring up WireGuard tunnel + bridges + services
+hop down                        Tear down tunnel (Ctrl-C in foreground mode)
+hop status                      Show host config and agent health
+hop shell                       Drop into remote shell (zellij/tmux session per hopbox.yaml)
 hop run <script>                Execute named script from hopbox.yaml
 hop services [ls|restart|stop]  Manage workspace services
 hop logs [service]              Stream service logs
-hop snap                        Snapshot workspace state to backup target (restic+S3)
-hop snap restore <id>           Restore from snapshot
-hop to <newhost>                Migrate workspace to new host (snap → setup → restore)
+hop snap [create|restore|ls]    Manage workspace snapshots (restic backend)
+hop to <newhost>                Migrate workspace to new host (snap → restore)
 hop bridge [ls|restart]         Manage local-remote bridges
-hop host [add|rm|ls]            Manage host registry
+hop host [add|rm|ls|default]    Manage host registry; default shows/sets default host
 hop init                        Generate hopbox.yaml scaffold
+hop version                     Print version info
 ```
+
+Host resolution order (all commands that need a host):
+1. `--host`/`-H` flag
+2. `host:` field in `./hopbox.yaml`
+3. `default_host` in `~/.config/hopbox/config.yaml`
+4. Error — user must specify one of the above
+
+`hop setup` auto-sets the new host as default if no default is configured yet.
 
 ## Agent Control API
 
-HTTP/JSON-RPC on `10.hop.0.2:4200`. Port discovery uses `/proc/net/tcp` polling. Only reachable over the Wireguard tunnel.
+HTTP/JSON-RPC on `10.10.0.2:4200` (`tunnel.AgentAPIPort`). Only reachable over
+the WireGuard tunnel — never exposed to the public internet.
+
+Endpoints: `GET /health`, `POST /rpc`
+
+RPC methods: `services.list`, `services.restart`, `services.stop`, `ports.list`,
+`run.script`, `logs.stream`, `packages.install`, `snap.create`, `snap.restore`,
+`snap.list`, `workspace.sync`
+
+`ports.list` uses `/proc/net/tcp` on the server to discover listening ports.
+
+**Important:** `rpcCall`/`rpcCallResult` use the OS network stack and only work
+when WireGuard is active at kernel level (Linux). They do NOT work on macOS after
+`hop up` because the tunnel is userspace (netstack). On macOS, agent calls are
+only possible inside `UpCmd` via `rpcCallResultVia(agentClient, ...)` with the
+tunnel-aware `agentClient`.
 
 ## Coding Conventions
 
 - Error variables must always be named `err`. Never use suffixed names like `werr`, `rerr`, `cerr`, etc. Use shadowing or restructure to avoid conflicts.
+
+## Known Pitfalls
+
+**Client netstack:** `10.10.0.2` only exists inside the process. All agent HTTP
+calls from `cmd/hop` must use `tun.DialContext` as the transport — a plain
+`http.Client` will fail (no OS route). Pattern:
+```go
+agentClient := &http.Client{Transport: &http.Transport{DialContext: tun.DialContext}}
+```
+
+**Agent bind race:** `net.Listen("tcp", "10.10.0.2:4200")` must not be called
+before the WireGuard interface is up. `ServerTunnel.Ready()` closes a channel
+once the interface is assigned; `RunOnAddr` waits on it before binding.
+
+**SSH stdout after large upload:** `runRemote` stdout is unreliable immediately
+after uploading a large binary (returns null bytes). Read results from files
+the command writes instead (e.g. `sudo grep '^public=' /etc/hopbox/agent.key`).
+
+**Replacing a running binary:** Overwriting an executing binary on Linux fails
+with "text file busy". Write to `path.new`, chmod, then `sudo mv -f` atomically.
+
+**systemd key reload:** `systemctl enable --now` does not restart a running
+service. Always use `systemctl enable && systemctl restart` after updating keys.
 
 ## Technical Decisions
 

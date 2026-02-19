@@ -81,6 +81,16 @@ func (a *Agent) RunOnAddr(ctx context.Context, host string, port int) error {
 		tunnelDone <- tun.Start(ctx)
 	}()
 
+	// Wait for the WireGuard interface to be assigned its IP before
+	// trying to bind the control API on that address.
+	select {
+	case <-tun.Ready():
+	case err := <-tunnelDone:
+		return fmt.Errorf("tunnel failed to start: %w", err)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
 	apiAddr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 	listener, err := net.Listen("tcp", apiAddr)
 	if err != nil {

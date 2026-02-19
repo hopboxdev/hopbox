@@ -130,11 +130,21 @@ func (c *UpCmd) Run(globals *CLI) error {
 		}
 	}
 
+	// Build an HTTP client that routes through the WireGuard netstack.
+	// The standard net/http dialer uses the OS network stack, which has no
+	// route to 10.10.0.2 — only tun.DialContext can reach it.
+	agentClient := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			DialContext: tun.DialContext,
+		},
+	}
+
 	// Probe /health with retry loop.
 	agentURL := fmt.Sprintf("http://%s:%d/health", cfg.AgentIP, tunnel.AgentAPIPort)
 	fmt.Printf("Probing agent at %s...\n", agentURL)
 
-	if err := probeAgent(ctx, agentURL, 10*time.Second); err != nil {
+	if err := probeAgent(ctx, agentURL, 10*time.Second, agentClient); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Warning: agent probe failed: %v\n", err)
 	} else {
 		fmt.Println("Agent is up.")
@@ -144,7 +154,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 	if ws != nil {
 		rawManifest, readErr := os.ReadFile(wsPath)
 		if readErr == nil {
-			if _, syncErr := rpcCallResult(hostName, "workspace.sync", map[string]string{"yaml": string(rawManifest)}); syncErr != nil {
+			if _, syncErr := rpcCallResultVia(agentClient, hostName, "workspace.sync", map[string]string{"yaml": string(rawManifest)}); syncErr != nil {
 				_, _ = fmt.Fprintf(os.Stderr, "Warning: manifest sync failed: %v\n", syncErr)
 			} else {
 				fmt.Println("Manifest synced.")
@@ -163,7 +173,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 				"version": p.Version,
 			})
 		}
-		if _, err := rpcCallResult(hostName, "packages.install", map[string]any{"packages": pkgs}); err != nil {
+		if _, err := rpcCallResultVia(agentClient, hostName, "packages.install", map[string]any{"packages": pkgs}); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Warning: package installation failed: %v\n", err)
 		} else {
 			fmt.Println("Packages installed.")
@@ -545,7 +555,15 @@ type HostRmCmd struct {
 }
 
 func (c *HostRmCmd) Run() error {
-	return hostconfig.Delete(c.Name)
+	if err := hostconfig.Delete(c.Name); err != nil {
+		return err
+	}
+	// Clear default_host if it pointed to the removed host.
+	if cfg, err := hostconfig.LoadGlobalConfig(); err == nil && cfg.DefaultHost == c.Name {
+		cfg.DefaultHost = ""
+		_ = cfg.Save()
+	}
+	return nil
 }
 
 // HostLsCmd lists registered hosts.
@@ -700,11 +718,11 @@ func resolveHost(globals *CLI) (string, error) {
 }
 
 // probeAgent polls GET url until it returns 200 or timeout expires.
-func probeAgent(ctx context.Context, url string, timeout time.Duration) error {
+// client must dial through the WireGuard tunnel (tun.DialContext transport).
+func probeAgent(ctx context.Context, url string, timeout time.Duration, client *http.Client) error {
 	deadline, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	client := &http.Client{Timeout: 5 * time.Second}
 	var lastErr error
 	for {
 		resp, err := client.Get(url)
@@ -721,8 +739,9 @@ func probeAgent(ctx context.Context, url string, timeout time.Duration) error {
 	}
 }
 
-// rpcCallResult makes an RPC request to the agent and returns the result JSON.
-func rpcCallResult(hostName, method string, params any) (json.RawMessage, error) {
+// rpcCallResultVia makes an RPC request using the provided http.Client.
+// Use this when the caller already has a tunnel-aware client (e.g. in UpCmd).
+func rpcCallResultVia(client *http.Client, hostName, method string, params any) (json.RawMessage, error) {
 	if hostName == "" {
 		return nil, fmt.Errorf("--host <name> required")
 	}
@@ -737,7 +756,7 @@ func rpcCallResult(hostName, method string, params any) (json.RawMessage, error)
 	})
 
 	url := fmt.Sprintf("http://%s:%d/rpc", cfg.AgentIP, tunnel.AgentAPIPort)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(reqBody))
+	resp, err := client.Post(url, "application/json", bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("RPC call: %w", err)
 	}
@@ -755,6 +774,13 @@ func rpcCallResult(hostName, method string, params any) (json.RawMessage, error)
 		return nil, fmt.Errorf("RPC error: %s", rpcResp.Error)
 	}
 	return rpcResp.Result, nil
+}
+
+// rpcCallResult makes an RPC request to the agent and returns the result JSON.
+// Uses the OS network stack; only works when a kernel WireGuard interface is
+// active. For in-process tunnel calls use rpcCallResultVia with tun.DialContext.
+func rpcCallResult(hostName, method string, params any) (json.RawMessage, error) {
+	return rpcCallResultVia(&http.Client{Timeout: 5 * time.Second}, hostName, method, params)
 }
 
 // rpcCall makes an RPC request to the agent and prints the result.
