@@ -172,7 +172,7 @@ func (e *e2eEnv) waitReady(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		resp, err := e.httpClient.Get(e.baseURL + "/health")
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return
 		}
 		time.Sleep(200 * time.Millisecond)
@@ -197,7 +197,7 @@ func TestE2EHealthEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /health: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200", resp.StatusCode)
@@ -219,7 +219,7 @@ func TestE2EHealthMethodNotAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /health: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", resp.StatusCode)
@@ -235,7 +235,7 @@ func TestE2EServicesListEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("services.list: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200", resp.StatusCode)
@@ -263,7 +263,7 @@ func TestE2ERunScript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run.script: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200", resp.StatusCode)
@@ -293,7 +293,7 @@ func TestE2ERunScriptNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run.script: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", resp.StatusCode)
@@ -310,7 +310,7 @@ func TestE2ESnapNoTarget(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", method, err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusServiceUnavailable {
 			t.Errorf("%s: status = %d, want 503", method, resp.StatusCode)
 		}
@@ -330,7 +330,7 @@ scripts:
 	if err != nil {
 		t.Fatalf("workspace.sync: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -355,7 +355,7 @@ scripts:
 	if err != nil {
 		t.Fatalf("run.script: %v", err)
 	}
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 
 	if resp2.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp2.Body)
@@ -385,7 +385,7 @@ func TestE2EUnknownRPCMethod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rpc: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", resp.StatusCode)

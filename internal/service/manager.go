@@ -237,7 +237,7 @@ func waitHealthy(ctx context.Context, hc *HealthCheck) error {
 	for {
 		resp, err := client.Get(hc.HTTP)
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode < 500 {
 				return nil
 			}

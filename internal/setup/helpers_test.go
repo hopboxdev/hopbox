@@ -102,7 +102,7 @@ func TestServerPubKeyFromB64(t *testing.T) {
 		t.Errorf("hex length = %d, want 64", len(hex))
 	}
 	for _, c := range hex {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("non-hex char %q in output", c)
 		}
 	}

@@ -72,13 +72,13 @@ func (b *CDPBridge) acceptLoop(ctx context.Context) {
 }
 
 func (b *CDPBridge) proxy(_ context.Context, remote net.Conn) {
-	defer remote.Close()
+	defer func() { _ = remote.Close() }()
 
 	local, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", b.targetPort))
 	if err != nil {
 		return
 	}
-	defer local.Close()
+	defer func() { _ = local.Close() }()
 
 	done := make(chan struct{}, 2)
 	go func() {

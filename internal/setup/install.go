@@ -31,7 +31,7 @@ WantedBy=multi-user.target
 // the release binary matching the VPS architecture.
 func installAgent(_ context.Context, client *ssh.Client, out io.Writer) error {
 	logf := func(format string, args ...any) {
-		fmt.Fprintf(out, "  "+format+"\n", args...)
+		_, _ = fmt.Fprintf(out, "  "+format+"\n", args...)
 	}
 
 	var data []byte
@@ -69,7 +69,7 @@ func installAgent(_ context.Context, client *ssh.Client, out io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("download hop-agent: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("download hop-agent: HTTP %d from %s", resp.StatusCode, url)
 		}
@@ -89,7 +89,7 @@ func installAgent(_ context.Context, client *ssh.Client, out io.Writer) error {
 		return fmt.Errorf("upload systemd unit: %w", err)
 	}
 
-	if _, err := runRemote(client, "systemctl daemon-reload"); err != nil {
+	if _, err := runRemote(client, "sudo systemctl daemon-reload"); err != nil {
 		logf("Warning: systemctl daemon-reload failed: %v", err)
 	}
 
@@ -112,11 +112,12 @@ func scpFile(client *ssh.Client, remotePath string, data []byte, mode os.FileMod
 	if err != nil {
 		return err
 	}
-	defer sess.Close()
+	defer func() { _ = sess.Close() }()
 
-	// Use cat redirect for simplicity (avoids scp binary dependency).
+	// Use sudo tee so non-root SSH users with sudo access can write to
+	// system paths like /usr/local/bin and /etc/systemd.
 	sess.Stdin = newByteReader(data)
-	cmd := fmt.Sprintf("cat > %q && chmod %o %q", remotePath, mode, remotePath)
+	cmd := fmt.Sprintf("sudo tee %q > /dev/null && sudo chmod %o %q", remotePath, mode, remotePath)
 	if out, err := sess.CombinedOutput(cmd); err != nil {
 		return fmt.Errorf("upload %q: %w (output: %s)", remotePath, err, out)
 	}

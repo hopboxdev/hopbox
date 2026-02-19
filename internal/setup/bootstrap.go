@@ -50,7 +50,7 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 	}
 
 	logf := func(format string, args ...any) {
-		fmt.Fprintf(out, format+"\n", args...)
+		_, _ = fmt.Fprintf(out, format+"\n", args...)
 	}
 
 	logf("Connecting to %s:%d as %s...", opts.SSHHost, opts.SSHPort, opts.SSHUser)
@@ -66,7 +66,7 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 	if err != nil {
 		return nil, fmt.Errorf("SSH connect: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	logf("Connected. Installing hop-agent...")
 	if err := installAgent(ctx, client, out); err != nil {
@@ -74,7 +74,7 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 	}
 
 	logf("Generating server WireGuard keys...")
-	serverPubKeyB64, err := runRemote(client, "hop-agent setup")
+	serverPubKeyB64, err := runRemote(client, "sudo hop-agent setup")
 	if err != nil {
 		return nil, fmt.Errorf("hop-agent setup (phase 1): %w", err)
 	}
@@ -87,13 +87,13 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 	}
 
 	logf("Sending client public key to agent...")
-	_, err = runRemote(client, "hop-agent setup --client-pubkey="+clientKP.PublicKeyBase64())
+	_, err = runRemote(client, "sudo hop-agent setup --client-pubkey="+clientKP.PublicKeyBase64())
 	if err != nil {
 		return nil, fmt.Errorf("hop-agent setup (phase 2): %w", err)
 	}
 
 	logf("Enabling hop-agent service...")
-	_, err = runRemote(client, "systemctl enable --now hop-agent")
+	_, err = runRemote(client, "sudo systemctl enable --now hop-agent")
 	if err != nil {
 		logf("Warning: systemctl failed (non-systemd host?): %v", err)
 	}
@@ -168,7 +168,7 @@ func sshConnect(ctx context.Context, opts Options, hostKeyCallback ssh.HostKeyCa
 		}
 		sshConn, chans, reqs, err := ssh.NewClientConn(netConn, addr, config)
 		if err != nil {
-			netConn.Close()
+			_ = netConn.Close()
 			dialErr = err
 			time.Sleep(2 * time.Second)
 			continue
@@ -189,7 +189,7 @@ func runRemote(client *ssh.Client, cmd string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer sess.Close()
+	defer func() { _ = sess.Close() }()
 
 	var buf bytes.Buffer
 	sess.Stdout = &buf
@@ -247,9 +247,9 @@ func LoadSigners(keyPath string) ([]ssh.Signer, error) {
 			if !errors.As(err, &passErr) {
 				return nil, fmt.Errorf("parse key %q: %w", p, err)
 			}
-			fmt.Fprintf(os.Stderr, "Enter passphrase for %s: ", p)
+			_, _ = fmt.Fprintf(os.Stderr, "Enter passphrase for %s: ", p)
 			passphrase, err := term.ReadPassword(int(os.Stdin.Fd()))
-			fmt.Fprintln(os.Stderr)
+			_, _ = fmt.Fprintln(os.Stderr)
 			if err != nil {
 				return nil, fmt.Errorf("read passphrase: %w", err)
 			}

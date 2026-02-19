@@ -83,7 +83,7 @@ func (b *ClipboardBridge) acceptLoop(ctx context.Context) {
 }
 
 func (b *ClipboardBridge) handleConn(_ context.Context, conn net.Conn) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	data, err := io.ReadAll(io.LimitReader(conn, 1<<20)) // 1 MB limit
 	if err != nil || len(data) == 0 {
 		return

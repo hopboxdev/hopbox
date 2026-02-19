@@ -106,7 +106,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 				bridges = append(bridges, br)
 				go func(br bridge.Bridge) {
 					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
-						fmt.Fprintf(os.Stderr, "clipboard bridge error: %v\n", err)
+						_, _ = fmt.Fprintf(os.Stderr, "clipboard bridge error: %v\n", err)
 					}
 				}(br)
 			case "cdp":
@@ -114,7 +114,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 				bridges = append(bridges, br)
 				go func(br bridge.Bridge) {
 					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
-						fmt.Fprintf(os.Stderr, "CDP bridge error: %v\n", err)
+						_, _ = fmt.Fprintf(os.Stderr, "CDP bridge error: %v\n", err)
 					}
 				}(br)
 			}
@@ -126,7 +126,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 	fmt.Printf("Probing agent at %s...\n", agentURL)
 
 	if err := probeAgent(ctx, agentURL, 10*time.Second); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: agent probe failed: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: agent probe failed: %v\n", err)
 	} else {
 		fmt.Println("Agent is up.")
 	}
@@ -136,7 +136,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 		rawManifest, readErr := os.ReadFile(wsPath)
 		if readErr == nil {
 			if _, syncErr := rpcCallResult(hostName, "workspace.sync", map[string]string{"yaml": string(rawManifest)}); syncErr != nil {
-				fmt.Fprintf(os.Stderr, "Warning: manifest sync failed: %v\n", syncErr)
+				_, _ = fmt.Fprintf(os.Stderr, "Warning: manifest sync failed: %v\n", syncErr)
 			} else {
 				fmt.Println("Manifest synced.")
 			}
@@ -155,7 +155,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 			})
 		}
 		if _, err := rpcCallResult(hostName, "packages.install", map[string]any{"packages": pkgs}); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: package installation failed: %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "Warning: package installation failed: %v\n", err)
 		} else {
 			fmt.Println("Packages installed.")
 		}
@@ -205,18 +205,18 @@ func (c *StatusCmd) Run(globals *CLI) error {
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(tw, "HOST\t%s\n", cfg.Name)
-	fmt.Fprintf(tw, "ENDPOINT\t%s\n", cfg.Endpoint)
-	fmt.Fprintf(tw, "AGENT-IP\t%s\n", cfg.AgentIP)
+	_, _ = fmt.Fprintf(tw, "HOST\t%s\n", cfg.Name)
+	_, _ = fmt.Fprintf(tw, "ENDPOINT\t%s\n", cfg.Endpoint)
+	_, _ = fmt.Fprintf(tw, "AGENT-IP\t%s\n", cfg.AgentIP)
 
 	agentURL := fmt.Sprintf("http://%s:%d/health", cfg.AgentIP, tunnel.AgentAPIPort)
 	resp, err := http.Get(agentURL)
 	if err != nil {
-		fmt.Fprintf(tw, "AGENT\tunreachable: %v\n", err)
+		_, _ = fmt.Fprintf(tw, "AGENT\tunreachable: %v\n", err)
 		_ = tw.Flush()
 		return nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var health map[string]any
 	body, _ := io.ReadAll(resp.Body)
@@ -232,8 +232,8 @@ func (c *StatusCmd) Run(globals *CLI) error {
 	if v, ok := health["status"]; ok {
 		agentStatus = fmt.Sprint(v)
 	}
-	fmt.Fprintf(tw, "TUNNEL\t%s\n", tunnelStatus)
-	fmt.Fprintf(tw, "AGENT\t%s\n", agentStatus)
+	_, _ = fmt.Fprintf(tw, "TUNNEL\t%s\n", tunnelStatus)
+	_, _ = fmt.Fprintf(tw, "AGENT\t%s\n", agentStatus)
 	_ = tw.Flush()
 
 	// Fetch and display services.
@@ -248,7 +248,7 @@ func (c *StatusCmd) Run(globals *CLI) error {
 		if json.Unmarshal(svcResult, &svcs) == nil && len(svcs) > 0 {
 			fmt.Println("\nSERVICES")
 			sw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintf(sw, "  NAME\tTYPE\tSTATUS\n")
+			_, _ = fmt.Fprintf(sw, "  NAME\tTYPE\tSTATUS\n")
 			for _, s := range svcs {
 				status := "stopped"
 				if s.Running {
@@ -257,7 +257,7 @@ func (c *StatusCmd) Run(globals *CLI) error {
 				if s.Error != "" {
 					status = "error: " + s.Error
 				}
-				fmt.Fprintf(sw, "  %s\t%s\t%s\n", s.Name, s.Type, status)
+				_, _ = fmt.Fprintf(sw, "  %s\t%s\t%s\n", s.Name, s.Type, status)
 			}
 			_ = sw.Flush()
 		}
@@ -496,9 +496,9 @@ func (c *BridgeLsCmd) Run() error {
 		return nil
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(tw, "TYPE\tSTATUS\n")
+	_, _ = fmt.Fprintf(tw, "TYPE\tSTATUS\n")
 	for _, b := range ws.Bridges {
-		fmt.Fprintf(tw, "%s\tconfigured\n", b.Type)
+		_, _ = fmt.Fprintf(tw, "%s\tconfigured\n", b.Type)
 	}
 	return tw.Flush()
 }
@@ -648,7 +648,7 @@ func probeAgent(ctx context.Context, url string, timeout time.Duration) error {
 	for {
 		resp, err := client.Get(url)
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil
 		}
 		lastErr = err
@@ -680,7 +680,7 @@ func rpcCallResult(hostName, method string, params any) (json.RawMessage, error)
 	if err != nil {
 		return nil, fmt.Errorf("RPC call: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	var rpcResp struct {

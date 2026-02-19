@@ -53,7 +53,7 @@ func TestCDPBridgeProxiesConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen chrome stub: %v", err)
 	}
-	defer chromeListener.Close()
+	defer func() { _ = chromeListener.Close() }()
 	chromePort := chromeListener.Addr().(*net.TCPAddr).Port
 
 	go func() {
@@ -63,7 +63,7 @@ func TestCDPBridgeProxiesConnection(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 64)
 				n, _ := c.Read(buf)
 				_, _ = c.Write(buf[:n])
@@ -94,7 +94,7 @@ func TestCDPBridgeProxiesConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial bridge: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	msg := "hello cdp"
 	if _, err := conn.Write([]byte(msg)); err != nil {
@@ -171,7 +171,7 @@ func TestClipboardBridgeReceivesData(t *testing.T) {
 	}
 	msg := "clipboard content"
 	_, _ = conn.Write([]byte(msg))
-	conn.Close()
+	_ = conn.Close()
 
 	// Give the handler goroutine time to process.
 	time.Sleep(100 * time.Millisecond)

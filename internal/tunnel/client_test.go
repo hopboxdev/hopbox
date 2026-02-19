@@ -114,7 +114,7 @@ func TestLoopbackWireGuard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("server ListenTCP: %v", err)
 	}
-	defer serverListener.Close()
+	defer func() { _ = serverListener.Close() }()
 
 	go func() {
 		for {
@@ -123,7 +123,7 @@ func TestLoopbackWireGuard(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 256)
 				n, _ := c.Read(buf)
 				_, _ = c.Write(buf[:n])
@@ -147,7 +147,7 @@ func TestLoopbackWireGuard(t *testing.T) {
 	if dialErr != nil {
 		t.Fatalf("client dial after retries: %v", dialErr)
 	}
-	defer dialConn.Close()
+	defer func() { _ = dialConn.Close() }()
 
 	msg := "hello wireguard"
 	if _, err := fmt.Fprint(dialConn, msg); err != nil {

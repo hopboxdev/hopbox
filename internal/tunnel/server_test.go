@@ -103,7 +103,7 @@ func TestServerTunnelDialContext(t *testing.T) {
 
 	conn, err := srv.DialContext(dialCtx, "tcp", net.JoinHostPort(tunnel.ServerIP, "9999"))
 	if err == nil {
-		conn.Close()
+		_ = conn.Close()
 		// Unexpected success — fine, no listener was expected
 	}
 	// We accept any error except "tunnel not started"

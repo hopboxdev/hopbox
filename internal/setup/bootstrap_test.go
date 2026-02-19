@@ -24,7 +24,7 @@ func TestBootstrapKeyExchange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	// Track commands received by the mock server.
 	var receivedCmds []string
@@ -68,7 +68,7 @@ func serveMockSSH(t *testing.T, nc net.Conn, hostKey ssh.Signer, cmds *[]string)
 	if err != nil {
 		return
 	}
-	defer sshConn.Close()
+	defer func() { _ = sshConn.Close() }()
 	go ssh.DiscardRequests(reqs)
 
 	for newChan := range chans {
@@ -81,7 +81,7 @@ func serveMockSSH(t *testing.T, nc net.Conn, hostKey ssh.Signer, cmds *[]string)
 			return
 		}
 		go func(ch ssh.Channel, requests <-chan *ssh.Request) {
-			defer ch.Close()
+			defer func() { _ = ch.Close() }()
 			for req := range requests {
 				if req.Type == "exec" {
 					cmd := parseExecPayload(req.Payload)
