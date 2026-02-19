@@ -1,0 +1,33 @@
+# Binaries
+/bin
+/hop
+/hop-agent
+dist/
+
+# Go build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config (contains keys)
+~/.config/hopbox/
+
+# goreleaser
+.goreleaser.yaml

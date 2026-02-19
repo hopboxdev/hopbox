@@ -1,0 +1,145 @@
+package main
+
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+
+	"github.com/alecthomas/kong"
+
+	"github.com/hopboxdev/hopbox/internal/agent"
+	"github.com/hopboxdev/hopbox/internal/tunnel"
+	"github.com/hopboxdev/hopbox/internal/version"
+	"github.com/hopboxdev/hopbox/internal/wgkey"
+)
+
+const agentKeyFile = "/etc/hopbox/agent.key"
+
+// ServeCmd starts the hop-agent daemon.
+type ServeCmd struct{}
+
+func (c *ServeCmd) Run() error {
+	kp, err := loadOrGenerateKey()
+	if err != nil {
+		return fmt.Errorf("load agent key: %w", err)
+	}
+
+	// Load peer public key from config file if present.
+	peerPubKey := loadPeerPubKey()
+
+	cfg := tunnel.Config{
+		PrivateKey:    kp.PrivateKeyHex(),
+		PeerPublicKey: peerPubKey,
+		LocalIP:       tunnel.ServerIP + "/24",
+		PeerIP:        tunnel.ClientIP + "/32",
+		ListenPort:    tunnel.DefaultPort,
+		MTU:           tunnel.DefaultMTU,
+	}
+
+	a := agent.New(cfg)
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	fmt.Printf("hop-agent %s starting\n", version.Version)
+	fmt.Printf("WireGuard IP: %s, listening on :%d\n", tunnel.ServerIP, tunnel.DefaultPort)
+	fmt.Printf("Control API: %s:%d\n", tunnel.ServerIP, tunnel.AgentAPIPort)
+
+	return a.Run(ctx)
+}
+
+// AgentSetupCmd configures the agent during bootstrap.
+// Phase 1 (no flags): generate keys, print public key.
+// Phase 2 (--client-pubkey): store client pubkey, complete WG config.
+type AgentSetupCmd struct {
+	ClientPubKey string `name:"client-pubkey" help:"Client WireGuard public key (base64). If set, configures the peer."`
+}
+
+func (c *AgentSetupCmd) Run() error {
+	if c.ClientPubKey == "" {
+		// Phase 1: generate or load key, print public key.
+		kp, err := loadOrGenerateKey()
+		if err != nil {
+			return fmt.Errorf("generate key: %w", err)
+		}
+		fmt.Print(kp.PublicKeyBase64())
+		return nil
+	}
+
+	// Phase 2: store client public key.
+	if err := savePeerPubKey(c.ClientPubKey); err != nil {
+		return fmt.Errorf("save peer pubkey: %w", err)
+	}
+	fmt.Println("ok")
+	return nil
+}
+
+// VersionCmd prints version info.
+type VersionCmd struct{}
+
+func (c *VersionCmd) Run() error {
+	fmt.Printf("hop-agent %s (commit %s, built %s)\n",
+		version.Version, version.Commit, version.Date)
+	return nil
+}
+
+var cli struct {
+	Serve   ServeCmd      `cmd:"" help:"Start the hop-agent daemon."`
+	Setup   AgentSetupCmd `cmd:"" help:"Configure agent during bootstrap."`
+	Version VersionCmd    `cmd:"" help:"Print version."`
+}
+
+func main() {
+	ctx := kong.Parse(&cli,
+		kong.Name("hop-agent"),
+		kong.Description("Hopbox agent — runs on your VPS"),
+		kong.UsageOnError(),
+	)
+	err := ctx.Run()
+	ctx.FatalIfErrorf(err)
+}
+
+// loadOrGenerateKey loads the agent key from agentKeyFile, or generates a new one.
+func loadOrGenerateKey() (*wgkey.KeyPair, error) {
+	kp, err := wgkey.LoadFromFile(agentKeyFile)
+	if err == nil {
+		return kp, nil
+	}
+	// Generate new key
+	kp, err = wgkey.Generate()
+	if err != nil {
+		return nil, err
+	}
+	if err := kp.SaveToFile(agentKeyFile); err != nil {
+		// Non-fatal if we can't persist (e.g. in tests)
+		fmt.Fprintf(os.Stderr, "Warning: could not save key to %s: %v\n", agentKeyFile, err)
+	}
+	return kp, nil
+}
+
+const peerPubKeyFile = "/etc/hopbox/peer.pub"
+
+func loadPeerPubKey() string {
+	data, err := os.ReadFile(peerPubKeyFile)
+	if err != nil {
+		return ""
+	}
+	// Convert base64 to hex for IPC
+	b64 := string(data)
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil || len(raw) != 32 {
+		return ""
+	}
+	return fmt.Sprintf("%x", raw)
+}
+
+func savePeerPubKey(b64 string) error {
+	if err := os.MkdirAll(filepath.Dir(peerPubKeyFile), 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(peerPubKeyFile, []byte(b64), 0600)
+}
