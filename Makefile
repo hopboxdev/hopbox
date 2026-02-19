@@ -1,6 +1,7 @@
-BINARY_HOP      := hop
-BINARY_AGENT    := hop-agent
-BINARY_AGENT_L  := hop-agent-linux
+DIST            := dist
+BINARY_HOP      := $(DIST)/hop
+BINARY_AGENT    := $(DIST)/hop-agent
+BINARY_AGENT_L  := $(DIST)/hop-agent-linux
 
 VERSION         := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT          := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -17,14 +18,17 @@ LDFLAGS         := -s -w \
 .PHONY: build
 build: $(BINARY_HOP) $(BINARY_AGENT_L)
 
-$(BINARY_HOP):
+$(DIST):
+	mkdir -p $(DIST)
+
+$(BINARY_HOP): $(DIST)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hop
 
-$(BINARY_AGENT_L):
+$(BINARY_AGENT_L): $(DIST)
 	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hop-agent
 
 .PHONY: build-agent-native
-build-agent-native:
+build-agent-native: $(DIST)
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY_AGENT) ./cmd/hop-agent
 
 .PHONY: install
@@ -73,8 +77,7 @@ release:
 
 .PHONY: clean
 clean:
-	rm -f $(BINARY_HOP) $(BINARY_AGENT) $(BINARY_AGENT_L)
-	rm -rf dist/
+	rm -rf $(DIST)/
 
 .PHONY: hooks
 hooks:
