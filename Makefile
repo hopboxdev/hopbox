@@ -1,0 +1,89 @@
+BINARY_HOP      := hop
+BINARY_AGENT    := hop-agent
+BINARY_AGENT_L  := hop-agent-linux
+
+VERSION         := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT          := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+DATE            := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS         := -s -w \
+	-X github.com/hopboxdev/hopbox/internal/version.Version=$(VERSION) \
+	-X github.com/hopboxdev/hopbox/internal/version.Commit=$(COMMIT) \
+	-X github.com/hopboxdev/hopbox/internal/version.Date=$(DATE)
+
+.DEFAULT_GOAL := build
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+
+.PHONY: build
+build: $(BINARY_HOP) $(BINARY_AGENT_L)
+
+$(BINARY_HOP):
+	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hop
+
+$(BINARY_AGENT_L):
+	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hop-agent
+
+.PHONY: build-agent-native
+build-agent-native:
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY_AGENT) ./cmd/hop-agent
+
+.PHONY: install
+install:
+	go install -ldflags "$(LDFLAGS)" ./cmd/hop
+
+# ── Test ──────────────────────────────────────────────────────────────────────
+
+.PHONY: test
+test:
+	go test ./...
+
+.PHONY: test-verbose
+test-verbose:
+	go test -v ./...
+
+.PHONY: test-e2e
+test-e2e:
+	go test -v -count=1 ./internal/e2e/...
+
+.PHONY: test-race
+test-race:
+	go test -race ./...
+
+# ── Lint ──────────────────────────────────────────────────────────────────────
+
+.PHONY: lint
+lint:
+	golangci-lint run
+
+.PHONY: lint-fix
+lint-fix:
+	golangci-lint run --fix
+
+# ── Release ───────────────────────────────────────────────────────────────────
+
+.PHONY: snapshot
+snapshot:
+	goreleaser build --snapshot --clean
+
+.PHONY: release
+release:
+	goreleaser release --clean
+
+# ── Dev helpers ───────────────────────────────────────────────────────────────
+
+.PHONY: clean
+clean:
+	rm -f $(BINARY_HOP) $(BINARY_AGENT) $(BINARY_AGENT_L)
+	rm -rf dist/
+
+.PHONY: hooks
+hooks:
+	prek install
+
+.PHONY: tidy
+tidy:
+	go mod tidy
+
+.PHONY: version
+version:
+	@echo $(VERSION)
