@@ -49,6 +49,7 @@ hop setup mybox -a 1.2.3.4 -u debian -k ~/.ssh/id_ed25519
 ```
 
 This will:
+
 - SSH into the server and install `hop-agent` as a systemd service
 - Generate WireGuard keys on both ends and exchange public keys
 - Save the host config to `~/.config/hopbox/hosts/mybox.yaml`
@@ -192,4 +193,4 @@ binary automatically.
 
 ## License
 
-Apache 2.0
+GNU Affero General Public License v3.0 (AGPL-3.0).
