@@ -1,7 +1,8 @@
 DIST            := dist
-BINARY_HOP      := $(DIST)/hop
-BINARY_AGENT    := $(DIST)/hop-agent
-BINARY_AGENT_L  := $(DIST)/hop-agent-linux
+BINARY_HOP         := $(DIST)/hop
+BINARY_AGENT       := $(DIST)/hop-agent
+BINARY_AGENT_L     := $(DIST)/hop-agent-linux-amd64
+BINARY_AGENT_L_ARM := $(DIST)/hop-agent-linux-arm64
 
 VERSION         := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT          := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -25,7 +26,13 @@ $(BINARY_HOP): $(DIST)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hop
 
 $(BINARY_AGENT_L): $(DIST)
-	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hop-agent
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hop-agent
+
+$(BINARY_AGENT_L_ARM): $(DIST)
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hop-agent
+
+.PHONY: build-agent-arm64
+build-agent-arm64: $(BINARY_AGENT_L_ARM)
 
 .PHONY: build-agent-native
 build-agent-native: $(DIST)
