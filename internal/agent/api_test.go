@@ -417,6 +417,27 @@ func TestRPCPackagesInstallMissingParams(t *testing.T) {
 	}
 }
 
+func TestRPCBodyTooLarge(t *testing.T) {
+	a := newTestAgent(t)
+	srv := newTestServer(t, a)
+
+	// Build a syntactically valid JSON body that exceeds the 1 MiB limit.
+	// A bare non-JSON body fails the JSON decoder before MaxBytesReader fires.
+	prefix := []byte(`{"method":"run.script","params":"`)
+	padding := bytes.Repeat([]byte("x"), (1<<20)+1)
+	suffix := []byte(`"}`)
+	body := append(append(prefix, padding...), suffix...)
+
+	resp, err := http.Post(srv.URL+"/rpc", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Errorf("status = %d, want 413", resp.StatusCode)
+	}
+}
+
 // stubBackend is a no-op service backend for testing.
 type stubBackend struct {
 	running bool

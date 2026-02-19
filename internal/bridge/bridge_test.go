@@ -142,8 +142,10 @@ func TestClipboardBridgeStartStop(t *testing.T) {
 // and calls the clipboard writer with the received bytes.
 func TestClipboardBridgeReceivesData(t *testing.T) {
 	var written []byte
+	writerDone := make(chan struct{})
 	fakeWriter := func(data []byte) error {
 		written = append(written, data...)
+		close(writerDone)
 		return nil
 	}
 
@@ -173,8 +175,13 @@ func TestClipboardBridgeReceivesData(t *testing.T) {
 	_, _ = conn.Write([]byte(msg))
 	_ = conn.Close()
 
-	// Give the handler goroutine time to process.
-	time.Sleep(100 * time.Millisecond)
+	// Block until the handler goroutine has finished writing — a time.Sleep
+	// is not a happens-before and causes a data race on `written`.
+	select {
+	case <-writerDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("clipboard writer was not called")
+	}
 
 	if string(written) != msg {
 		t.Errorf("clipboard received %q, want %q", written, msg)

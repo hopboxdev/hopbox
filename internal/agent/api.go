@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,6 +13,10 @@ import (
 	"github.com/hopboxdev/hopbox/internal/service"
 	"github.com/hopboxdev/hopbox/internal/snapshot"
 )
+
+// maxRPCBodySize caps the request body on /rpc to prevent memory exhaustion
+// from oversized payloads. 1 MiB is generous for any legitimate RPC call.
+const maxRPCBodySize = 1 << 20 // 1 MiB
 
 // rpcRequest is the JSON-RPC request envelope.
 type rpcRequest struct {
@@ -52,8 +57,14 @@ func (a *Agent) handleRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRPCBodySize)
 	var req rpcRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeRPCError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
 		writeRPCError(w, http.StatusBadRequest, fmt.Sprintf("decode request: %v", err))
 		return
 	}
