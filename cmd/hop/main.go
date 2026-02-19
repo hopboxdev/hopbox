@@ -615,18 +615,32 @@ type CLI struct {
 
 func main() {
 	var cli CLI
-	ctx := kong.Parse(&cli,
+	k, err := kong.New(&cli,
 		kong.Name("hop"),
 		kong.Description("Hopbox CLI — instant dev environments on your VPS"),
 		kong.UsageOnError(),
 	)
-	err := ctx.Run(&cli)
-	ctx.FatalIfErrorf(err)
+	if err != nil {
+		panic(err)
+	}
+
+	args := os.Args[1:]
+	// No args or bare "help" → print usage and exit 0 (not an error).
+	// Passing --help to k.Parse lets Kong handle the print+exit itself.
+	if len(args) == 0 || (len(args) == 1 && args[0] == "help") {
+		_, _ = k.Parse([]string{"--help"})
+		os.Exit(0) // unreachable; defensive fallback
+	}
+
+	ctx, err := k.Parse(args)
+	k.FatalIfErrorf(err)
+	k.FatalIfErrorf(ctx.Run(&cli))
 }
 
 // resolveHost returns the host name to use, in order of precedence:
 // 1. --host flag (globals.Host)
 // 2. host: field in ./hopbox.yaml
+// 3. the sole configured host (if exactly one exists)
 func resolveHost(globals *CLI) (string, error) {
 	if globals.Host != "" {
 		return globals.Host, nil
@@ -634,6 +648,11 @@ func resolveHost(globals *CLI) (string, error) {
 	ws, err := manifest.Parse("hopbox.yaml")
 	if err == nil && ws.Host != "" {
 		return ws.Host, nil
+	}
+	// Auto-select when there is exactly one host configured.
+	names, err := hostconfig.List()
+	if err == nil && len(names) == 1 {
+		return names[0], nil
 	}
 	return "", fmt.Errorf("--host <name> required (or set host: in hopbox.yaml)")
 }
