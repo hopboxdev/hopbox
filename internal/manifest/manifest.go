@@ -10,6 +10,7 @@ import (
 // Workspace is the top-level structure of a hopbox.yaml file.
 type Workspace struct {
 	Name     string             `yaml:"name"`
+	Host     string             `yaml:"host,omitempty"`
 	Packages []Package          `yaml:"packages,omitempty"`
 	Services map[string]Service `yaml:"services,omitempty"`
 	Bridges  []Bridge           `yaml:"bridges,omitempty"`

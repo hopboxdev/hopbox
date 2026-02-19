@@ -3,15 +3,16 @@ module github.com/hopboxdev/hopbox
 go 1.25.5
 
 require (
+	github.com/alecthomas/kong v1.14.0
+	golang.org/x/crypto v0.48.0
+	golang.org/x/term v0.40.0
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/alecthomas/kong v1.14.0 // indirect
 	github.com/google/btree v1.1.2 // indirect
-	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/time v0.12.0 // indirect

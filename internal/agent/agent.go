@@ -2,19 +2,24 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 
+	"github.com/hopboxdev/hopbox/internal/manifest"
 	"github.com/hopboxdev/hopbox/internal/service"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 )
 
 // Agent manages the tunnel lifecycle and the control API server.
 type Agent struct {
-	cfg      tunnel.Config
-	tunnel   tunnel.Tunnel
-	services *service.Manager
+	cfg          tunnel.Config
+	tunnel       tunnel.Tunnel
+	services     *service.Manager
+	scripts      map[string]string
+	backupTarget string
+	backupPaths  []string
 }
 
 // New creates a new Agent with the given tunnel configuration.
@@ -25,6 +30,30 @@ func New(cfg tunnel.Config) *Agent {
 // WithServices attaches a service manager to the agent.
 func (a *Agent) WithServices(sm *service.Manager) {
 	a.services = sm
+}
+
+// WithScripts attaches a map of named scripts (name → shell command) to the agent.
+func (a *Agent) WithScripts(scripts map[string]string) {
+	a.scripts = scripts
+}
+
+// WithBackupConfig attaches a restic backup target and the list of paths to
+// back up. Must be called before Run.
+func (a *Agent) WithBackupConfig(target string, paths []string) {
+	a.backupTarget = target
+	a.backupPaths = paths
+}
+
+// Reload re-wires the agent's runtime state (scripts, backup config) from the
+// given workspace manifest. Called after workspace.sync is received.
+func (a *Agent) Reload(ws *manifest.Workspace) {
+	a.scripts = ws.Scripts
+	if ws.Backup != nil {
+		a.backupTarget = ws.Backup.Target
+	} else {
+		a.backupTarget = ""
+		a.backupPaths = nil
+	}
 }
 
 // Handler returns the HTTP mux for the agent's control API.
@@ -47,40 +76,50 @@ func (a *Agent) RunOnAddr(ctx context.Context, host string, port int) error {
 	tun := tunnel.NewServerTunnel(a.cfg)
 	a.tunnel = tun
 
-	// Start tunnel in background
 	tunnelDone := make(chan error, 1)
 	go func() {
 		tunnelDone <- tun.Start(ctx)
 	}()
 
 	apiAddr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
-
-	mux := http.NewServeMux()
-	a.registerRoutes(mux)
-
-	srv := &http.Server{
-		Addr:    apiAddr,
-		Handler: mux,
-	}
-
 	listener, err := net.Listen("tcp", apiAddr)
 	if err != nil {
+		tun.Stop()
+		<-tunnelDone
 		return fmt.Errorf("listen on API address %s: %w", apiAddr, err)
 	}
 
-	apiDone := make(chan error, 1)
+	_ = a.serveHTTP(ctx, listener)
+	tun.Stop()
+	<-tunnelDone
+	return nil
+}
+
+// RunOnListener starts only the HTTP control API on the provided listener,
+// without managing a WireGuard tunnel. The caller is responsible for the
+// tunnel; this is the entry point used by end-to-end tests.
+func (a *Agent) RunOnListener(ctx context.Context, listener net.Listener) error {
+	return a.serveHTTP(ctx, listener)
+}
+
+// serveHTTP starts the HTTP server on listener and blocks until ctx is
+// cancelled, then shuts down gracefully.
+func (a *Agent) serveHTTP(ctx context.Context, listener net.Listener) error {
+	mux := http.NewServeMux()
+	a.registerRoutes(mux)
+	srv := &http.Server{Handler: mux}
+
+	done := make(chan error, 1)
 	go func() {
-		apiDone <- srv.Serve(listener)
+		err := srv.Serve(listener)
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		done <- err
 	}()
 
 	<-ctx.Done()
-
 	_ = srv.Shutdown(context.Background())
 	_ = listener.Close()
-	tun.Stop()
-
-	<-tunnelDone
-	<-apiDone
-
-	return nil
+	return <-done
 }

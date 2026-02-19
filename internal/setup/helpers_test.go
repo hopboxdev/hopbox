@@ -124,8 +124,10 @@ func TestServerPubKeyFromB64_InvalidBase64(t *testing.T) {
 }
 
 func TestLoadSigners_NoKeys(t *testing.T) {
-	// Point HOME at an empty temp dir so no keys exist.
+	// Point HOME at an empty temp dir so no key files exist,
+	// and clear SSH_AUTH_SOCK so the SSH agent is not consulted.
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("SSH_AUTH_SOCK", "")
 	_, err := setup.LoadSigners("")
 	if err == nil {
 		t.Error("expected error when no SSH keys exist")

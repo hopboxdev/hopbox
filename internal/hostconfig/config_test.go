@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
+	"github.com/hopboxdev/hopbox/internal/wgkey"
 )
 
 // overrideConfigDir sets XDG_CONFIG_HOME to a temp dir for testing.
@@ -142,19 +143,62 @@ func TestSaveFilePermissions(t *testing.T) {
 }
 
 func TestToTunnelConfig(t *testing.T) {
-	cfg := makeConfig("tunneltest")
-	tc := cfg.ToTunnelConfig()
+	kp, err := wgkey.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &hostconfig.HostConfig{
+		Name:          "tunneltest",
+		Endpoint:      "1.2.3.4:51820",
+		PrivateKey:    kp.PrivateKeyBase64(),
+		PeerPublicKey: kp.PublicKeyBase64(),
+		TunnelIP:      "10.10.0.1/24",
+		AgentIP:       "10.10.0.2",
+	}
+	tc, err := cfg.ToTunnelConfig()
+	if err != nil {
+		t.Fatalf("ToTunnelConfig: %v", err)
+	}
 
-	if tc.PrivateKey != cfg.PrivateKey {
-		t.Errorf("PrivateKey mismatch")
-	}
-	if tc.PeerPublicKey != cfg.PeerPublicKey {
-		t.Errorf("PeerPublicKey mismatch")
-	}
 	if tc.Endpoint != cfg.Endpoint {
 		t.Errorf("Endpoint mismatch")
 	}
 	if tc.LocalIP != cfg.TunnelIP {
 		t.Errorf("LocalIP = %q, want %q", tc.LocalIP, cfg.TunnelIP)
+	}
+}
+
+func TestToTunnelConfigConvertsKeys(t *testing.T) {
+	kp, err := wgkey.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &hostconfig.HostConfig{
+		Name:          "keytest",
+		Endpoint:      "1.2.3.4:51820",
+		PrivateKey:    kp.PrivateKeyBase64(),
+		PeerPublicKey: kp.PublicKeyBase64(),
+		TunnelIP:      "10.10.0.1/24",
+		AgentIP:       "10.10.0.2",
+	}
+	tc, err := cfg.ToTunnelConfig()
+	if err != nil {
+		t.Fatalf("ToTunnelConfig: %v", err)
+	}
+	// Keys must be hex (64 chars), not base64.
+	if tc.PrivateKey != kp.PrivateKeyHex() {
+		t.Errorf("PrivateKey = %q, want hex %q", tc.PrivateKey, kp.PrivateKeyHex())
+	}
+	if tc.PeerPublicKey != kp.PublicKeyHex() {
+		t.Errorf("PeerPublicKey = %q, want hex %q", tc.PeerPublicKey, kp.PublicKeyHex())
+	}
+}
+
+func TestToTunnelConfigInvalidKey(t *testing.T) {
+	cfg := makeConfig("badkey")
+	// makeConfig uses fake base64 values that are not valid 32-byte keys.
+	_, err := cfg.ToTunnelConfig()
+	if err == nil {
+		t.Error("expected error for invalid base64 key, got nil")
 	}
 }

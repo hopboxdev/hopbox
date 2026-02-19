@@ -108,3 +108,32 @@ func TestFromBase64RoundTrip(t *testing.T) {
 		t.Error("private key mismatch")
 	}
 }
+
+func TestKeyB64ToHex(t *testing.T) {
+	kp, err := wgkey.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := wgkey.KeyB64ToHex(kp.PrivateKeyBase64())
+	if err != nil {
+		t.Fatalf("KeyB64ToHex: %v", err)
+	}
+	if got != kp.PrivateKeyHex() {
+		t.Errorf("KeyB64ToHex = %q, want %q", got, kp.PrivateKeyHex())
+	}
+	if len(got) != 64 {
+		t.Errorf("hex length = %d, want 64", len(got))
+	}
+}
+
+func TestKeyB64ToHexInvalid(t *testing.T) {
+	_, err := wgkey.KeyB64ToHex("not-valid-base64!!!")
+	if err == nil {
+		t.Error("expected error for invalid base64, got nil")
+	}
+
+	_, err = wgkey.KeyB64ToHex("dG9vc2hvcnQ=") // valid base64 but not 32 bytes
+	if err == nil {
+		t.Error("expected error for wrong key length, got nil")
+	}
+}

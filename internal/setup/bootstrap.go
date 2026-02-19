@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +14,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/term"
 
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
@@ -28,9 +31,6 @@ type Options struct {
 	// SSHKeyPath is the path to the private key file. If empty, uses
 	// ~/.ssh/id_rsa, ~/.ssh/id_ed25519, etc.
 	SSHKeyPath string
-	// AgentBinaryPath is the local path to the hop-agent binary to upload.
-	// If empty, looks for "hop-agent" in PATH.
-	AgentBinaryPath string
 }
 
 // Bootstrap performs the full setup sequence:
@@ -69,7 +69,7 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 	defer client.Close()
 
 	logf("Connected. Installing hop-agent...")
-	if err := installAgent(ctx, client, opts, out); err != nil {
+	if err := installAgent(ctx, client, out); err != nil {
 		return nil, fmt.Errorf("install agent: %w", err)
 	}
 
@@ -201,9 +201,25 @@ func runRemote(client *ssh.Client, cmd string) (string, error) {
 	return buf.String(), nil
 }
 
-// LoadSigners loads SSH private key signers from the given path or defaults.
+// LoadSigners loads SSH private key signers. It tries the SSH agent first
+// (via $SSH_AUTH_SOCK), then falls back to key files. If a key file is
+// passphrase-protected, the user is prompted on stderr.
 // Exported for testing.
 func LoadSigners(keyPath string) ([]ssh.Signer, error) {
+	var signers []ssh.Signer
+
+	// Try SSH agent first — works transparently when the key is already loaded.
+	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
+		conn, err := net.Dial("unix", sock)
+		if err == nil {
+			agentSigners, err := agent.NewClient(conn).Signers()
+			if err == nil {
+				signers = append(signers, agentSigners...)
+			}
+		}
+	}
+
+	// Collect key file paths to try.
 	paths := []string{keyPath}
 	if keyPath == "" {
 		home, _ := os.UserHomeDir()
@@ -214,7 +230,6 @@ func LoadSigners(keyPath string) ([]ssh.Signer, error) {
 		}
 	}
 
-	var signers []ssh.Signer
 	for _, p := range paths {
 		if p == "" {
 			continue
@@ -228,10 +243,24 @@ func LoadSigners(keyPath string) ([]ssh.Signer, error) {
 		}
 		signer, err := ssh.ParsePrivateKey(data)
 		if err != nil {
-			return nil, fmt.Errorf("parse key %q: %w", p, err)
+			var passErr *ssh.PassphraseMissingError
+			if !errors.As(err, &passErr) {
+				return nil, fmt.Errorf("parse key %q: %w", p, err)
+			}
+			fmt.Fprintf(os.Stderr, "Enter passphrase for %s: ", p)
+			passphrase, err := term.ReadPassword(int(os.Stdin.Fd()))
+			fmt.Fprintln(os.Stderr)
+			if err != nil {
+				return nil, fmt.Errorf("read passphrase: %w", err)
+			}
+			signer, err = ssh.ParsePrivateKeyWithPassphrase(data, passphrase)
+			if err != nil {
+				return nil, fmt.Errorf("parse key %q: %w", p, err)
+			}
 		}
 		signers = append(signers, signer)
 	}
+
 	if len(signers) == 0 {
 		return nil, fmt.Errorf("no SSH private keys found")
 	}

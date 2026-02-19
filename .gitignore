@@ -29,5 +29,5 @@ Thumbs.db
 # Config (contains keys)
 ~/.config/hopbox/
 
-# goreleaser
-.goreleaser.yaml
+# goreleaser build output
+dist/

@@ -8,10 +8,13 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/alecthomas/kong"
 
 	"github.com/hopboxdev/hopbox/internal/agent"
+	"github.com/hopboxdev/hopbox/internal/manifest"
+	"github.com/hopboxdev/hopbox/internal/service"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 	"github.com/hopboxdev/hopbox/internal/version"
 	"github.com/hopboxdev/hopbox/internal/wgkey"
@@ -20,7 +23,9 @@ import (
 const agentKeyFile = "/etc/hopbox/agent.key"
 
 // ServeCmd starts the hop-agent daemon.
-type ServeCmd struct{}
+type ServeCmd struct {
+	Workspace string `name:"workspace" short:"w" help:"Path to hopbox.yaml to load on startup." type:"path"`
+}
 
 func (c *ServeCmd) Run() error {
 	kp, err := loadOrGenerateKey()
@@ -44,6 +49,88 @@ func (c *ServeCmd) Run() error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+
+	// Load workspace manifest if provided or found at the default location.
+	wsPath := c.Workspace
+	if wsPath == "" {
+		wsPath = "/etc/hopbox/hopbox.yaml"
+	}
+	if _, err := os.Stat(wsPath); err == nil {
+		ws, err := manifest.Parse(wsPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to parse manifest %s: %v\n", wsPath, err)
+		} else {
+			mgr := service.NewManager()
+			for name, svc := range ws.Services {
+				// Collect host-side data paths for backup and volume mounts.
+				var dataPaths []string
+				var volumes []string
+				for _, d := range svc.Data {
+					if d.Host != "" {
+						dataPaths = append(dataPaths, d.Host)
+					}
+					if d.Host != "" && d.Container != "" {
+						volumes = append(volumes, d.Host+":"+d.Container)
+					}
+				}
+
+				// Convert manifest HealthCheck to service.HealthCheck.
+				var hc *service.HealthCheck
+				if svc.Health != nil && svc.Health.HTTP != "" {
+					hc = &service.HealthCheck{HTTP: svc.Health.HTTP}
+					if svc.Health.Interval != "" {
+						hc.Interval, _ = time.ParseDuration(svc.Health.Interval)
+					}
+					if svc.Health.Timeout != "" {
+						hc.Timeout, _ = time.ParseDuration(svc.Health.Timeout)
+					}
+				}
+
+				def := &service.ServiceDef{
+					Name:      name,
+					Type:      svc.Type,
+					Image:     svc.Image,
+					Command:   svc.Command,
+					Ports:     svc.Ports,
+					Env:       svc.Env,
+					DependsOn: svc.DependsOn,
+					Health:    hc,
+					DataPaths: dataPaths,
+				}
+
+				var backend service.Backend
+				if svc.Type == "docker" {
+					ports := make([]string, 0, len(svc.Ports))
+					for _, p := range svc.Ports {
+						ports = append(ports, fmt.Sprintf("%d:%d", p, p))
+					}
+					backend = &service.DockerBackend{
+						Image:   svc.Image,
+						Env:     svc.Env,
+						Ports:   ports,
+						Volumes: volumes,
+					}
+				}
+				if backend != nil {
+					mgr.Register(def, backend)
+				}
+			}
+			a.WithServices(mgr)
+			if len(ws.Scripts) > 0 {
+				a.WithScripts(ws.Scripts)
+			}
+			// Configure backup if the manifest specifies a target.
+			if ws.Backup != nil && ws.Backup.Target != "" {
+				a.WithBackupConfig(ws.Backup.Target, mgr.DataPaths())
+			}
+			go func() {
+				if err := mgr.StartAll(ctx); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: service startup: %v\n", err)
+				}
+			}()
+			fmt.Printf("Loaded workspace: %s\n", ws.Name)
+		}
+	}
 
 	fmt.Printf("hop-agent %s starting\n", version.Version)
 	fmt.Printf("WireGuard IP: %s, listening on :%d\n", tunnel.ServerIP, tunnel.DefaultPort)

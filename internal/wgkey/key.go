@@ -163,6 +163,19 @@ func splitLines(s string) []string {
 	return lines
 }
 
+// KeyB64ToHex decodes a base64-encoded WireGuard key and returns it as a
+// 64-character hex string suitable for WireGuard IPC.
+func KeyB64ToHex(b64 string) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return "", fmt.Errorf("decode base64 key: %w", err)
+	}
+	if len(raw) != wgtypes.KeyLen {
+		return "", fmt.Errorf("invalid key length: %d", len(raw))
+	}
+	return hex.EncodeToString(raw), nil
+}
+
 func cutLine(s string) (key, value string, ok bool) {
 	for i := 0; i < len(s); i++ {
 		if s[i] == '=' {

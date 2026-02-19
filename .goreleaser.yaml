@@ -1,0 +1,53 @@
+version: 2
+
+project_name: hopbox
+
+builds:
+  - id: hop
+    binary: hop
+    main: ./cmd/hop
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/hopboxdev/hopbox/internal/version.Version={{.Version}}
+      - -X github.com/hopboxdev/hopbox/internal/version.Commit={{.Commit}}
+      - -X github.com/hopboxdev/hopbox/internal/version.Date={{.Date}}
+
+  - id: hop-agent
+    binary: hop-agent
+    main: ./cmd/hop-agent
+    goos: [linux]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/hopboxdev/hopbox/internal/version.Version={{.Version}}
+      - -X github.com/hopboxdev/hopbox/internal/version.Commit={{.Commit}}
+      - -X github.com/hopboxdev/hopbox/internal/version.Date={{.Date}}
+
+archives:
+  - id: hop-archive
+    builds: [hop]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: binary
+
+  - id: hop-agent-archive
+    builds: [hop-agent]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: binary
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

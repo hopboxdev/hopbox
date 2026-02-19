@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/hopboxdev/hopbox/internal/tunnel"
+	"github.com/hopboxdev/hopbox/internal/wgkey"
 )
 
 // HostConfig holds all connection parameters for a remote hop host.
@@ -108,19 +109,28 @@ func Delete(name string) error {
 }
 
 // ToTunnelConfig converts this host config to a tunnel.Config for the client.
-func (c *HostConfig) ToTunnelConfig() tunnel.Config {
+// Keys are converted from base64 (storage format) to hex (WireGuard IPC format).
+func (c *HostConfig) ToTunnelConfig() (tunnel.Config, error) {
+	privHex, err := wgkey.KeyB64ToHex(c.PrivateKey)
+	if err != nil {
+		return tunnel.Config{}, fmt.Errorf("convert private key: %w", err)
+	}
+	peerHex, err := wgkey.KeyB64ToHex(c.PeerPublicKey)
+	if err != nil {
+		return tunnel.Config{}, fmt.Errorf("convert peer public key: %w", err)
+	}
 	agentIP := c.AgentIP
 	if !strings.Contains(agentIP, "/") {
 		agentIP += "/32"
 	}
 	return tunnel.Config{
-		PrivateKey:          c.PrivateKey,
-		PeerPublicKey:       c.PeerPublicKey,
+		PrivateKey:          privHex,
+		PeerPublicKey:       peerHex,
 		LocalIP:             c.TunnelIP,
 		PeerIP:              agentIP,
 		Endpoint:            c.Endpoint,
 		ListenPort:          0,
 		MTU:                 tunnel.DefaultMTU,
 		PersistentKeepalive: tunnel.DefaultKeepalive,
-	}
+	}, nil
 }

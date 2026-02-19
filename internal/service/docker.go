@@ -18,6 +18,8 @@ type DockerBackend struct {
 	Env map[string]string
 	// Ports maps host ports to container ports (e.g. "8080:80").
 	Ports []string
+	// Volumes maps host paths to container paths (e.g. "/data:/var/lib/data").
+	Volumes []string
 }
 
 // Start launches the container (docker run --rm -d).
@@ -25,6 +27,9 @@ func (d *DockerBackend) Start(_ context.Context, name string) error {
 	args := []string{"run", "--rm", "-d", "--name", name}
 	for _, p := range d.Ports {
 		args = append(args, "-p", p)
+	}
+	for _, v := range d.Volumes {
+		args = append(args, "-v", v)
 	}
 	for k, v := range d.Env {
 		args = append(args, "-e", k+"="+v)

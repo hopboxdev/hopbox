@@ -162,6 +162,70 @@ func TestManagerListStatusWithError(t *testing.T) {
 	}
 }
 
+func TestManagerStartAllDependencyOrder(t *testing.T) {
+	m := service.NewManager()
+	var startOrder []string
+
+	for _, name := range []string{"db", "cache", "api"} {
+		n := name // capture
+		b := &stubBackend{
+			startFn: func() error {
+				startOrder = append(startOrder, n)
+				return nil
+			},
+		}
+		var deps []string
+		if n == "api" {
+			deps = []string{"db", "cache"}
+		}
+		m.Register(&service.ServiceDef{Name: n, Type: "docker", DependsOn: deps}, b)
+	}
+
+	if err := m.StartAll(context.Background()); err != nil {
+		t.Fatalf("StartAll: %v", err)
+	}
+
+	// api must start after both db and cache
+	apiIdx := -1
+	for i, name := range startOrder {
+		if name == "api" {
+			apiIdx = i
+		}
+	}
+	for _, dep := range []string{"db", "cache"} {
+		depIdx := -1
+		for i, name := range startOrder {
+			if name == dep {
+				depIdx = i
+			}
+		}
+		if depIdx >= apiIdx {
+			t.Errorf("expected %s to start before api (start order: %v)", dep, startOrder)
+		}
+	}
+}
+
+func TestManagerStartAllCycleError(t *testing.T) {
+	m := service.NewManager()
+	m.Register(&service.ServiceDef{Name: "a", Type: "native", DependsOn: []string{"b"}}, &stubBackend{})
+	m.Register(&service.ServiceDef{Name: "b", Type: "native", DependsOn: []string{"a"}}, &stubBackend{})
+
+	err := m.StartAll(context.Background())
+	if err == nil {
+		t.Error("expected error for dependency cycle")
+	}
+}
+
+func TestManagerStartAllUnknownDep(t *testing.T) {
+	m := service.NewManager()
+	m.Register(&service.ServiceDef{Name: "api", Type: "native", DependsOn: []string{"db"}}, &stubBackend{})
+
+	err := m.StartAll(context.Background())
+	if err == nil {
+		t.Error("expected error for unknown dependency")
+	}
+}
+
 // errorBackend always returns an error from IsRunning.
 type errorBackend struct{ err error }
 

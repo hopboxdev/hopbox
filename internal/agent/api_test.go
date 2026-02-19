@@ -324,6 +324,111 @@ func TestAgentRun(t *testing.T) {
 	}
 }
 
+func TestRPCRunScriptNoScripts(t *testing.T) {
+	a := newTestAgent(t)
+	srv := newTestServer(t, a)
+
+	body, _ := json.Marshal(map[string]any{
+		"method": "run.script",
+		"params": map[string]string{"name": "test"},
+	})
+	resp, err := http.Post(srv.URL+"/rpc", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503 (no scripts configured)", resp.StatusCode)
+	}
+}
+
+func TestRPCRunScriptNotFound(t *testing.T) {
+	a := newTestAgent(t)
+	a.WithScripts(map[string]string{"build": "go build ./..."})
+	srv := newTestServer(t, a)
+
+	body, _ := json.Marshal(map[string]any{
+		"method": "run.script",
+		"params": map[string]string{"name": "nonexistent"},
+	})
+	resp, err := http.Post(srv.URL+"/rpc", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestRPCRunScriptSuccess(t *testing.T) {
+	a := newTestAgent(t)
+	a.WithScripts(map[string]string{"echo": "echo hello"})
+	srv := newTestServer(t, a)
+
+	body, _ := json.Marshal(map[string]any{
+		"method": "run.script",
+		"params": map[string]string{"name": "echo"},
+	})
+	resp, err := http.Post(srv.URL+"/rpc", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	var rpcResp struct {
+		Result map[string]string `json:"result"`
+		Error  string            `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		t.Fatal(err)
+	}
+	if rpcResp.Error != "" {
+		t.Errorf("unexpected error: %s", rpcResp.Error)
+	}
+	if rpcResp.Result["output"] == "" {
+		t.Error("expected non-empty output")
+	}
+}
+
+func TestRPCSnapNoTarget(t *testing.T) {
+	a := newTestAgent(t)
+	srv := newTestServer(t, a)
+
+	for _, method := range []string{"snap.create", "snap.restore", "snap.list"} {
+		body, _ := json.Marshal(map[string]any{"method": method, "params": map[string]string{"id": "abc"}})
+		resp, err := http.Post(srv.URL+"/rpc", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("%s: %v", method, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusServiceUnavailable {
+			t.Errorf("%s: status = %d, want 503", method, resp.StatusCode)
+		}
+	}
+}
+
+func TestRPCPackagesInstallMissingParams(t *testing.T) {
+	a := newTestAgent(t)
+	srv := newTestServer(t, a)
+
+	body, _ := json.Marshal(map[string]any{
+		"method": "packages.install",
+		"params": map[string]string{},
+	})
+	resp, err := http.Post(srv.URL+"/rpc", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	// Empty packages list → should succeed with nothing installed
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200 for empty packages list", resp.StatusCode)
+	}
+}
+
 // stubBackend is a no-op service backend for testing.
 type stubBackend struct {
 	running bool
