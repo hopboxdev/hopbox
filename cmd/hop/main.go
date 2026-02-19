@@ -44,8 +44,17 @@ func (c *SetupCmd) Run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	_, err := setup.Bootstrap(ctx, opts, os.Stdout)
-	return err
+	if _, err := setup.Bootstrap(ctx, opts, os.Stdout); err != nil {
+		return err
+	}
+
+	// Auto-set as default host if no default is configured yet.
+	if cfg, err := hostconfig.LoadGlobalConfig(); err == nil && cfg.DefaultHost == "" {
+		if err := hostconfig.SetDefaultHost(c.Name); err == nil {
+			fmt.Printf("Default host set to %q.\n", c.Name)
+		}
+	}
+	return nil
 }
 
 // UpCmd brings up the WireGuard tunnel and bridges.
@@ -514,9 +523,10 @@ func (c *BridgeRestartCmd) Run() error {
 
 // HostCmd manages the host registry.
 type HostCmd struct {
-	Add HostAddCmd `cmd:"" name:"add" help:"Add a host."`
-	Rm  HostRmCmd  `cmd:"" name:"rm" help:"Remove a host."`
-	Ls  HostLsCmd  `cmd:"" name:"ls" help:"List hosts."`
+	Add     HostAddCmd     `cmd:"" name:"add" help:"Add a host."`
+	Rm      HostRmCmd      `cmd:"" name:"rm" help:"Remove a host."`
+	Ls      HostLsCmd      `cmd:"" name:"ls" help:"List hosts."`
+	Default HostDefaultCmd `cmd:"" name:"default" help:"Get or set the default host."`
 }
 
 // HostAddCmd is a placeholder (use hop setup instead).
@@ -550,9 +560,42 @@ func (c *HostLsCmd) Run() error {
 		fmt.Println("No hosts configured. Use 'hop setup' to add one.")
 		return nil
 	}
+	cfg, _ := hostconfig.LoadGlobalConfig()
 	for _, n := range names {
-		fmt.Println(n)
+		if cfg != nil && n == cfg.DefaultHost {
+			fmt.Println("* " + n)
+		} else {
+			fmt.Println("  " + n)
+		}
 	}
+	return nil
+}
+
+// HostDefaultCmd gets or sets the default host.
+type HostDefaultCmd struct {
+	Name string `arg:"" optional:"" help:"Host name to set as default. If omitted, prints the current default."`
+}
+
+func (c *HostDefaultCmd) Run() error {
+	if c.Name == "" {
+		cfg, err := hostconfig.LoadGlobalConfig()
+		if err != nil {
+			return err
+		}
+		if cfg.DefaultHost == "" {
+			fmt.Println("No default host set. Run 'hop host default <name>' to set one.")
+		} else {
+			fmt.Println(cfg.DefaultHost)
+		}
+		return nil
+	}
+	if _, err := hostconfig.Load(c.Name); err != nil {
+		return fmt.Errorf("host %q not found: run 'hop setup %s --addr <ip>' first", c.Name, c.Name)
+	}
+	if err := hostconfig.SetDefaultHost(c.Name); err != nil {
+		return err
+	}
+	fmt.Printf("Default host set to %q.\n", c.Name)
 	return nil
 }
 
@@ -640,7 +683,7 @@ func main() {
 // resolveHost returns the host name to use, in order of precedence:
 // 1. --host flag (globals.Host)
 // 2. host: field in ./hopbox.yaml
-// 3. the sole configured host (if exactly one exists)
+// 3. default_host in ~/.config/hopbox/config.yaml
 func resolveHost(globals *CLI) (string, error) {
 	if globals.Host != "" {
 		return globals.Host, nil
@@ -649,12 +692,11 @@ func resolveHost(globals *CLI) (string, error) {
 	if err == nil && ws.Host != "" {
 		return ws.Host, nil
 	}
-	// Auto-select when there is exactly one host configured.
-	names, err := hostconfig.List()
-	if err == nil && len(names) == 1 {
-		return names[0], nil
+	cfg, err := hostconfig.LoadGlobalConfig()
+	if err == nil && cfg.DefaultHost != "" {
+		return cfg.DefaultHost, nil
 	}
-	return "", fmt.Errorf("--host <name> required (or set host: in hopbox.yaml)")
+	return "", fmt.Errorf("--host <name> required (or set host: in hopbox.yaml, or run 'hop host default <name>')")
 }
 
 // probeAgent polls GET url until it returns 200 or timeout expires.

@@ -29,13 +29,75 @@ type HostConfig struct {
 	SSHHostKey string `yaml:"ssh_host_key,omitempty"`
 }
 
-// ConfigDir returns the directory where host configs are stored.
-func ConfigDir() (string, error) {
+// GlobalConfig holds user-level settings for hop.
+// Stored at ~/.config/hopbox/config.yaml.
+type GlobalConfig struct {
+	DefaultHost string `yaml:"default_host,omitempty"`
+}
+
+// hopboxDir returns the base config directory (~/.config/hopbox).
+func hopboxDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("home dir: %w", err)
 	}
-	return filepath.Join(home, ".config", "hopbox", "hosts"), nil
+	return filepath.Join(home, ".config", "hopbox"), nil
+}
+
+// ConfigDir returns the directory where host configs are stored.
+func ConfigDir() (string, error) {
+	base, err := hopboxDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "hosts"), nil
+}
+
+// LoadGlobalConfig reads ~/.config/hopbox/config.yaml.
+// Returns an empty config (not an error) if the file does not exist yet.
+func LoadGlobalConfig() (*GlobalConfig, error) {
+	base, err := hopboxDir()
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Join(base, "config.yaml"))
+	if os.IsNotExist(err) {
+		return &GlobalConfig{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read global config: %w", err)
+	}
+	var cfg GlobalConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parse global config: %w", err)
+	}
+	return &cfg, nil
+}
+
+// Save writes the global config to ~/.config/hopbox/config.yaml.
+func (c *GlobalConfig) Save() error {
+	base, err := hopboxDir()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(base, 0700); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return fmt.Errorf("marshal global config: %w", err)
+	}
+	return os.WriteFile(filepath.Join(base, "config.yaml"), data, 0600)
+}
+
+// SetDefaultHost sets default_host in ~/.config/hopbox/config.yaml.
+func SetDefaultHost(name string) error {
+	cfg, err := LoadGlobalConfig()
+	if err != nil {
+		return err
+	}
+	cfg.DefaultHost = name
+	return cfg.Save()
 }
 
 // Save writes the config to ~/.config/hopbox/hosts/<name>.yaml.
