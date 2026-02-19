@@ -75,6 +75,10 @@ func (c *UpCmd) Run(globals *CLI) error {
 		return fmt.Errorf("load host config %q: %w", hostName, err)
 	}
 
+	if existing, _ := tunnel.LoadState(hostName); existing != nil {
+		return fmt.Errorf("tunnel to %q is already running (PID %d); press Ctrl-C in that session to stop it first", hostName, existing.PID)
+	}
+
 	tunCfg, err := cfg.ToTunnelConfig()
 	if err != nil {
 		return fmt.Errorf("convert tunnel config: %w", err)
@@ -446,6 +450,9 @@ func (c *ShellCmd) Run(globals *CLI) error {
 			sshHost = proxyHost
 			sshExtraArgs = []string{"-p", proxyPort, "-o", "NoHostAuthenticationForLocalhost=yes"}
 		}
+	}
+	if cfg.SSHKeyPath != "" {
+		sshExtraArgs = append(sshExtraArgs, "-i", cfg.SSHKeyPath)
 	}
 
 	sshArgs := append([]string{"-t"}, sshExtraArgs...)

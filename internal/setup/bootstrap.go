@@ -120,6 +120,7 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 		SSHUser:       opts.SSHUser,
 		SSHHost:       opts.SSHHost,
 		SSHPort:       opts.SSHPort,
+		SSHKeyPath:    opts.SSHKeyPath,
 		SSHHostKey:    MarshalHostKey(capturedKey),
 	}
 	if capturedKey != nil {

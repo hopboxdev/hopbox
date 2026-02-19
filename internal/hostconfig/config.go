@@ -24,6 +24,9 @@ type HostConfig struct {
 	SSHUser       string `yaml:"ssh_user"`
 	SSHHost       string `yaml:"ssh_host"`
 	SSHPort       int    `yaml:"ssh_port"`
+	// SSHKeyPath is the path to the private key used during hop setup.
+	// Passed as -i to ssh in hop shell. Empty means use SSH default key discovery.
+	SSHKeyPath string `yaml:"ssh_key_path,omitempty"`
 	// SSHHostKey is the server's SSH host key in authorized_keys format,
 	// captured during `hop setup` and verified on all subsequent SSH connections.
 	SSHHostKey string `yaml:"ssh_host_key,omitempty"`
