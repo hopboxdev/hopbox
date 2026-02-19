@@ -7,10 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"strconv"
-	"strings"
 	"sync"
-	"time"
 
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
@@ -91,10 +88,7 @@ func (t *ServerTunnel) Stop() {
 
 // Status returns current tunnel metrics.
 func (t *ServerTunnel) Status() *Status {
-	s := &Status{
-		LocalIP: t.cfg.LocalIP,
-		PeerIP:  t.cfg.PeerIP,
-	}
+	s := &Status{LocalIP: t.cfg.LocalIP, PeerIP: t.cfg.PeerIP}
 	if t.dev == nil {
 		return s
 	}
@@ -102,26 +96,7 @@ func (t *ServerTunnel) Status() *Status {
 	if err != nil {
 		return s
 	}
-	s.IsUp = true
-	for _, line := range strings.Split(raw, "\n") {
-		k, v, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		switch k {
-		case "last_handshake_time_sec":
-			sec, err := strconv.ParseInt(v, 10, 64)
-			if err == nil && sec > 0 {
-				s.LastHandshake = time.Unix(sec, 0)
-			}
-		case "tx_bytes":
-			n, _ := strconv.ParseInt(v, 10, 64)
-			s.BytesSent = n
-		case "rx_bytes":
-			n, _ := strconv.ParseInt(v, 10, 64)
-			s.BytesReceived = n
-		}
-	}
+	parseIpcOutput(raw, s)
 	return s
 }
 
