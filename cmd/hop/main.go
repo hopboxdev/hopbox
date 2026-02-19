@@ -306,9 +306,17 @@ func (c *StatusCmd) Run(globals *CLI) error {
 	_, _ = fmt.Fprintf(tw, "ENDPOINT\t%s\n", cfg.Endpoint)
 	_, _ = fmt.Fprintf(tw, "AGENT-IP\t%s\n", cfg.AgentIP)
 
-	healthAddr := fmt.Sprintf("%s:%d", cfg.AgentIP, tunnel.AgentAPIPort)
-	if state, _ := tunnel.LoadState(hostName); state != nil && state.AgentAPIAddr != "" {
-		healthAddr = state.AgentAPIAddr
+	state, _ := tunnel.LoadState(hostName)
+	if state == nil {
+		_, _ = fmt.Fprintf(tw, "TUNNEL\tdown\n")
+		_, _ = fmt.Fprintf(tw, "AGENT\tnot reachable (tunnel is not running)\n")
+		_ = tw.Flush()
+		return nil
+	}
+
+	healthAddr := state.AgentAPIAddr
+	if healthAddr == "" {
+		healthAddr = fmt.Sprintf("%s:%d", cfg.AgentIP, tunnel.AgentAPIPort)
 	}
 	agentURL := "http://" + healthAddr + "/health"
 	healthClient := &http.Client{Timeout: 5 * time.Second}
@@ -442,13 +450,18 @@ func (c *ShellCmd) Run(globals *CLI) error {
 		user = "root"
 	}
 
+	state, _ := tunnel.LoadState(hostName)
+	if state == nil {
+		return fmt.Errorf("tunnel to %q is not running; start it with 'hop up'", hostName)
+	}
+
 	sshHost := cfg.AgentIP
-	var sshExtraArgs []string
-	if state, _ := tunnel.LoadState(hostName); state != nil && state.SSHAddr != "" {
+	sshExtraArgs := []string{"-o", "ConnectTimeout=10"}
+	if state.SSHAddr != "" {
 		proxyHost, proxyPort, splitErr := net.SplitHostPort(state.SSHAddr)
 		if splitErr == nil {
 			sshHost = proxyHost
-			sshExtraArgs = []string{"-p", proxyPort, "-o", "NoHostAuthenticationForLocalhost=yes"}
+			sshExtraArgs = append(sshExtraArgs, "-p", proxyPort, "-o", "NoHostAuthenticationForLocalhost=yes")
 		}
 	}
 	if cfg.SSHKeyPath != "" {
