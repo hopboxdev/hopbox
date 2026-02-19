@@ -80,12 +80,12 @@ func installAgent(_ context.Context, client *ssh.Client, out io.Writer) error {
 	}
 
 	logf("Uploading hop-agent (%d bytes)...", len(data))
-	if err := scpFile(client, "/usr/local/bin/hop-agent", data, 0755); err != nil {
+	if err := scpFile(client, "/usr/local/bin/hop-agent", data, 0755, out); err != nil {
 		return fmt.Errorf("upload hop-agent: %w", err)
 	}
 
 	logf("Installing systemd unit...")
-	if err := scpFile(client, "/etc/systemd/system/hop-agent.service", []byte(systemdUnit), 0644); err != nil {
+	if err := scpFile(client, "/etc/systemd/system/hop-agent.service", []byte(systemdUnit), 0644, nil); err != nil {
 		return fmt.Errorf("upload systemd unit: %w", err)
 	}
 
@@ -107,7 +107,8 @@ func archToGoarch(uname string) string {
 }
 
 // scpFile uploads a file to the remote host via SSH.
-func scpFile(client *ssh.Client, remotePath string, data []byte, mode os.FileMode) error {
+// If out is non-nil and the file is large, progress is reported every 10%.
+func scpFile(client *ssh.Client, remotePath string, data []byte, mode os.FileMode, out io.Writer) error {
 	sess, err := client.NewSession()
 	if err != nil {
 		return err
@@ -116,28 +117,35 @@ func scpFile(client *ssh.Client, remotePath string, data []byte, mode os.FileMod
 
 	// Use sudo tee so non-root SSH users with sudo access can write to
 	// system paths like /usr/local/bin and /etc/systemd.
-	sess.Stdin = newByteReader(data)
+	sess.Stdin = &progressReader{data: data, total: len(data), out: out}
 	cmd := fmt.Sprintf("sudo tee %q > /dev/null && sudo chmod %o %q", remotePath, mode, remotePath)
-	if out, err := sess.CombinedOutput(cmd); err != nil {
-		return fmt.Errorf("upload %q: %w (output: %s)", remotePath, err, out)
+	if cmdOut, err := sess.CombinedOutput(cmd); err != nil {
+		return fmt.Errorf("upload %q: %w (output: %s)", remotePath, err, cmdOut)
 	}
 	return nil
 }
 
-type byteReader struct {
-	data []byte
-	pos  int
+// progressReader wraps a byte slice and reports upload progress to out every 10%.
+type progressReader struct {
+	data    []byte
+	pos     int
+	total   int
+	out     io.Writer
+	lastPct int
 }
 
-func newByteReader(data []byte) io.Reader {
-	return &byteReader{data: data}
-}
-
-func (r *byteReader) Read(p []byte) (int, error) {
+func (r *progressReader) Read(p []byte) (int, error) {
 	if r.pos >= len(r.data) {
 		return 0, io.EOF
 	}
 	n := copy(p, r.data[r.pos:])
 	r.pos += n
+	if r.total > 0 && r.out != nil {
+		pct := r.pos * 100 / r.total
+		if pct/10 > r.lastPct/10 {
+			r.lastPct = pct
+			_, _ = fmt.Fprintf(r.out, "    %d%%\n", pct)
+		}
+	}
 	return n, nil
 }
