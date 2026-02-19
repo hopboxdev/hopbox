@@ -1,7 +1,6 @@
 package setup
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -204,14 +203,13 @@ func runRemote(client *ssh.Client, cmd string) (string, error) {
 	}
 	defer func() { _ = sess.Close() }()
 
-	var buf bytes.Buffer
-	sess.Stdout = &buf
-	sess.Stderr = &buf
-
-	if err := sess.Run(cmd); err != nil {
-		return "", fmt.Errorf("remote %q: %w (output: %s)", cmd, err, buf.String())
+	// CombinedOutput uses an internal mutex-protected writer so the concurrent
+	// stdout/stderr goroutines started by the SSH library don't race.
+	out, err := sess.CombinedOutput(cmd)
+	if err != nil {
+		return "", fmt.Errorf("remote %q: %w (output: %s)", cmd, err, strings.TrimSpace(string(out)))
 	}
-	return buf.String(), nil
+	return string(out), nil
 }
 
 // LoadSigners loads SSH private key signers. It tries the SSH agent first
