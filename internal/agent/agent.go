@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 
 	"github.com/hopboxdev/hopbox/internal/manifest"
 	"github.com/hopboxdev/hopbox/internal/service"
@@ -14,9 +15,13 @@ import (
 
 // Agent manages the tunnel lifecycle and the control API server.
 type Agent struct {
-	cfg          tunnel.Config
-	tunnel       tunnel.Tunnel
-	services     *service.Manager
+	cfg      tunnel.Config
+	tunnel   tunnel.Tunnel
+	services *service.Manager
+
+	// mu guards scripts, backupTarget, and backupPaths, which are written by
+	// Reload (called from workspace.sync RPC) and read by concurrent handlers.
+	mu           sync.RWMutex
 	scripts      map[string]string
 	backupTarget string
 	backupPaths  []string
@@ -47,6 +52,8 @@ func (a *Agent) WithBackupConfig(target string, paths []string) {
 // Reload re-wires the agent's runtime state (scripts, backup config) from the
 // given workspace manifest. Called after workspace.sync is received.
 func (a *Agent) Reload(ws *manifest.Workspace) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.scripts = ws.Scripts
 	if ws.Backup != nil {
 		a.backupTarget = ws.Backup.Target

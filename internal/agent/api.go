@@ -166,11 +166,16 @@ func (a *Agent) rpcPackagesInstall(w http.ResponseWriter, r *http.Request, req r
 }
 
 func (a *Agent) rpcSnapCreate(w http.ResponseWriter, r *http.Request) {
-	if a.backupTarget == "" {
+	a.mu.RLock()
+	target := a.backupTarget
+	paths := make([]string, len(a.backupPaths))
+	copy(paths, a.backupPaths)
+	a.mu.RUnlock()
+
+	if target == "" {
 		writeRPCError(w, http.StatusServiceUnavailable, "no backup target configured")
 		return
 	}
-	paths := a.backupPaths
 	if a.services != nil {
 		paths = append(paths, a.services.DataPaths()...)
 	}
@@ -178,7 +183,7 @@ func (a *Agent) rpcSnapCreate(w http.ResponseWriter, r *http.Request) {
 		writeRPCError(w, http.StatusBadRequest, "no data paths to back up")
 		return
 	}
-	result, err := snapshot.Create(r.Context(), a.backupTarget, paths, nil)
+	result, err := snapshot.Create(r.Context(), target, paths, nil)
 	if err != nil {
 		writeRPCError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -187,7 +192,11 @@ func (a *Agent) rpcSnapCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Agent) rpcSnapRestore(w http.ResponseWriter, r *http.Request, req rpcRequest) {
-	if a.backupTarget == "" {
+	a.mu.RLock()
+	target := a.backupTarget
+	a.mu.RUnlock()
+
+	if target == "" {
 		writeRPCError(w, http.StatusServiceUnavailable, "no backup target configured")
 		return
 	}
@@ -199,7 +208,7 @@ func (a *Agent) rpcSnapRestore(w http.ResponseWriter, r *http.Request, req rpcRe
 		writeRPCError(w, http.StatusBadRequest, "params.id required")
 		return
 	}
-	if err := snapshot.Restore(r.Context(), a.backupTarget, params.ID, params.RestorePath, nil); err != nil {
+	if err := snapshot.Restore(r.Context(), target, params.ID, params.RestorePath, nil); err != nil {
 		writeRPCError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -207,11 +216,15 @@ func (a *Agent) rpcSnapRestore(w http.ResponseWriter, r *http.Request, req rpcRe
 }
 
 func (a *Agent) rpcSnapList(w http.ResponseWriter, r *http.Request) {
-	if a.backupTarget == "" {
+	a.mu.RLock()
+	target := a.backupTarget
+	a.mu.RUnlock()
+
+	if target == "" {
 		writeRPCError(w, http.StatusServiceUnavailable, "no backup target configured")
 		return
 	}
-	snaps, err := snapshot.List(r.Context(), a.backupTarget, nil)
+	snaps, err := snapshot.List(r.Context(), target, nil)
 	if err != nil {
 		writeRPCError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -227,11 +240,15 @@ func (a *Agent) rpcRunScript(w http.ResponseWriter, r *http.Request, req rpcRequ
 		writeRPCError(w, http.StatusBadRequest, "params.name required")
 		return
 	}
-	if len(a.scripts) == 0 {
+	a.mu.RLock()
+	script, ok := a.scripts[params.Name]
+	noScripts := len(a.scripts) == 0
+	a.mu.RUnlock()
+
+	if noScripts {
 		writeRPCError(w, http.StatusServiceUnavailable, "no scripts configured")
 		return
 	}
-	script, ok := a.scripts[params.Name]
 	if !ok {
 		writeRPCError(w, http.StatusNotFound, fmt.Sprintf("script %q not found", params.Name))
 		return
