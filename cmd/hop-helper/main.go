@@ -17,6 +17,18 @@ func main() {
 	log.SetPrefix("hop-helper: ")
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
+	// --install: copy self to /Library/PrivilegedHelperTools and install LaunchDaemon.
+	if len(os.Args) == 2 && os.Args[1] == "--install" {
+		if os.Geteuid() != 0 {
+			log.Fatal("--install requires root (use sudo)")
+		}
+		if err := helper.Install(os.Args[0]); err != nil {
+			log.Fatalf("install: %v", err)
+		}
+		fmt.Println("Helper daemon installed and started.")
+		return
+	}
+
 	if os.Geteuid() != 0 {
 		log.Fatal("must run as root")
 	}
