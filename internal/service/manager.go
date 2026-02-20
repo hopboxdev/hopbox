@@ -131,7 +131,7 @@ func (m *Manager) ListStatus() []Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	var statuses []Status
+	statuses := make([]Status, 0, len(m.services))
 	for name, def := range m.services {
 		s := Status{Name: name, Type: def.Type}
 		if backend, ok := m.backends[name]; ok {

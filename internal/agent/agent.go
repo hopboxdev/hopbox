@@ -21,12 +21,13 @@ type Agent struct {
 	tunnel   tunnel.Tunnel
 	services *service.Manager
 
-	// mu guards scripts, backupTarget, and backupPaths, which are written by
-	// Reload (called from workspace.sync RPC) and read by concurrent handlers.
+	// mu guards scripts, backupTarget, backupPaths, and manifestPath, which are
+	// written by Reload (called from workspace.sync RPC) and read by concurrent handlers.
 	mu           sync.RWMutex
 	scripts      map[string]string
 	backupTarget string
 	backupPaths  []string
+	manifestPath string
 }
 
 // New creates a new Agent with the given tunnel configuration.
@@ -49,6 +50,12 @@ func (a *Agent) WithScripts(scripts map[string]string) {
 func (a *Agent) WithBackupConfig(target string, paths []string) {
 	a.backupTarget = target
 	a.backupPaths = paths
+}
+
+// WithManifestPath stores the path to the workspace manifest file so that
+// snapshot.Create can tag snapshots with a hash of the manifest version.
+func (a *Agent) WithManifestPath(path string) {
+	a.manifestPath = path
 }
 
 // Reload re-wires the agent's runtime state (scripts, backup config) from the

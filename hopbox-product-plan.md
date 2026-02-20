@@ -2,7 +2,7 @@
 
 **Domain:** hopbox.dev
 **CLI:** `hop`
-**Alias commands:** `hop up`, `hop down`, `hop to`, `hop snap`, `hop bridge`, `hop shell`, `hop status`
+**Alias commands:** `hop up`, `hop down`, `hop to`, `hop snap`, `hop bridge`, `hop shell`, `hop status`, `hop rotate`
 
 ---
 
@@ -410,35 +410,35 @@ session:
 
 #### Milestone 0a: Wireguard tunnel works (Week 1-2)
 
-- [ ] **Go module scaffolding** — `cmd/hop/` (client) + `cmd/hop-agent/` (server) in one repo
-- [ ] **Wireguard key management** — generate keypairs using `wgctrl-go`, store in `~/.config/hopbox/`
-- [ ] **hop-agent Wireguard listener** — embed wireguard-go with kernel TUN mode, listen on UDP 51820, accept configured peer
-- [ ] **hop client Wireguard dialer** — embed wireguard-go with netstack mode (no root), connect to agent endpoint
-- [ ] **`hop setup <name> --host <ip> --user <user>`** — SSH to host, install hop-agent, exchange Wireguard keys, verify tunnel with ping
-- [ ] **`hop up`** — bring up Wireguard tunnel, verify connectivity to agent IP
-- [ ] **`hop down`** — tear down Wireguard tunnel cleanly
-- [ ] **`hop status`** — show tunnel state, latency, handshake time, bytes transferred
+- [x] **Go module scaffolding** — `cmd/hop/` (client) + `cmd/hop-agent/` (server) in one repo
+- [x] **Wireguard key management** — generate keypairs using `wgctrl-go`, store in `~/.config/hopbox/`
+- [x] **hop-agent Wireguard listener** — embed wireguard-go with kernel TUN mode, listen on UDP 51820, accept configured peer
+- [x] **hop client Wireguard dialer** — embed wireguard-go with netstack mode (no root), connect to agent endpoint
+- [x] **`hop setup <name> --host <ip> --user <user>`** — SSH to host, install hop-agent, exchange Wireguard keys, verify tunnel with ping
+- [x] **`hop up`** — bring up Wireguard tunnel, verify connectivity to agent IP
+- [x] **`hop down`** — tear down Wireguard tunnel cleanly
+- [x] **`hop status`** — show tunnel state, latency, handshake time, bytes transferred
 
 **Test:** `ping 10.hop.0.2` works. `curl 10.hop.0.2:8080` reaches a service on the VPS. No SSH tunnel involved.
 
 #### Milestone 0b: Agent control + services (Week 2-3)
 
-- [ ] **hop-agent control API** — HTTP server on Wireguard IP (10.hop.0.2:4200), JSON-RPC. Only accessible over tunnel.
-- [ ] **hopbox.yaml parser** — Go struct definitions, YAML unmarshaling, basic validation
-- [ ] **Package installation** — shell-out to apt/nix based on backend field
-- [ ] **Docker service management** — start/stop containers from services section, docker CLI shell-out
-- [ ] **Port monitoring** — poll /proc/net/tcp, report listening ports to client via control API
-- [ ] **`hop services`** — list services, their status, ports
-- [ ] **`hop services restart <name>`** — restart a specific service
+- [x] **hop-agent control API** — HTTP server on Wireguard IP (10.hop.0.2:4200), JSON-RPC. Only accessible over tunnel.
+- [x] **hopbox.yaml parser** — Go struct definitions, YAML unmarshaling, basic validation
+- [x] **Package installation** — shell-out to apt/nix based on backend field
+- [x] **Docker service management** — start/stop containers from services section, docker CLI shell-out
+- [x] **Port monitoring** — poll /proc/net/tcp, report listening ports to client via control API
+- [x] **`hop services`** — list services, their status, ports
+- [x] **`hop services restart <name>`** — restart a specific service
 
 **Test:** `hop up` brings tunnel up, then `psql -h 10.hop.0.2 -U postgres` connects to the workspace Postgres directly over Wireguard. No port forwarding configured anywhere.
 
 #### Milestone 0c: Bridges + shell (Week 3-4)
 
-- [ ] **Bridge: clipboard** — lemonade daemon on both sides, communicating over Wireguard. `pbcopy` on server routes to local clipboard and vice versa.
-- [ ] **Bridge: Chrome CDP** — on `hop up`, start Chrome with `--remote-debugging-port=9222`. Agent reaches it at 10.hop.0.1:9222 over Wireguard.
-- [ ] **`hop shell`** — SSH into workspace (uses Wireguard IP as SSH target, not public IP). Attach to zellij/tmux session.
-- [ ] **`hop run <script>`** — execute a script from hopbox.yaml scripts section on the remote
+- [x] **Bridge: clipboard** — lemonade daemon on both sides, communicating over Wireguard. `pbcopy` on server routes to local clipboard and vice versa.
+- [x] **Bridge: Chrome CDP** — on `hop up`, start Chrome with `--remote-debugging-port=9222`. Agent reaches it at 10.hop.0.1:9222 over Wireguard.
+- [x] **`hop shell`** — SSH into workspace (uses Wireguard IP as SSH target, not public IP). Attach to zellij/tmux session.
+- [x] **`hop run <script>`** — execute a script from hopbox.yaml scripts section on the remote
 - [ ] **SSH fallback** — `hop up --ssh` when Wireguard is blocked, falls back to SSH tunneling
 
 **Test:** Use Hopbox daily for gaming platform development. Chrome MCP server on VPS controls local browser. Clipboard works bidirectionally. `hop shell` drops into persistent zellij session.
@@ -447,7 +447,7 @@ session:
 
 **Goal:** Fully functional for a solo developer. This is the version you'd show to other people.
 
-- [ ] **Service orchestration improvements**
+- [x] **Service orchestration improvements**
   - Dependency ordering (postgres starts before api)
   - Health check polling with configurable intervals
   - Log aggregation: `hop logs <service>` streams, `hop logs` streams all
@@ -458,7 +458,7 @@ session:
   - Auto-applies manifests from declared directory on start
   - kubectl just works: `kubectl --server https://10.hop.0.2:6443`
 
-- [ ] **Snapshot & restore**
+- [x] **Snapshot & restore**
   - `hop snap` — agent collects data directories, creates archive, pushes to S3 via restic
   - `hop snap restore <id>` — pulls snapshot, extracts, restarts services
   - Snapshot metadata: timestamp, hopbox.yaml hash, package versions
@@ -482,7 +482,7 @@ session:
   - Active bridges (clipboard, CDP, open handler)
   - Quick actions (restart service, reconnect bridge)
 
-- [ ] **Configuration management**
+- [x] **Configuration management**
   - `~/.config/hopbox/config.yaml` for client defaults
   - Host registry: `hop host add mybox --address x.x.x.x --user gandalf`
   - `hop init` — generates hopbox.yaml scaffold
@@ -574,9 +574,10 @@ hop services [ls|restart|stop]  Manage workspace services
 hop logs [service]              Stream service logs
 hop snap                        Snapshot workspace state to backup target
 hop snap restore <id>           Restore from snapshot
-hop to <newhost>                     Migrate workspace to new host (THE killer command)
+hop to <newhost>                Migrate workspace to new host (THE killer command)
 hop bridge [ls|restart]         Manage local-remote bridges
-hop host [add|rm|ls]            Manage host registry
+hop host [add|rm|ls|default]    Manage host registry
+hop rotate [host]               Rotate WireGuard keys without full re-setup
 hop init                        Generate hopbox.yaml scaffold
 ```
 
@@ -612,7 +613,7 @@ Wireguard provides:
 
 Hopbox adds:
 - **Agent control API only on Wireguard IP** — not reachable from public internet
-- **Per-workspace key rotation** — `hop setup --rotate-keys` generates new keypair
+- **Per-workspace key rotation** — `hop rotate` regenerates the server WireGuard keypair without a full re-setup
 - **No third-party coordination** — keys exchanged directly via SSH during setup, no Tailscale/cloud dependency
 - **Secrets never in hopbox.yaml** — sops/age encrypted, decrypted only in agent memory
 

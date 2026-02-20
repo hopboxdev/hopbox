@@ -1,6 +1,11 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"text/tabwriter"
+
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
 )
 
@@ -19,7 +24,36 @@ func (c *ServicesLsCmd) Run(globals *CLI) error {
 	if err != nil {
 		return err
 	}
-	return rpcclient.CallAndPrint(hostName, "services.list", nil)
+	result, err := rpcclient.Call(hostName, "services.list", nil)
+	if err != nil {
+		return err
+	}
+	var svcs []struct {
+		Name    string `json:"name"`
+		Type    string `json:"type"`
+		Running bool   `json:"running"`
+		Error   string `json:"error,omitempty"`
+	}
+	if err := json.Unmarshal(result, &svcs); err != nil {
+		return fmt.Errorf("parse response: %w", err)
+	}
+	if len(svcs) == 0 {
+		fmt.Println("No services.")
+		return nil
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintf(tw, "NAME\tTYPE\tSTATUS\n")
+	for _, s := range svcs {
+		status := "stopped"
+		if s.Running {
+			status = "running"
+		}
+		if s.Error != "" {
+			status = "error: " + s.Error
+		}
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", s.Name, s.Type, status)
+	}
+	return tw.Flush()
 }
 
 // ServicesRestartCmd restarts a named service.

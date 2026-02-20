@@ -9,7 +9,7 @@ from your laptop directly to that server. Everything the agent exposes —
 services, scripts, backups, a remote shell — is reachable over the tunnel at
 `10.10.0.2`.
 
-```
+```text
 your laptop  ──── WireGuard UDP ────  your VPS
   hop (CLI)                           hop-agent (systemd)
   10.10.0.1                           10.10.0.2
@@ -23,7 +23,7 @@ a public IP and an open UDP port (default 51820).
 ## Requirements
 
 | | Minimum |
-|---|---|
+| --- | --- |
 | **Developer machine** | macOS or Linux (Windows WSL untested) |
 | **VPS** | Any Linux with systemd and a public IP |
 | **SSH access** | Key-based auth to the VPS |
@@ -116,7 +116,7 @@ Generate a scaffold with `hop init`.
 
 ## Commands
 
-```
+```text
 hop setup <name> -a <ip>        Bootstrap a VPS — install agent, exchange WG keys
 hop up                          Bring up WireGuard tunnel + bridges + services
 hop down                        Tear down tunnel (or press Ctrl-C in hop up)
@@ -150,7 +150,7 @@ command.
 
 Two Go binaries live in this repo:
 
-```
+```text
 cmd/hop/         Client CLI (macOS / Linux)
 cmd/hop-agent/   Server daemon (Linux VPS, systemd service)
 ```
@@ -172,8 +172,7 @@ the tunnel.
 
 ```bash
 # Build
-go build ./cmd/hop/...
-CGO_ENABLED=0 GOOS=linux go build -o dist/hop-agent-linux ./cmd/hop-agent/...
+make build
 
 # Test
 go test ./...
@@ -182,7 +181,7 @@ go test ./...
 golangci-lint run
 
 # Use a local agent binary during hop setup (skips GitHub release download)
-HOP_AGENT_BINARY=./dist/hop-agent-linux hop setup mybox -a <ip> -u debian
+HOP_AGENT_BINARY=./dist/hop-agent-linux hop setup mybox -a <ip> -u <user> -k ~/.ssh/key
 ```
 
 Releases are cut with [goreleaser](https://goreleaser.com). Binaries are

@@ -42,7 +42,7 @@ func readArgs(t *testing.T, argsFile string) string {
 }
 
 func TestCreate_EmptyPaths(t *testing.T) {
-	_, err := snapshot.Create(context.Background(), "s3:example/repo", nil, nil)
+	_, err := snapshot.Create(context.Background(), "s3:example/repo", nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for empty paths")
 	}
@@ -57,17 +57,20 @@ func TestCreate_ParsesSummaryID(t *testing.T) {
 	af := fakeRestic(t, dir, backupOutput, 0)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
-	result, err := snapshot.Create(context.Background(), "local:/tmp/repo", []string{"/home/user"}, nil)
+	result, err := snapshot.Create(context.Background(), "local:/tmp/repo", []string{"/home/user"}, []string{"hopbox-manifest:deadbeef01234567"}, nil)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if result.SnapshotID != "abc12345def67890" {
 		t.Errorf("SnapshotID = %q, want %q", result.SnapshotID, "abc12345def67890")
 	}
-	// Verify restic was called with the correct subcommand and paths.
+	// Verify restic was called with the correct subcommand, tag, and paths.
 	got := readArgs(t, af)
 	if !strings.HasPrefix(got, "backup --json") {
 		t.Errorf("restic args = %q, want prefix %q", got, "backup --json")
+	}
+	if !strings.Contains(got, "--tag hopbox-manifest:deadbeef01234567") {
+		t.Errorf("restic args = %q, missing --tag flag", got)
 	}
 	if !strings.Contains(got, "/home/user") {
 		t.Errorf("restic args = %q, missing path /home/user", got)
@@ -79,7 +82,7 @@ func TestCreate_ResticError(t *testing.T) {
 	fakeRestic(t, dir, "fatal: repository not found\n", 1)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
-	_, err := snapshot.Create(context.Background(), "local:/tmp/repo", []string{"/home"}, nil)
+	_, err := snapshot.Create(context.Background(), "local:/tmp/repo", []string{"/home"}, nil, nil)
 	if err == nil {
 		t.Error("expected error when restic exits non-zero")
 	}

@@ -4,22 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-Phase 0 implemented (Milestones 0a–0c). WireGuard tunnel, agent control API,
+Phase 0 implemented (Milestones 0a - 0c). WireGuard tunnel, agent control API,
 service management, bridges, and CLI commands are all in place.
 `hop setup` + `hop up` verified working end-to-end.
 
 ## Build & Development Commands
 
 ```bash
-# Build both binaries
-go build ./cmd/hop/...
-go build ./cmd/hop-agent/...
+# Build all binaries
+make build
 
 # Cross-compile agent for Linux (required for deployment)
 CGO_ENABLED=0 GOOS=linux go build -o dist/hop-agent-linux ./cmd/hop-agent/...
 
 # Dev workflow: use a local agent binary during hop setup
-HOP_AGENT_BINARY=./dist/hop-agent-linux hop setup mybox -a <ip> -u debian -k ~/.ssh/key
+HOP_AGENT_BINARY=./dist/hop-agent-linux hop setup mybox -a <ip> -u <user> -k ~/.ssh/key
 
 # Run tests
 go test ./...
@@ -44,7 +43,7 @@ The agent binary is Linux-only; build with `GOOS=linux go build ./cmd/hop-agent/
 
 Two Go binaries in one monorepo:
 
-```
+```text
 cmd/hop/        — Client CLI (macOS/Linux/Windows WSL)
 cmd/hop-agent/  — Server daemon (Linux VPS, runs as systemd service)
 ```
@@ -60,7 +59,7 @@ cmd/hop-agent/  — Server daemon (Linux VPS, runs as systemd service)
 ## Key Library Choices
 
 | Component | Library |
-|-----------|---------|
+| ----------- | --------- |
 | Wireguard protocol | `git.zx2c4.com/wireguard-go` |
 | Wireguard config | `github.com/WireGuard/wgctrl-go` |
 | Userspace networking | `gvisor.dev/gvisor/pkg/tcpip` (via wireguard-go netstack) |
@@ -76,12 +75,14 @@ The user-facing config file placed in a project directory. Declares everything f
 The `host:` field in `hopbox.yaml` pins which registered host to use for this workspace.
 
 Config files:
+
 - `~/.config/hopbox/hosts/<name>.yaml` — per-host (WireGuard keys, tunnel IPs, SSH endpoint, SSH host key)
 - `~/.config/hopbox/config.yaml` — global user settings (`default_host`)
 
 ## Bridge System
 
 Bridges fall into two categories:
+
 1. **Just Wireguard routing** — any TCP/UDP service port is directly reachable at `10.hop.0.2:<port>`. No bridge code needed.
 2. **True bridges** — resources that are inherently local: Chrome CDP (client→server direction), clipboard (bidirectional), xdg-open (server→client), notifications.
 
@@ -89,7 +90,7 @@ The bridge system implements only category 2.
 
 ## CLI Commands
 
-```
+```text
 hop setup <name> -a <ip> [-u user] [-k keyfile] [-p port]
                                 Bootstrap: install agent, exchange WG keys, save host config
 hop up [workspace]              Bring up WireGuard tunnel + bridges + services
@@ -109,6 +110,7 @@ hop version                     Print version info
 ```
 
 Host resolution order (all commands that need a host):
+
 1. `--host`/`-H` flag
 2. `host:` field in `./hopbox.yaml`
 3. `default_host` in `~/.config/hopbox/config.yaml`
@@ -153,6 +155,7 @@ the localhost proxy written to tunnel state. `Call` handles this automatically.
 **Client netstack:** `10.10.0.2` only exists inside the process. All agent HTTP
 calls from `cmd/hop` must use `tun.DialContext` as the transport — a plain
 `http.Client` will fail (no OS route). Pattern:
+
 ```go
 agentClient := &http.Client{Transport: &http.Transport{DialContext: tun.DialContext}}
 ```

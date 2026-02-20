@@ -123,6 +123,7 @@ func (c *ServeCmd) Run() error {
 			if ws.Backup != nil && ws.Backup.Target != "" {
 				a.WithBackupConfig(ws.Backup.Target, mgr.DataPaths())
 			}
+			a.WithManifestPath(wsPath)
 			go func() {
 				if err := mgr.StartAll(ctx); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: service startup: %v\n", err)

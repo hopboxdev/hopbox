@@ -32,13 +32,18 @@ type SummaryResult struct {
 
 // Create runs `restic backup` for the given paths.
 // target is the restic repository (e.g. "s3:s3.amazonaws.com/my-bucket/ws").
+// tags are passed as --tag flags to restic (may be nil).
 // env overrides are merged with the current process environment and should
 // contain RESTIC_PASSWORD and any cloud credentials.
-func Create(ctx context.Context, target string, paths []string, envOverrides map[string]string) (*SummaryResult, error) {
+func Create(ctx context.Context, target string, paths []string, tags []string, envOverrides map[string]string) (*SummaryResult, error) {
 	if len(paths) == 0 {
 		return nil, fmt.Errorf("no paths to back up")
 	}
-	args := append([]string{"backup", "--json"}, paths...)
+	args := []string{"backup", "--json"}
+	for _, tag := range tags {
+		args = append(args, "--tag", tag)
+	}
+	args = append(args, paths...)
 	cmd := exec.CommandContext(ctx, "restic", args...)
 	cmd.Env = mergeEnv(envOverrides)
 	cmd.Env = append(cmd.Env, "RESTIC_REPOSITORY="+target)

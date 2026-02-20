@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sync"
 
 	"github.com/hopboxdev/hopbox/internal/manifest"
 	"github.com/hopboxdev/hopbox/internal/packages"
@@ -182,6 +186,7 @@ func (a *Agent) rpcSnapCreate(w http.ResponseWriter, r *http.Request) {
 	target := a.backupTarget
 	paths := make([]string, len(a.backupPaths))
 	copy(paths, a.backupPaths)
+	manifestPath := a.manifestPath
 	a.mu.RUnlock()
 
 	if target == "" {
@@ -195,7 +200,14 @@ func (a *Agent) rpcSnapCreate(w http.ResponseWriter, r *http.Request) {
 		writeRPCError(w, http.StatusBadRequest, "no data paths to back up")
 		return
 	}
-	result, err := snapshot.Create(r.Context(), target, paths, nil)
+	var tags []string
+	if manifestPath != "" {
+		if data, err := os.ReadFile(manifestPath); err == nil {
+			h := sha256.Sum256(data)
+			tags = append(tags, "hopbox-manifest:"+hex.EncodeToString(h[:8]))
+		}
+	}
+	result, err := snapshot.Create(r.Context(), target, paths, tags, nil)
 	if err != nil {
 		writeRPCError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -339,11 +351,18 @@ func (a *Agent) rpcLogsStream(w http.ResponseWriter, r *http.Request, req rpcReq
 	var params struct {
 		Name string `json:"name"`
 	}
-	if err := json.Unmarshal(req.Params, &params); err != nil || params.Name == "" {
-		writeRPCError(w, http.StatusBadRequest, "params.name required")
+	if len(req.Params) > 0 {
+		_ = json.Unmarshal(req.Params, &params)
+	}
+	if params.Name != "" {
+		a.streamSingleLog(w, r, params.Name)
 		return
 	}
-	if !isValidContainerName(params.Name) {
+	a.streamAllServiceLogs(w, r)
+}
+
+func (a *Agent) streamSingleLog(w http.ResponseWriter, r *http.Request, name string) {
+	if !isValidContainerName(name) {
 		writeRPCError(w, http.StatusBadRequest, "invalid container name")
 		return
 	}
@@ -351,7 +370,7 @@ func (a *Agent) rpcLogsStream(w http.ResponseWriter, r *http.Request, req rpcReq
 	// Use an io.Pipe so we can return a proper JSON error if docker fails to
 	// start, yet still stream output once it's running.
 	pr, pw := io.Pipe()
-	cmd := exec.CommandContext(r.Context(), "docker", "logs", "--follow", "--tail", "100", "--", params.Name)
+	cmd := exec.CommandContext(r.Context(), "docker", "logs", "--follow", "--tail", "100", "--", name)
 	cmd.Stdout = pw
 	cmd.Stderr = pw
 
@@ -372,6 +391,60 @@ func (a *Agent) rpcLogsStream(w http.ResponseWriter, r *http.Request, req rpcReq
 		fw.f = f
 	}
 	_, _ = io.Copy(fw, pr)
+}
+
+func (a *Agent) streamAllServiceLogs(w http.ResponseWriter, r *http.Request) {
+	if a.services == nil {
+		writeRPCError(w, http.StatusServiceUnavailable, "service manager not initialised")
+		return
+	}
+	statuses := a.services.ListStatus()
+	var names []string
+	for _, s := range statuses {
+		if s.Type == "docker" {
+			names = append(names, s.Name)
+		}
+	}
+	if len(names) == 0 {
+		writeRPCError(w, http.StatusBadRequest, "no docker services registered")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	fw := &flushWriter{w: w}
+	if f, ok := w.(http.Flusher); ok {
+		fw.f = f
+	}
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, name := range names {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pr, pw := io.Pipe()
+			cmd := exec.CommandContext(r.Context(), "docker", "logs", "--follow", "--tail", "50", "--", name)
+			cmd.Stdout = pw
+			cmd.Stderr = pw
+			if err := cmd.Start(); err != nil {
+				_ = pw.Close()
+				return
+			}
+			go func() {
+				_ = cmd.Wait()
+				_ = pw.Close()
+			}()
+			scanner := bufio.NewScanner(pr)
+			for scanner.Scan() {
+				line := fmt.Sprintf("[%s] %s\n", name, scanner.Text())
+				mu.Lock()
+				_, _ = fw.Write([]byte(line))
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func writeRPCResult(w http.ResponseWriter, result any) {
