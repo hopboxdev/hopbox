@@ -172,3 +172,45 @@ func TestLoopbackWireGuard(t *testing.T) {
 		t.Errorf("echo = %q, want %q", got, msg)
 	}
 }
+
+func TestClientTunnelReady(t *testing.T) {
+	kp, err := wgkey.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerKP, err := wgkey.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := tunnel.Config{
+		PrivateKey:          kp.PrivateKeyHex(),
+		PeerPublicKey:       peerKP.PublicKeyHex(),
+		LocalIP:             "10.99.0.1/24",
+		PeerIP:              "10.99.0.2/32",
+		Endpoint:            "127.0.0.1:51820", // unreachable — that's fine
+		ListenPort:          0,
+		MTU:                 tunnel.DefaultMTU,
+		PersistentKeepalive: 0,
+	}
+	tun := tunnel.NewClientTunnel(cfg)
+
+	// Ready channel must not be closed before Start is called.
+	select {
+	case <-tun.Ready():
+		t.Fatal("Ready() closed before Start was called")
+	default:
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	go func() { _ = tun.Start(ctx) }()
+
+	select {
+	case <-tun.Ready():
+		// success — t.tnet is now safely assigned
+	case <-time.After(3 * time.Second):
+		t.Fatal("Ready() was not closed within 3s of Start")
+	}
+}

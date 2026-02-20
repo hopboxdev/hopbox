@@ -19,11 +19,12 @@ type ClientTunnel struct {
 	dev      *device.Device
 	tnet     *netstack.Net
 	stopOnce sync.Once
+	ready    chan struct{}
 }
 
 // NewClientTunnel creates a new (not yet started) client tunnel.
 func NewClientTunnel(cfg Config) *ClientTunnel {
-	return &ClientTunnel{cfg: cfg}
+	return &ClientTunnel{cfg: cfg, ready: make(chan struct{})}
 }
 
 // Start brings up the WireGuard tunnel. It blocks until ctx is cancelled,
@@ -59,6 +60,7 @@ func (t *ClientTunnel) Start(ctx context.Context) error {
 
 	t.dev = dev
 	t.tnet = tnet
+	close(t.ready) // signal: DialContext is now safe to call
 
 	// Wait for context cancellation
 	<-ctx.Done()
@@ -76,6 +78,12 @@ func (t *ClientTunnel) Stop() {
 			t.tnet = nil
 		}
 	})
+}
+
+// Ready returns a channel that is closed once the tunnel netstack is
+// initialised and DialContext is safe to call.
+func (t *ClientTunnel) Ready() <-chan struct{} {
+	return t.ready
 }
 
 // Status returns current tunnel metrics parsed from IpcGet output.
