@@ -86,7 +86,7 @@ func (c *ServeCmd) Run() error {
 					}
 				}
 
-				def := &service.ServiceDef{
+				def := &service.Def{
 					Name:      name,
 					Type:      svc.Type,
 					Image:     svc.Image,

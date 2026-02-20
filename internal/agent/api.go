@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -296,6 +297,44 @@ func (a *Agent) rpcWorkspaceSync(w http.ResponseWriter, req rpcRequest) {
 	writeRPCResult(w, map[string]string{"status": "synced", "name": ws.Name})
 }
 
+// isValidContainerName reports whether name is a safe Docker container name.
+// Docker allows [a-zA-Z0-9][a-zA-Z0-9_.-]* — no spaces or shell metacharacters.
+// Using "--" in the docker command prevents flag injection, but we validate
+// anyway to surface bad input early with a clear error.
+func isValidContainerName(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+	for i, c := range name {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+			// always valid
+		case c == '_' || c == '.' || c == '-':
+			if i == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// flushWriter wraps http.ResponseWriter and flushes after every Write call.
+// Required for streaming responses so the client receives output incrementally.
+type flushWriter struct {
+	w http.ResponseWriter
+	f http.Flusher
+}
+
+func (fw *flushWriter) Write(p []byte) (int, error) {
+	n, err := fw.w.Write(p)
+	if fw.f != nil {
+		fw.f.Flush()
+	}
+	return n, err
+}
+
 func (a *Agent) rpcLogsStream(w http.ResponseWriter, r *http.Request, req rpcRequest) {
 	var params struct {
 		Name string `json:"name"`
@@ -304,12 +343,35 @@ func (a *Agent) rpcLogsStream(w http.ResponseWriter, r *http.Request, req rpcReq
 		writeRPCError(w, http.StatusBadRequest, "params.name required")
 		return
 	}
-	out, err := exec.CommandContext(r.Context(), "docker", "logs", "--tail", "100", params.Name).CombinedOutput()
-	if err != nil {
-		writeRPCError(w, http.StatusInternalServerError, fmt.Sprintf("docker logs: %v\n%s", err, string(out)))
+	if !isValidContainerName(params.Name) {
+		writeRPCError(w, http.StatusBadRequest, "invalid container name")
 		return
 	}
-	writeRPCResult(w, map[string]string{"output": string(out)})
+
+	// Use an io.Pipe so we can return a proper JSON error if docker fails to
+	// start, yet still stream output once it's running.
+	pr, pw := io.Pipe()
+	cmd := exec.CommandContext(r.Context(), "docker", "logs", "--follow", "--tail", "100", "--", params.Name)
+	cmd.Stdout = pw
+	cmd.Stderr = pw
+
+	if err := cmd.Start(); err != nil {
+		_ = pw.Close()
+		writeRPCError(w, http.StatusInternalServerError, fmt.Sprintf("docker logs: %v", err))
+		return
+	}
+	go func() {
+		_ = cmd.Wait()
+		_ = pw.Close()
+	}()
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	fw := &flushWriter{w: w}
+	if f, ok := w.(http.Flusher); ok {
+		fw.f = f
+	}
+	_, _ = io.Copy(fw, pr)
 }
 
 func writeRPCResult(w http.ResponseWriter, result any) {

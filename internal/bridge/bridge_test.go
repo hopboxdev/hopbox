@@ -14,16 +14,24 @@ import (
 
 // TestCDPBridgeStartStop verifies the bridge starts a listener and stops cleanly.
 func TestCDPBridgeStartStop(t *testing.T) {
-	b := bridge.NewCDPBridge("127.0.0.1")
+	// Use port 0 so the test doesn't depend on port 9222 being free.
+	b := bridge.NewCDPBridgeOnPort("127.0.0.1", 0, 9222)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+	startedCh := make(chan int, 1)
 	go func() {
-		done <- b.Start(ctx)
+		done <- b.StartWithNotify(ctx, startedCh)
 	}()
 
-	// Give it time to bind.
-	time.Sleep(50 * time.Millisecond)
+	// Wait until the listener is bound before checking status.
+	select {
+	case <-startedCh:
+	case err := <-done:
+		t.Fatalf("bridge failed to start: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("bridge did not start in time")
+	}
 
 	if !strings.Contains(b.Status(), "running") {
 		t.Errorf("status = %q, want to contain 'running'", b.Status())
@@ -116,11 +124,19 @@ func TestClipboardBridgeStartStop(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+	startedCh := make(chan int, 1)
 	go func() {
-		done <- b.Start(ctx)
+		done <- b.StartWithNotify(ctx, startedCh)
 	}()
 
-	time.Sleep(50 * time.Millisecond)
+	// Wait until the listener is bound before checking status.
+	select {
+	case <-startedCh:
+	case err := <-done:
+		t.Fatalf("bridge failed to start: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("bridge did not start in time")
+	}
 
 	if !strings.Contains(b.Status(), "running") {
 		t.Errorf("status = %q, want to contain 'running'", b.Status())

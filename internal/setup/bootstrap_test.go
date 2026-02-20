@@ -70,11 +70,12 @@ func TestBootstrapKeyExchange(t *testing.T) {
 	t.Setenv("HOP_AGENT_BINARY", agentBin)
 
 	opts := setup.Options{
-		Name:       "testbox",
-		SSHHost:    "127.0.0.1",
-		SSHPort:    port,
-		SSHUser:    "testuser",
-		SSHKeyPath: keyFile,
+		Name:          "testbox",
+		SSHHost:       "127.0.0.1",
+		SSHPort:       port,
+		SSHUser:       "testuser",
+		SSHKeyPath:    keyFile,
+		ConfirmReader: strings.NewReader("yes\n"),
 	}
 
 	cfg, err := setup.Bootstrap(context.Background(), opts, io.Discard)

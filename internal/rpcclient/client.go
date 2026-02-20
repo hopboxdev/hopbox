@@ -77,3 +77,46 @@ func CallAndPrint(hostName, method string, params any) error {
 	fmt.Println(string(result))
 	return nil
 }
+
+// CopyTo sends an RPC request and copies the plain-text response body to dst.
+// Used for streaming endpoints (e.g. logs.stream) that write text/plain instead
+// of wrapping output in a JSON envelope.
+func CopyTo(hostName, method string, params any, dst io.Writer) error {
+	reqBody, _ := json.Marshal(map[string]any{"method": method, "params": params})
+
+	var rpcURL string
+	if state, _ := tunnel.LoadState(hostName); state != nil && state.AgentAPIAddr != "" {
+		rpcURL = "http://" + state.AgentAPIAddr + "/rpc"
+	} else {
+		if hostName == "" {
+			return fmt.Errorf("--host <name> required")
+		}
+		cfg, err := hostconfig.Load(hostName)
+		if err != nil {
+			return fmt.Errorf("load host config: %w", err)
+		}
+		rpcURL = fmt.Sprintf("http://%s:%d/rpc", cfg.AgentIP, tunnel.AgentAPIPort)
+	}
+
+	// No timeout: streaming responses run until the container exits or
+	// the user presses Ctrl-C.
+	client := &http.Client{}
+	resp, err := client.Post(rpcURL, "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		return fmt.Errorf("RPC call: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		var rpcResp struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(body, &rpcResp) == nil && rpcResp.Error != "" {
+			return fmt.Errorf("RPC error: %s", rpcResp.Error)
+		}
+		return fmt.Errorf("RPC error: HTTP %d", resp.StatusCode)
+	}
+	_, err = io.Copy(dst, resp.Body)
+	return err
+}

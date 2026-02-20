@@ -151,7 +151,7 @@ func TestRPCServicesListWithManager(t *testing.T) {
 
 	sm := service.NewManager()
 	sm.Register(
-		&service.ServiceDef{Name: "web", Type: "docker"},
+		&service.Def{Name: "web", Type: "docker"},
 		&stubBackend{running: true},
 	)
 	a.WithServices(sm)

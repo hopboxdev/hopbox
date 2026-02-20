@@ -30,7 +30,7 @@ func (c *LogsCmd) Run(globals *CLI) error {
 	if err != nil {
 		return err
 	}
-	return rpcclient.CallAndPrint(hostName, "logs.stream", map[string]string{"name": c.Service})
+	return rpcclient.CopyTo(hostName, "logs.stream", map[string]string{"name": c.Service}, os.Stdout)
 }
 
 // RunCmd executes a named script from the manifest.

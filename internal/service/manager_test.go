@@ -37,8 +37,8 @@ func (s *stubBackend) IsRunning(_ string) (bool, error) {
 
 func TestManagerRegisterAndList(t *testing.T) {
 	m := service.NewManager()
-	m.Register(&service.ServiceDef{Name: "web", Type: "docker"}, &stubBackend{running: true})
-	m.Register(&service.ServiceDef{Name: "db", Type: "native"}, &stubBackend{running: false})
+	m.Register(&service.Def{Name: "web", Type: "docker"}, &stubBackend{running: true})
+	m.Register(&service.Def{Name: "db", Type: "native"}, &stubBackend{running: false})
 
 	statuses := m.ListStatus()
 	if len(statuses) != 2 {
@@ -59,7 +59,7 @@ func TestManagerRegisterAndList(t *testing.T) {
 func TestManagerStart(t *testing.T) {
 	m := service.NewManager()
 	b := &stubBackend{}
-	m.Register(&service.ServiceDef{Name: "app", Type: "native"}, b)
+	m.Register(&service.Def{Name: "app", Type: "native"}, b)
 
 	if err := m.Start(context.Background(), "app"); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -72,7 +72,7 @@ func TestManagerStart(t *testing.T) {
 func TestManagerStop(t *testing.T) {
 	m := service.NewManager()
 	b := &stubBackend{running: true}
-	m.Register(&service.ServiceDef{Name: "app", Type: "native"}, b)
+	m.Register(&service.Def{Name: "app", Type: "native"}, b)
 
 	if err := m.Stop("app"); err != nil {
 		t.Fatalf("Stop: %v", err)
@@ -89,7 +89,7 @@ func TestManagerRestart(t *testing.T) {
 		running: true,
 		startFn: func() error { calls++; return nil },
 	}
-	m.Register(&service.ServiceDef{Name: "app", Type: "native"}, b)
+	m.Register(&service.Def{Name: "app", Type: "native"}, b)
 
 	if err := m.Restart("app"); err != nil {
 		t.Fatalf("Restart: %v", err)
@@ -119,8 +119,8 @@ func TestManagerStartAll(t *testing.T) {
 	m := service.NewManager()
 	b1 := &stubBackend{}
 	b2 := &stubBackend{}
-	m.Register(&service.ServiceDef{Name: "svc1", Type: "docker"}, b1)
-	m.Register(&service.ServiceDef{Name: "svc2", Type: "docker"}, b2)
+	m.Register(&service.Def{Name: "svc1", Type: "docker"}, b1)
+	m.Register(&service.Def{Name: "svc2", Type: "docker"}, b2)
 
 	if err := m.StartAll(context.Background()); err != nil {
 		t.Fatalf("StartAll: %v", err)
@@ -137,7 +137,7 @@ func TestManagerStartAllPropagatesError(t *testing.T) {
 	m := service.NewManager()
 	boom := errors.New("start failed")
 	b := &stubBackend{startFn: func() error { return boom }}
-	m.Register(&service.ServiceDef{Name: "bad", Type: "native"}, b)
+	m.Register(&service.Def{Name: "bad", Type: "native"}, b)
 
 	err := m.StartAll(context.Background())
 	if err == nil {
@@ -151,7 +151,7 @@ func TestManagerStartAllPropagatesError(t *testing.T) {
 func TestManagerListStatusWithError(t *testing.T) {
 	m := service.NewManager()
 	boom := errors.New("docker unavailable")
-	m.Register(&service.ServiceDef{Name: "svc", Type: "docker"}, &errorBackend{err: boom})
+	m.Register(&service.Def{Name: "svc", Type: "docker"}, &errorBackend{err: boom})
 
 	statuses := m.ListStatus()
 	if len(statuses) != 1 {
@@ -178,7 +178,7 @@ func TestManagerStartAllDependencyOrder(t *testing.T) {
 		if n == "api" {
 			deps = []string{"db", "cache"}
 		}
-		m.Register(&service.ServiceDef{Name: n, Type: "docker", DependsOn: deps}, b)
+		m.Register(&service.Def{Name: n, Type: "docker", DependsOn: deps}, b)
 	}
 
 	if err := m.StartAll(context.Background()); err != nil {
@@ -207,8 +207,8 @@ func TestManagerStartAllDependencyOrder(t *testing.T) {
 
 func TestManagerStartAllCycleError(t *testing.T) {
 	m := service.NewManager()
-	m.Register(&service.ServiceDef{Name: "a", Type: "native", DependsOn: []string{"b"}}, &stubBackend{})
-	m.Register(&service.ServiceDef{Name: "b", Type: "native", DependsOn: []string{"a"}}, &stubBackend{})
+	m.Register(&service.Def{Name: "a", Type: "native", DependsOn: []string{"b"}}, &stubBackend{})
+	m.Register(&service.Def{Name: "b", Type: "native", DependsOn: []string{"a"}}, &stubBackend{})
 
 	err := m.StartAll(context.Background())
 	if err == nil {
@@ -218,7 +218,7 @@ func TestManagerStartAllCycleError(t *testing.T) {
 
 func TestManagerStartAllUnknownDep(t *testing.T) {
 	m := service.NewManager()
-	m.Register(&service.ServiceDef{Name: "api", Type: "native", DependsOn: []string{"db"}}, &stubBackend{})
+	m.Register(&service.Def{Name: "api", Type: "native", DependsOn: []string{"db"}}, &stubBackend{})
 
 	err := m.StartAll(context.Background())
 	if err == nil {

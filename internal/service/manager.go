@@ -31,8 +31,8 @@ type Backend interface {
 	IsRunning(name string) (bool, error)
 }
 
-// ServiceDef is the parsed definition of a single service from the manifest.
-type ServiceDef struct {
+// Def is the parsed definition of a single service from the manifest.
+type Def struct {
 	Name      string
 	Type      string // "docker", "native"
 	Image     string // for docker
@@ -47,20 +47,20 @@ type ServiceDef struct {
 // Manager orchestrates a set of services.
 type Manager struct {
 	mu       sync.Mutex
-	services map[string]*ServiceDef
+	services map[string]*Def
 	backends map[string]Backend
 }
 
 // NewManager creates a new empty service manager.
 func NewManager() *Manager {
 	return &Manager{
-		services: make(map[string]*ServiceDef),
+		services: make(map[string]*Def),
 		backends: make(map[string]Backend),
 	}
 }
 
 // Register adds a service definition and its backend to the manager.
-func (m *Manager) Register(def *ServiceDef, backend Backend) {
+func (m *Manager) Register(def *Def, backend Backend) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.services[def.Name] = def
@@ -70,7 +70,7 @@ func (m *Manager) Register(def *ServiceDef, backend Backend) {
 // StartAll starts all registered services in dependency order.
 func (m *Manager) StartAll(ctx context.Context) error {
 	m.mu.Lock()
-	defs := make(map[string]*ServiceDef, len(m.services))
+	defs := make(map[string]*Def, len(m.services))
 	for k, v := range m.services {
 		defs[k] = v
 	}
@@ -167,7 +167,7 @@ func (m *Manager) DataPaths() []string {
 
 // topoSort returns service names in dependency-safe start order using
 // Kahn's algorithm. Returns an error on unknown dependencies or cycles.
-func topoSort(defs map[string]*ServiceDef) ([]string, error) {
+func topoSort(defs map[string]*Def) ([]string, error) {
 	inDegree := make(map[string]int, len(defs))
 	for name := range defs {
 		inDegree[name] = 0
@@ -238,7 +238,7 @@ func waitHealthy(ctx context.Context, hc *HealthCheck) error {
 		resp, err := client.Get(hc.HTTP)
 		if err == nil {
 			_ = resp.Body.Close()
-			if resp.StatusCode < 500 {
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				return nil
 			}
 			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)

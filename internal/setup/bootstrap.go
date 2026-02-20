@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -35,6 +36,9 @@ type Options struct {
 	// SSHKeyPath is the path to the private key file. If empty, uses
 	// ~/.ssh/id_rsa, ~/.ssh/id_ed25519, etc.
 	SSHKeyPath string
+	// ConfirmReader is used to read the user's yes/no answer during TOFU host
+	// key verification. Defaults to os.Stdin if nil.
+	ConfirmReader io.Reader
 }
 
 // Bootstrap performs the full setup sequence:
@@ -59,11 +63,27 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 
 	logf("Connecting to %s:%d as %s...", opts.SSHHost, opts.SSHPort, opts.SSHUser)
 
-	// TOFU: capture the server's host key on first connection.
+	confirmIn := opts.ConfirmReader
+	if confirmIn == nil {
+		confirmIn = os.Stdin
+	}
+
+	// TOFU: show the server's host key fingerprint and prompt for confirmation
+	// before proceeding. Subsequent connections use ssh.FixedHostKey instead.
 	var capturedKey ssh.PublicKey
-	captureCallback := func(_ string, _ net.Addr, key ssh.PublicKey) error {
+	captureCallback := func(hostname string, _ net.Addr, key ssh.PublicKey) error {
 		capturedKey = key
-		return nil
+		fp := ssh.FingerprintSHA256(key)
+		_, _ = fmt.Fprintf(out, "The authenticity of host %q cannot be established.\n", hostname)
+		_, _ = fmt.Fprintf(out, "%s key fingerprint is %s.\n", key.Type(), fp)
+		_, _ = fmt.Fprintf(out, "Are you sure you want to continue connecting (yes/no)? ")
+		scanner := bufio.NewScanner(confirmIn)
+		if scanner.Scan() {
+			if strings.ToLower(strings.TrimSpace(scanner.Text())) == "yes" {
+				return nil
+			}
+		}
+		return fmt.Errorf("host key rejected by user")
 	}
 
 	client, err := sshConnect(ctx, opts, captureCallback)
@@ -127,11 +147,6 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 		SSHKeyPath:    opts.SSHKeyPath,
 		SSHHostKey:    MarshalHostKey(capturedKey),
 	}
-	if capturedKey != nil {
-		logf("SSH host key captured (%s): %s", capturedKey.Type(),
-			ssh.FingerprintSHA256(capturedKey))
-	}
-
 	if err := cfg.Save(); err != nil {
 		return nil, fmt.Errorf("save host config: %w", err)
 	}
