@@ -26,7 +26,7 @@ type ConnEvent struct {
 // MonitorConfig configures a ConnMonitor.
 type MonitorConfig struct {
 	HealthURL     string        // e.g. "http://10.10.0.2:4200/health"
-	Client        *http.Client  // must use tun.DialContext to reach the agent
+	Client        *http.Client  // plain client — agent is reachable via kernel TUN
 	Interval      time.Duration // default 5s
 	Timeout       time.Duration // per-check timeout, default 3s
 	FailThreshold int           // consecutive failures before declaring disconnected, default 2

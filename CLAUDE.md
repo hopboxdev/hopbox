@@ -41,20 +41,25 @@ The agent binary is Linux-only; build with `GOOS=linux go build ./cmd/hop-agent/
 
 ## Architecture
 
-Two Go binaries in one monorepo:
+Three Go binaries in one monorepo:
 
 ```text
 cmd/hop/        — Client CLI (macOS/Linux/Windows WSL)
 cmd/hop-agent/  — Server daemon (Linux VPS, runs as systemd service)
+cmd/hop-helper/ — Privileged helper daemon (macOS LaunchDaemon, handles TUN config + /etc/hosts)
 ```
 
-**Communication:** Wireguard L3 tunnel (UDP) is the primary transport. SSH is used only for initial bootstrap (`hop setup`) and as an emergency fallback. The agent's control API listens on `10.hop.0.2:4200` (Wireguard IP) — never exposed to the public internet.
+**Communication:** Wireguard L3 tunnel (UDP) is the primary transport. SSH is used only for initial bootstrap (`hop setup`) and as an emergency fallback. The agent's control API listens at `<name>.hop:4200` — never exposed to the public internet.
 
-**Client Wireguard mode:** Netstack (userspace via `wireguard-go/tun/netstack` + gVisor tcpip) — no root required on the developer's laptop.
+**Client Wireguard mode:** Kernel TUN (utun on macOS). The hop-helper daemon (LaunchDaemon) handles privileged ops: TUN IP assignment, routing, /etc/hosts management. `hop up` creates the utun device (unprivileged on macOS), then delegates IP/route config to the helper via Unix socket at `/var/run/hopbox/helper.sock`.
+
+**Hostname convention:** Each host gets `<name>.hop` added to `/etc/hosts` by the helper, so the agent is reachable as `mybox.hop:4200` from any process. No `DialContext` or proxy needed.
 
 **Server Wireguard mode:** Kernel TUN (preferred, requires CAP_NET_ADMIN); netstack fallback if unavailable.
 
 **No coordination server, no DERP relay.** The server is a public-IP VPS. Key exchange happens once over SSH during `hop setup`; all subsequent communication is over Wireguard.
+
+**Netstack for `hop to` only:** `hop to` still uses a temporary netstack tunnel for migrating to a new host (avoids routing conflicts with the active kernel TUN). The netstack library stays available via `ClientTunnel`.
 
 **Reconnection resilience:** The `hop up` process monitors agent connectivity with a 5-second heartbeat (`internal/tunnel.ConnMonitor`). If the agent becomes unreachable for 2+ consecutive checks, it prints a warning and updates the tunnel state file. When connectivity returns, it logs the outage duration. `hop status` shows `CONNECTED` and `LAST HEALTHY` fields from the state file. WireGuard handles tunnel re-establishment natively; the monitor only observes and reports.
 
@@ -135,7 +140,7 @@ hop setup <name> -a <ip> [-u user] [-k keyfile] [-p port]
 hop up [workspace]              Bring up WireGuard tunnel + bridges + services
 hop down                        Tear down tunnel (Ctrl-C in foreground mode)
 hop status                      Show host config and agent health
-hop shell                       Drop into remote shell (zellij/tmux session per hopbox.yaml)
+hop code [path]                 Open VS Code connected to the workspace
 hop run <script>                Execute named script from hopbox.yaml
 hop services [ls|restart|stop]  Manage workspace services
 hop logs [service]              Stream service logs
@@ -174,14 +179,9 @@ RPC methods: `services.list`, `services.restart`, `services.stop`, `ports.list`,
 streams `text/plain` output directly (docker logs --follow). Use
 `rpcclient.CopyTo` on the client side, not `rpcclient.Call`.
 
-**RPC client (`internal/rpcclient`):** `Call`/`CallVia`/`CallAndPrint` read the
-full JSON response. Use `CallVia` inside `UpCmd` (needs `tun.DialContext`); use
-`Call` from other commands (uses tunnel state proxy address). Use `CopyTo` for
-streaming responses.
-
-**Important:** On macOS after `hop up`, `10.10.0.2` only exists inside the
-`hop up` process (netstack). Commands outside that process reach the agent via
-the localhost proxy written to tunnel state. `Call` handles this automatically.
+**RPC client (`internal/rpcclient`):** `Call`/`CallAndPrint` use `<name>.hop`
+hostnames. `CallWithClient` takes a custom `http.Client` for `hop to` (netstack).
+`CopyTo` streams plain-text responses.
 
 ## Coding Conventions
 
@@ -190,14 +190,6 @@ the localhost proxy written to tunnel state. `Call` handles this automatically.
 - `cmd/hop/main.go` is intentionally thin — commands live in separate files (`up.go`, `setup.go`, `status.go`, etc.).
 
 ## Known Pitfalls
-
-**Client netstack:** `10.10.0.2` only exists inside the process. All agent HTTP
-calls from `cmd/hop` must use `tun.DialContext` as the transport — a plain
-`http.Client` will fail (no OS route). Pattern:
-
-```go
-agentClient := &http.Client{Transport: &http.Transport{DialContext: tun.DialContext}}
-```
 
 **Agent bind race:** `net.Listen("tcp", "10.10.0.2:4200")` must not be called
 before the WireGuard interface is up. `ServerTunnel.Ready()` closes a channel
