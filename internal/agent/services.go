@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hopboxdev/hopbox/internal/manifest"
@@ -56,6 +57,7 @@ func BuildServiceManager(ws *manifest.Workspace) *service.Manager {
 			}
 			backend = &service.DockerBackend{
 				Image:   svc.Image,
+				Cmd:     strings.Fields(svc.Command),
 				Env:     svc.Env,
 				Ports:   ports,
 				Volumes: volumes,
