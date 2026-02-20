@@ -22,9 +22,15 @@ type DockerBackend struct {
 	Volumes []string
 }
 
-// Start launches the container (docker run --rm -d).
+// Start launches the container (docker run -d --restart unless-stopped).
+// Any stopped container with the same name is removed first so docker run
+// always starts clean.
 func (d *DockerBackend) Start(_ context.Context, name string) error {
-	args := []string{"run", "--rm", "-d", "--name", name}
+	// Remove any stopped (non-running) container with this name.
+	// Errors are ignored — the container simply may not exist.
+	_ = exec.Command("docker", "rm", "--", name).Run()
+
+	args := []string{"run", "-d", "--restart", "unless-stopped", "--name", name}
 	for _, p := range d.Ports {
 		args = append(args, "-p", p)
 	}
