@@ -133,7 +133,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 					fmt.Printf("Agent version %q differs from client %q. Upgrade agent? [y/N] ", agentVer, version.Version)
 					scanner := bufio.NewScanner(os.Stdin)
 					if scanner.Scan() && strings.ToLower(strings.TrimSpace(scanner.Text())) == "y" {
-						if err := setup.UpgradeAgent(ctx, cfg, os.Stdout); err != nil {
+						if err := setup.UpgradeAgent(ctx, cfg, os.Stdout, version.Version); err != nil {
 							_, _ = fmt.Fprintf(os.Stderr, "Warning: agent upgrade failed: %v\n", err)
 						} else if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
 							_, _ = fmt.Fprintf(os.Stderr, "Warning: post-upgrade agent probe failed: %v\n", err)

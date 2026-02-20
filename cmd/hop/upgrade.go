@@ -8,6 +8,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/setup"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
+	"github.com/hopboxdev/hopbox/internal/version"
 )
 
 // UpgradeCmd uploads a new hop-agent binary to the remote host and restarts
@@ -30,5 +31,5 @@ func (c *UpgradeCmd) Run(globals *CLI) error {
 		fmt.Fprintf(os.Stderr, "Warning: tunnel is running (PID %d). The agent will restart; run 'hop down && hop up' to reconnect.\n", state.PID)
 	}
 
-	return setup.UpgradeAgent(context.Background(), cfg, os.Stdout)
+	return setup.UpgradeAgent(context.Background(), cfg, os.Stdout, version.Version)
 }
