@@ -165,6 +165,23 @@ func (c *AgentSetupCmd) Run() error {
 	return nil
 }
 
+// AgentRotateCmd regenerates the server WireGuard keypair during key rotation.
+// The old key is backed up to agent.key.bak before the new one is written.
+type AgentRotateCmd struct{}
+
+func (c *AgentRotateCmd) Run() error {
+	_ = os.Rename(agentKeyFile, agentKeyFile+".bak")
+	kp, err := wgkey.Generate()
+	if err != nil {
+		return fmt.Errorf("generate key: %w", err)
+	}
+	if err = kp.SaveToFile(agentKeyFile); err != nil {
+		return fmt.Errorf("save key: %w", err)
+	}
+	fmt.Print(kp.PublicKeyBase64())
+	return nil
+}
+
 // VersionCmd prints version info.
 type VersionCmd struct{}
 
@@ -175,9 +192,10 @@ func (c *VersionCmd) Run() error {
 }
 
 var cli struct {
-	Serve   ServeCmd      `cmd:"" help:"Start the hop-agent daemon."`
-	Setup   AgentSetupCmd `cmd:"" help:"Configure agent during bootstrap."`
-	Version VersionCmd    `cmd:"" help:"Print version."`
+	Serve   ServeCmd       `cmd:"" help:"Start the hop-agent daemon."`
+	Setup   AgentSetupCmd  `cmd:"" help:"Configure agent during bootstrap."`
+	Rotate  AgentRotateCmd `cmd:"" help:"Regenerate WireGuard keypair (backs up old key to agent.key.bak)."`
+	Version VersionCmd     `cmd:"" help:"Print version."`
 }
 
 func main() {

@@ -103,6 +103,7 @@ hop snap [create|restore|ls]    Manage workspace snapshots (restic backend)
 hop to <newhost>                Migrate workspace to new host (snap → restore)
 hop bridge [ls|restart]         Manage local-remote bridges
 hop host [add|rm|ls|default]    Manage host registry; default shows/sets default host
+hop rotate [host]               Rotate WireGuard keys without full re-setup
 hop init                        Generate hopbox.yaml scaffold
 hop version                     Print version info
 ```
@@ -173,6 +174,11 @@ with "text file busy". Write to `path.new`, chmod, then `sudo mv -f` atomically.
 
 **systemd key reload:** `systemctl enable --now` does not restart a running
 service. Always use `systemctl enable && systemctl restart` after updating keys.
+
+**Key rotation atomicity:** Between `hop-agent` restart and the client config save,
+keys are temporarily out of sync. The server keeps `agent.key.bak` for manual
+recovery. The config save is a single `os.WriteFile` and is very unlikely to fail
+after the agent restart succeeds.
 
 ## Technical Decisions
 
