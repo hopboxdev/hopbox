@@ -32,7 +32,7 @@ type CLI struct {
 	Hosts     HostCmd     `cmd:"" name:"host" help:"Manage host registry."`
 	Init      InitCmd     `cmd:"" help:"Generate hopbox.yaml scaffold."`
 	Rotate    RotateCmd   `cmd:"" help:"Rotate WireGuard keys for a host."`
-	Upgrade   UpgradeCmd  `cmd:"" help:"Upgrade hop-agent binary on the remote host."`
+	Upgrade   UpgradeCmd  `cmd:"" help:"Upgrade hop binaries (client, helper, agent)."`
 	Version   VersionCmd  `cmd:"" help:"Print version."`
 }
 
