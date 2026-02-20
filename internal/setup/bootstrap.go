@@ -21,6 +21,11 @@ import (
 	"github.com/hopboxdev/hopbox/internal/wgkey"
 )
 
+const (
+	sshDialRetries    = 3
+	sshDialRetryDelay = 2 * time.Second
+)
+
 // Options configures a bootstrap operation.
 type Options struct {
 	Name    string
@@ -171,18 +176,18 @@ func sshConnect(ctx context.Context, opts Options, hostKeyCallback ssh.HostKeyCa
 	var client *ssh.Client
 	var dialErr error
 	dialer := &net.Dialer{}
-	for i := 0; i < 3; i++ {
+	for i := 0; i < sshDialRetries; i++ {
 		netConn, err := dialer.DialContext(ctx, "tcp", addr)
 		if err != nil {
 			dialErr = err
-			time.Sleep(2 * time.Second)
+			time.Sleep(sshDialRetryDelay)
 			continue
 		}
 		sshConn, chans, reqs, err := ssh.NewClientConn(netConn, addr, config)
 		if err != nil {
 			_ = netConn.Close()
 			dialErr = err
-			time.Sleep(2 * time.Second)
+			time.Sleep(sshDialRetryDelay)
 			continue
 		}
 		client = ssh.NewClient(sshConn, chans, reqs)

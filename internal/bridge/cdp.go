@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"sync/atomic"
 )
@@ -82,11 +83,11 @@ func (b *CDPBridge) proxy(_ context.Context, remote net.Conn) {
 
 	done := make(chan struct{}, 2)
 	go func() {
-		copyConn(remote, local)
+		_, _ = io.Copy(remote, local)
 		done <- struct{}{}
 	}()
 	go func() {
-		copyConn(local, remote)
+		_, _ = io.Copy(local, remote)
 		done <- struct{}{}
 	}()
 	<-done
@@ -106,19 +107,4 @@ func (b *CDPBridge) Status() string {
 		return fmt.Sprintf("CDP bridge running (%s → 127.0.0.1:%d)", b.listenAddr, b.targetPort)
 	}
 	return "CDP bridge stopped"
-}
-
-func copyConn(dst, src net.Conn) {
-	buf := make([]byte, 32*1024)
-	for {
-		n, err := src.Read(buf)
-		if n > 0 {
-			if _, err := dst.Write(buf[:n]); err != nil {
-				return
-			}
-		}
-		if err != nil {
-			return
-		}
-	}
 }

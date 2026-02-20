@@ -16,6 +16,11 @@ import (
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 )
 
+const (
+	agentClientTimeout = 5 * time.Second
+	agentProbeTimeout  = 10 * time.Second
+)
+
 // UpCmd brings up the WireGuard tunnel and bridges.
 type UpCmd struct {
 	Workspace string `arg:"" optional:"" help:"Path to hopbox.yaml (default: ./hopbox.yaml)."`
@@ -97,7 +102,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 	// The standard net/http dialer uses the OS network stack, which has no
 	// route to 10.10.0.2 — only tun.DialContext can reach it.
 	agentClient := &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: agentClientTimeout,
 		Transport: &http.Transport{
 			DialContext: tun.DialContext,
 		},
@@ -107,7 +112,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 	agentURL := fmt.Sprintf("http://%s:%d/health", cfg.AgentIP, tunnel.AgentAPIPort)
 	fmt.Printf("Probing agent at %s...\n", agentURL)
 
-	if err := probeAgent(ctx, agentURL, 10*time.Second, agentClient); err != nil {
+	if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Warning: agent probe failed: %v\n", err)
 	} else {
 		fmt.Println("Agent is up.")

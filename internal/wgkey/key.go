@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -69,8 +70,8 @@ func LoadFromFile(path string) (*KeyPair, error) {
 	}
 
 	var privB64, pubB64 string
-	for _, line := range splitLines(string(data)) {
-		if k, v, ok := cutLine(line); ok {
+	for _, line := range strings.Split(string(data), "\n") {
+		if k, v, ok := strings.Cut(line, "="); ok {
 			switch k {
 			case "private":
 				privB64 = v
@@ -148,21 +149,6 @@ func FromBase64(privB64, pubB64 string) (*KeyPair, error) {
 	return &kp, nil
 }
 
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
-}
-
 // KeyB64ToHex decodes a base64-encoded WireGuard key and returns it as a
 // 64-character hex string suitable for WireGuard IPC.
 func KeyB64ToHex(b64 string) (string, error) {
@@ -174,13 +160,4 @@ func KeyB64ToHex(b64 string) (string, error) {
 		return "", fmt.Errorf("invalid key length: %d", len(raw))
 	}
 	return hex.EncodeToString(raw), nil
-}
-
-func cutLine(s string) (key, value string, ok bool) {
-	for i := 0; i < len(s); i++ {
-		if s[i] == '=' {
-			return s[:i], s[i+1:], true
-		}
-	}
-	return "", "", false
 }

@@ -2,6 +2,7 @@ package setup
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,8 +29,9 @@ WantedBy=multi-user.target
 
 // installAgent uploads the hop-agent binary and installs the systemd unit.
 // It checks $HOP_AGENT_BINARY for a local override first; otherwise downloads
-// the release binary matching the VPS architecture.
-func installAgent(_ context.Context, client *ssh.Client, out io.Writer) error {
+// the release binary matching the VPS architecture and verifies its SHA256
+// checksum against the published checksums file.
+func installAgent(ctx context.Context, client *ssh.Client, out io.Writer) error {
 	logf := func(format string, args ...any) {
 		_, _ = fmt.Fprintf(out, "  "+format+"\n", args...)
 	}
@@ -59,23 +61,31 @@ func installAgent(_ context.Context, client *ssh.Client, out io.Writer) error {
 		}
 		goarch := archToGoarch(strings.TrimSpace(archOut))
 
-		url := fmt.Sprintf(
-			"https://github.com/hopboxdev/hopbox/releases/download/v%s/hop-agent_%s_linux_%s",
-			v, v, goarch,
+		binName := fmt.Sprintf("hop-agent_%s_linux_%s", v, goarch)
+		binURL := fmt.Sprintf(
+			"https://github.com/hopboxdev/hopbox/releases/download/v%s/%s",
+			v, binName,
 		)
 		logf("Downloading hop-agent %s (%s)...", v, goarch)
 
-		resp, err := http.Get(url) //nolint:noctx
+		data, err = fetchURL(ctx, binURL)
 		if err != nil {
 			return fmt.Errorf("download hop-agent: %w", err)
 		}
-		defer func() { _ = resp.Body.Close() }()
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("download hop-agent: HTTP %d from %s", resp.StatusCode, url)
-		}
-		data, err = io.ReadAll(resp.Body)
+
+		// Verify the downloaded binary against the published SHA256 checksums.
+		logf("Verifying checksum...")
+		csURL := fmt.Sprintf(
+			"https://github.com/hopboxdev/hopbox/releases/download/v%s/hop-agent_%s_checksums.txt",
+			v, v,
+		)
+		expected, err := lookupChecksum(ctx, csURL, binName)
 		if err != nil {
-			return fmt.Errorf("read download: %w", err)
+			return fmt.Errorf("checksum lookup: %w", err)
+		}
+		actual := fmt.Sprintf("%x", sha256.Sum256(data))
+		if actual != expected {
+			return fmt.Errorf("checksum mismatch for %s: got %s, want %s", binName, actual, expected)
 		}
 	}
 
@@ -104,6 +114,40 @@ func archToGoarch(uname string) string {
 	default:
 		return "amd64"
 	}
+}
+
+// fetchURL fetches url using ctx and returns the response body.
+func fetchURL(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+	}
+	return io.ReadAll(resp.Body)
+}
+
+// lookupChecksum downloads the checksums file at url and returns the expected
+// SHA256 hex digest for filename. The file format is "<hash>  <filename>" per
+// goreleaser defaults; both one-space and two-space separators are accepted.
+func lookupChecksum(ctx context.Context, url, filename string) (string, error) {
+	data, err := fetchURL(ctx, url)
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[1] == filename {
+			return fields[0], nil
+		}
+	}
+	return "", fmt.Errorf("no checksum found for %q in checksums file", filename)
 }
 
 // scpFile uploads a file to the remote host via SSH.

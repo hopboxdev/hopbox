@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/hopboxdev/hopbox/internal/manifest"
 	"github.com/hopboxdev/hopbox/internal/service"
@@ -124,7 +126,7 @@ func (a *Agent) RunOnListener(ctx context.Context, listener net.Listener) error 
 func (a *Agent) serveHTTP(ctx context.Context, listener net.Listener) error {
 	mux := http.NewServeMux()
 	a.registerRoutes(mux)
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: logRequestsMiddleware(mux)}
 
 	done := make(chan error, 1)
 	go func() {
@@ -139,4 +141,32 @@ func (a *Agent) serveHTTP(ctx context.Context, listener net.Listener) error {
 	_ = srv.Shutdown(context.Background())
 	_ = listener.Close()
 	return <-done
+}
+
+// logRequestsMiddleware wraps h to emit a structured slog line for each request.
+// It is applied to the real server but not to the Handler() used in tests,
+// keeping test output quiet.
+func logRequestsMiddleware(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		h.ServeHTTP(sw, r)
+		slog.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", sw.status,
+			"ms", time.Since(start).Milliseconds(),
+		)
+	})
+}
+
+// statusWriter captures the HTTP status code written by a handler.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (sw *statusWriter) WriteHeader(code int) {
+	sw.status = code
+	sw.ResponseWriter.WriteHeader(code)
 }
