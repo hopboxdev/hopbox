@@ -1,6 +1,7 @@
 package helper
 
 const (
+	ActionCreateTUN    = "create_tun"
 	ActionConfigureTUN = "configure_tun"
 	ActionCleanupTUN   = "cleanup_tun"
 	ActionAddHost      = "add_host"
@@ -15,12 +16,14 @@ type Request struct {
 	PeerIP    string `json:"peer_ip,omitempty"`
 	IP        string `json:"ip,omitempty"`
 	Hostname  string `json:"hostname,omitempty"`
+	MTU       int    `json:"mtu,omitempty"`
 }
 
 // Response is sent back from the helper daemon.
 type Response struct {
-	OK    bool   `json:"ok"`
-	Error string `json:"error,omitempty"`
+	OK        bool   `json:"ok"`
+	Error     string `json:"error,omitempty"`
+	Interface string `json:"interface,omitempty"`
 }
 
 // SocketPath is where the helper daemon listens.

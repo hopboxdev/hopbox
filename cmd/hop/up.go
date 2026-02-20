@@ -53,7 +53,20 @@ func (c *UpCmd) Run(globals *CLI) error {
 	if err != nil {
 		return fmt.Errorf("convert tunnel config: %w", err)
 	}
-	tun := tunnel.NewKernelTunnel(tunCfg)
+
+	// The helper daemon creates the utun device (requires root) and passes
+	// the fd back via SCM_RIGHTS. This lets hop run unprivileged.
+	helperClient := helper.NewClient()
+	if !helperClient.IsReachable() {
+		return fmt.Errorf("hopbox helper is not running; install with 'sudo hop-helper --install' or re-run 'hop setup'")
+	}
+
+	tunFile, ifName, err := helperClient.CreateTUN(tunCfg.MTU)
+	if err != nil {
+		return fmt.Errorf("create TUN device: %w", err)
+	}
+
+	tun := tunnel.NewKernelTunnel(tunCfg, tunFile, ifName)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -75,13 +88,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 		return ctx.Err()
 	}
 
-	// Configure the TUN interface via the privileged helper.
-	helperClient := helper.NewClient()
-	if !helperClient.IsReachable() {
-		tun.Stop()
-		return fmt.Errorf("hopbox helper is not running; install with 'sudo hop-helper --install' or re-run 'hop setup'")
-	}
-
+	// Configure the TUN interface (IP + route) via the privileged helper.
 	localIP := strings.TrimSuffix(tunCfg.LocalIP, "/24")
 	peerIP := strings.TrimSuffix(tunCfg.PeerIP, "/32")
 	if err := helperClient.ConfigureTUN(tun.InterfaceName(), localIP, peerIP); err != nil {

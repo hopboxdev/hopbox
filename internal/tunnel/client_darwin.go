@@ -5,6 +5,7 @@ package tunnel
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 
 	"golang.zx2c4.com/wireguard/conn"
@@ -13,10 +14,11 @@ import (
 )
 
 // KernelTunnel is a kernel-mode WireGuard tunnel for macOS.
-// It creates a utun device that is visible system-wide — any process can
-// connect to the peer IP without DialContext.
+// It uses a utun device (created by the privileged helper) that is visible
+// system-wide — any process can connect to the peer IP without DialContext.
 type KernelTunnel struct {
 	cfg      Config
+	tunFile  *os.File
 	dev      *device.Device
 	ifName   string
 	ready    chan struct{}
@@ -24,24 +26,20 @@ type KernelTunnel struct {
 }
 
 // NewKernelTunnel creates a new (not yet started) kernel tunnel.
-func NewKernelTunnel(cfg Config) *KernelTunnel {
-	return &KernelTunnel{cfg: cfg, ready: make(chan struct{})}
+// tunFile is the pre-opened utun fd received from the helper daemon.
+// ifName is the interface name (e.g. "utun5").
+func NewKernelTunnel(cfg Config, tunFile *os.File, ifName string) *KernelTunnel {
+	return &KernelTunnel{cfg: cfg, tunFile: tunFile, ifName: ifName, ready: make(chan struct{})}
 }
 
-// Start brings up the kernel TUN device and WireGuard protocol.
+// Start brings up the WireGuard protocol on the pre-opened TUN device.
 // Blocks until ctx is cancelled, then tears down.
 func (t *KernelTunnel) Start(ctx context.Context) error {
-	tunDev, err := tun.CreateTUN("utun", t.cfg.MTU)
+	// MTU=0 tells CreateTUNFromFile to skip setMTU — the helper already set it.
+	tunDev, err := tun.CreateTUNFromFile(t.tunFile, 0)
 	if err != nil {
-		return fmt.Errorf("CreateTUN: %w", err)
+		return fmt.Errorf("CreateTUNFromFile: %w", err)
 	}
-
-	name, err := tunDev.Name()
-	if err != nil {
-		_ = tunDev.Close()
-		return fmt.Errorf("get TUN name: %w", err)
-	}
-	t.ifName = name
 
 	logger := device.NewLogger(device.LogLevelSilent, "")
 	dev := device.NewDevice(tunDev, conn.NewDefaultBind(), logger)

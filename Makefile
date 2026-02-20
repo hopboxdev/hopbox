@@ -1,5 +1,6 @@
 DIST            := dist
 BINARY_HOP         := $(DIST)/hop
+BINARY_HELPER      := $(DIST)/hop-helper
 BINARY_AGENT       := $(DIST)/hop-agent
 BINARY_AGENT_L     := $(DIST)/hop-agent-linux
 BINARY_AGENT_L_ARM := $(DIST)/hop-agent-linux-arm64
@@ -17,13 +18,16 @@ LDFLAGS         := -s -w \
 # ── Build ─────────────────────────────────────────────────────────────────────
 
 .PHONY: build
-build: $(BINARY_HOP) $(BINARY_AGENT_L)
+build: $(BINARY_HOP) $(BINARY_HELPER) $(BINARY_AGENT_L)
 
 $(DIST):
 	mkdir -p $(DIST)
 
 $(BINARY_HOP): $(DIST)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hop
+
+$(BINARY_HELPER): $(DIST)
+	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hop-helper
 
 $(BINARY_AGENT_L): $(DIST)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hop-agent
