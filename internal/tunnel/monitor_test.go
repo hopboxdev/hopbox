@@ -69,16 +69,30 @@ func TestConnMonitor_DetectsReconnect(t *testing.T) {
 
 	var mu sync.Mutex
 	var events []tunnel.ConnEvent
+	disconnectCh := make(chan struct{}, 1)
+	reconnectCh := make(chan struct{}, 1)
 
 	m := tunnel.NewConnMonitor(tunnel.MonitorConfig{
 		HealthURL: srv.URL,
 		Client:    srv.Client(),
 		Interval:  50 * time.Millisecond,
-		Timeout:   25 * time.Millisecond,
+		Timeout:   500 * time.Millisecond, // generous: race detector can slow loopback HTTP
 		OnStateChange: func(evt tunnel.ConnEvent) {
 			mu.Lock()
 			events = append(events, evt)
 			mu.Unlock()
+			switch evt.State {
+			case tunnel.ConnStateDisconnected:
+				select {
+				case disconnectCh <- struct{}{}:
+				default:
+				}
+			case tunnel.ConnStateConnected:
+				select {
+				case reconnectCh <- struct{}{}:
+				default:
+				}
+			}
 		},
 	})
 
@@ -88,13 +102,21 @@ func TestConnMonitor_DetectsReconnect(t *testing.T) {
 	// Let initial checks pass.
 	time.Sleep(200 * time.Millisecond)
 
-	// Simulate outage.
+	// Simulate outage; wait for the disconnect event rather than a fixed sleep.
 	serving.Store(false)
-	time.Sleep(300 * time.Millisecond)
+	select {
+	case <-disconnectCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for disconnect event")
+	}
 
-	// Restore.
+	// Restore; wait for the reconnect event rather than a fixed sleep.
 	serving.Store(true)
-	time.Sleep(300 * time.Millisecond)
+	select {
+	case <-reconnectCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for reconnect event")
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -132,7 +154,7 @@ func TestConnMonitor_NoFlapOnSingleFailure(t *testing.T) {
 		HealthURL: srv.URL,
 		Client:    srv.Client(),
 		Interval:  50 * time.Millisecond,
-		Timeout:   25 * time.Millisecond,
+		Timeout:   500 * time.Millisecond, // generous: ensures server handler runs before timeout
 		OnStateChange: func(evt tunnel.ConnEvent) {
 			mu.Lock()
 			events = append(events, evt)
