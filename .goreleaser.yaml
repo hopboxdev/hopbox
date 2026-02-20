@@ -27,6 +27,17 @@ builds:
       - -X github.com/hopboxdev/hopbox/internal/version.Commit={{.Commit}}
       - -X github.com/hopboxdev/hopbox/internal/version.Date={{.Date}}
 
+  - id: hop-helper
+    binary: hop-helper
+    main: ./cmd/hop-helper
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/hopboxdev/hopbox/internal/version.Version={{.Version}}
+      - -X github.com/hopboxdev/hopbox/internal/version.Commit={{.Commit}}
+      - -X github.com/hopboxdev/hopbox/internal/version.Date={{.Date}}
+
 archives:
   - id: hop-archive
     builds: [hop]
@@ -35,6 +46,11 @@ archives:
 
   - id: hop-agent-archive
     builds: [hop-agent]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: binary
+
+  - id: hop-helper-archive
+    builds: [hop-helper]
     name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format: binary
 
