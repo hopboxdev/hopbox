@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -185,14 +186,20 @@ func (c *UpCmd) Run(globals *CLI) error {
 	}
 
 	// Start proxies for declared service ports.
+	// Port specs are "hostPort" or "hostPort:containerPort"; the proxy always
+	// binds 127.0.0.1:<hostPort> locally and forwards to agent:<hostPort>.
 	servicePorts := make(map[string]string)
 	if ws != nil {
 		for svcName, svc := range ws.Services {
-			for _, port := range svc.Ports {
-				label := fmt.Sprintf("%s:%d", svcName, port)
+			for _, portSpec := range svc.Ports {
+				hostPort := portSpec
+				if i := strings.IndexByte(portSpec, ':'); i >= 0 {
+					hostPort = portSpec[:i]
+				}
+				label := fmt.Sprintf("%s:%s", svcName, hostPort)
 				p := startProxy(label,
-					fmt.Sprintf("127.0.0.1:%d", port),
-					fmt.Sprintf("%s:%d", cfg.AgentIP, port))
+					fmt.Sprintf("127.0.0.1:%s", hostPort),
+					fmt.Sprintf("%s:%s", cfg.AgentIP, hostPort))
 				if p != nil {
 					addr := p.LocalAddr().String()
 					fmt.Printf("Forwarding %s → %s\n", addr, label)

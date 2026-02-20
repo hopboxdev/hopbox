@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -53,7 +52,11 @@ func BuildServiceManager(ws *manifest.Workspace) *service.Manager {
 		if svc.Type == "docker" {
 			ports := make([]string, 0, len(svc.Ports))
 			for _, p := range svc.Ports {
-				ports = append(ports, fmt.Sprintf("%d:%d", p, p))
+				if strings.ContainsRune(p, ':') {
+					ports = append(ports, p) // already "host:container"
+				} else {
+					ports = append(ports, p+":"+p) // bare port → N:N
+				}
 			}
 			backend = &service.DockerBackend{
 				Image:   svc.Image,

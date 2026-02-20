@@ -34,7 +34,7 @@ type Service struct {
 	Type      string            `yaml:"type"`              // "docker", "kubernetes", "native"
 	Image     string            `yaml:"image,omitempty"`   // docker image
 	Command   string            `yaml:"command,omitempty"` // native command
-	Ports     []int             `yaml:"ports,omitempty"`
+	Ports     []string          `yaml:"ports,omitempty"`   // "8080" or "8080:80" (host:container)
 	Env       map[string]string `yaml:"env,omitempty"`
 	Health    *HealthCheck      `yaml:"health,omitempty"`
 	Data      []DataMount       `yaml:"data,omitempty"`
