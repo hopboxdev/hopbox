@@ -128,15 +128,24 @@ RPC methods: `services.list`, `services.restart`, `services.stop`, `ports.list`,
 
 `ports.list` uses `/proc/net/tcp` on the server to discover listening ports.
 
-**Important:** `rpcCall`/`rpcCallResult` use the OS network stack and only work
-when WireGuard is active at kernel level (Linux). They do NOT work on macOS after
-`hop up` because the tunnel is userspace (netstack). On macOS, agent calls are
-only possible inside `UpCmd` via `rpcCallResultVia(agentClient, ...)` with the
-tunnel-aware `agentClient`.
+`logs.stream` is the only method that does **not** return a JSON envelope — it
+streams `text/plain` output directly (docker logs --follow). Use
+`rpcclient.CopyTo` on the client side, not `rpcclient.Call`.
+
+**RPC client (`internal/rpcclient`):** `Call`/`CallVia`/`CallAndPrint` read the
+full JSON response. Use `CallVia` inside `UpCmd` (needs `tun.DialContext`); use
+`Call` from other commands (uses tunnel state proxy address). Use `CopyTo` for
+streaming responses.
+
+**Important:** On macOS after `hop up`, `10.10.0.2` only exists inside the
+`hop up` process (netstack). Commands outside that process reach the agent via
+the localhost proxy written to tunnel state. `Call` handles this automatically.
 
 ## Coding Conventions
 
 - Error variables must always be named `err`. Never use suffixed names like `werr`, `rerr`, `cerr`, etc. Use shadowing or restructure to avoid conflicts.
+- Service definitions are `service.Def` (not `ServiceDef`).
+- `cmd/hop/main.go` is intentionally thin — commands live in separate files (`up.go`, `setup.go`, `status.go`, etc.).
 
 ## Known Pitfalls
 
@@ -154,6 +163,10 @@ once the interface is assigned; `RunOnAddr` waits on it before binding.
 **SSH stdout after large upload:** `runRemote` stdout is unreliable immediately
 after uploading a large binary (returns null bytes). Read results from files
 the command writes instead (e.g. `sudo grep '^public=' /etc/hopbox/agent.key`).
+
+**TOFU on `hop setup`:** The first SSH connection prompts the user to confirm
+the host key fingerprint (yes/no). Pass `setup.Options.ConfirmReader` in tests
+(e.g. `strings.NewReader("yes\n")`) to avoid blocking on stdin.
 
 **Replacing a running binary:** Overwriting an executing binary on Linux fails
 with "text file busy". Write to `path.new`, chmod, then `sudo mv -f` atomically.
