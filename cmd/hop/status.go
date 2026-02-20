@@ -74,17 +74,10 @@ func (c *StatusCmd) Run(globals *CLI) error {
 	body, _ := io.ReadAll(resp.Body)
 	_ = json.Unmarshal(body, &health)
 
-	tunnelStatus := "down"
-	if v, ok := health["tunnel"]; ok {
-		if b, ok := v.(bool); ok && b {
-			tunnelStatus = "up"
-		}
-	}
 	agentStatus := "ok"
 	if v, ok := health["status"]; ok {
 		agentStatus = fmt.Sprint(v)
 	}
-	_, _ = fmt.Fprintf(tw, "TUNNEL\t%s\n", tunnelStatus)
 	_, _ = fmt.Fprintf(tw, "AGENT\t%s\n", agentStatus)
 	if v, ok := health["version"]; ok {
 		_, _ = fmt.Fprintf(tw, "AGENT-VERSION\t%s\n", v)

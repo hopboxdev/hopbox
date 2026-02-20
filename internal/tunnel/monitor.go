@@ -11,8 +11,8 @@ import (
 type ConnState int
 
 const (
-	ConnStateConnected    ConnState = iota
-	ConnStateDisconnected ConnState = iota
+	ConnStateConnected ConnState = iota
+	ConnStateDisconnected
 )
 
 // ConnEvent is emitted by ConnMonitor when connectivity state changes.
@@ -105,19 +105,19 @@ func (m *ConnMonitor) check(ctx context.Context) {
 
 func (m *ConnMonitor) recordFailure() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	m.failCount++
+	var disconnectEvt *ConnEvent
 	if m.failCount >= m.cfg.FailThreshold && m.state == ConnStateConnected {
 		now := time.Now()
 		m.state = ConnStateDisconnected
 		m.downSince = now
-		if m.cfg.OnStateChange != nil {
-			m.cfg.OnStateChange(ConnEvent{
-				State: ConnStateDisconnected,
-				At:    now,
-			})
-		}
+		evt := ConnEvent{State: ConnStateDisconnected, At: now}
+		disconnectEvt = &evt
+	}
+	m.mu.Unlock()
+
+	if disconnectEvt != nil && m.cfg.OnStateChange != nil {
+		m.cfg.OnStateChange(*disconnectEvt)
 	}
 }
 
