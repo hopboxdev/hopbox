@@ -6,6 +6,7 @@ import (
 
 	"github.com/hopboxdev/hopbox/internal/manifest"
 	"github.com/hopboxdev/hopbox/internal/service"
+	"github.com/hopboxdev/hopbox/internal/tunnel"
 )
 
 // BuildServiceManager creates a service.Manager populated from the workspace
@@ -55,7 +56,15 @@ func BuildServiceManager(ws *manifest.Workspace) *service.Manager {
 				if strings.ContainsRune(p, ':') {
 					ports = append(ports, p) // already "host:container"
 				} else {
-					ports = append(ports, p+":"+p) // bare port → N:N
+					ports = append(ports, p+":"+p) // bare port -> N:N
+				}
+			}
+			// Bind to WireGuard IP so services are only reachable through the tunnel.
+			// If the user already specified an IP (2+ colons, e.g. "0.0.0.0:8080:80"),
+			// respect it as-is.
+			for i, p := range ports {
+				if strings.Count(p, ":") < 2 {
+					ports[i] = tunnel.ServerIP + ":" + p
 				}
 			}
 			backend = &service.DockerBackend{

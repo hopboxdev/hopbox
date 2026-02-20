@@ -88,6 +88,16 @@ Bridges fall into two categories:
 
 The bridge system implements only category 2.
 
+## Port Binding
+
+Service ports declared in `hopbox.yaml` are bound to the WireGuard IP (`10.10.0.2`) by default, not `0.0.0.0`. This keeps services private to the tunnel.
+
+To intentionally expose a port publicly, use the 3-part Docker format with an explicit bind address:
+
+- `"8080:80"` → bound to `10.10.0.2:8080` (tunnel only)
+- `"8080"` → bound to `10.10.0.2:8080` (tunnel only)
+- `"0.0.0.0:8080:80"` → bound to all interfaces (public)
+
 ## CLI Commands
 
 ```text

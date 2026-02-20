@@ -110,6 +110,10 @@ session:
   name: myapp
 ```
 
+Service ports are bound to the WireGuard IP (`10.10.0.2`) by default, so they
+are only reachable through the tunnel. To expose a port publicly, use the
+3-part Docker format: `"0.0.0.0:8080:80"`.
+
 Generate a scaffold with `hop init`.
 
 ---
