@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
+	"github.com/hopboxdev/hopbox/internal/setup"
 )
 
 // ToCmd migrates the workspace to a new host.
@@ -61,6 +62,20 @@ func (c *ToCmd) Run(globals *CLI) error {
 	}
 	fmt.Printf("            snapshot %s created.\n", snap.SnapshotID)
 
-	_ = ctx
-	return fmt.Errorf("steps 2-4 not yet implemented")
+	// Step 2/4: Bootstrap target.
+	fmt.Printf("\nStep 2/4  Bootstrap  setting up %s...\n", c.Target)
+	targetCfg, err := setup.Bootstrap(ctx, setup.Options{
+		Name:       c.Target,
+		SSHHost:    c.Addr,
+		SSHPort:    c.Port,
+		SSHUser:    c.User,
+		SSHKeyPath: c.SSHKey,
+	}, os.Stdout)
+	if err != nil {
+		return fmt.Errorf("bootstrap %s: %w", c.Target, err)
+	}
+	fmt.Printf("            %s bootstrapped.\n", c.Target)
+
+	_ = targetCfg
+	return fmt.Errorf("steps 3-4 not yet implemented")
 }
