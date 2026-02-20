@@ -90,7 +90,17 @@ func (c *ToCmd) Run(globals *CLI) error {
 
 	tunCtx, tunCancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer tunCancel()
-	go func() { _ = tun.Start(tunCtx) }()
+	tunErr := make(chan error, 1)
+	go func() { tunErr <- tun.Start(tunCtx) }()
+
+	// Wait for the tunnel netstack to be ready before using DialContext.
+	select {
+	case <-tun.Ready():
+	case err := <-tunErr:
+		return fmt.Errorf("tunnel failed to start: %w", err)
+	case <-tunCtx.Done():
+		return fmt.Errorf("tunnel start timed out")
+	}
 
 	agentClient := &http.Client{
 		Timeout:   agentClientTimeout,
