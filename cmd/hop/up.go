@@ -65,6 +65,16 @@ func (c *UpCmd) Run(globals *CLI) error {
 		tunnelErr <- tun.Start(ctx)
 	}()
 
+	// Wait for the tunnel netstack to be ready before using DialContext.
+	// Without this, DialContext races against Start's assignment of t.tnet.
+	select {
+	case <-tun.Ready():
+	case err := <-tunnelErr:
+		return fmt.Errorf("tunnel failed to start: %w", err)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
 	// Load workspace manifest if provided or if hopbox.yaml exists locally.
 	wsPath := c.Workspace
 	if wsPath == "" {
