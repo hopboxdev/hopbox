@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/hopboxdev/hopbox/internal/helper"
+	"github.com/hopboxdev/hopbox/internal/version"
 	"golang.org/x/sys/unix"
 )
 
@@ -84,6 +85,11 @@ func handle(conn net.Conn) {
 	}
 
 	log.Printf("action=%s interface=%s hostname=%s", req.Action, req.Interface, req.Hostname)
+
+	if req.Action == helper.ActionVersion {
+		_ = json.NewEncoder(conn).Encode(helper.Response{OK: true, Version: version.Version})
+		return
+	}
 
 	// CreateTUN is special: it needs to send the fd via SCM_RIGHTS.
 	if req.Action == helper.ActionCreateTUN {

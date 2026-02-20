@@ -132,6 +132,29 @@ func (c *Client) RemoveHost(hostname string) error {
 	})
 }
 
+// Version queries the helper daemon's version.
+func (c *Client) Version() (string, error) {
+	conn, err := net.DialTimeout("unix", c.SocketPath, 5*time.Second)
+	if err != nil {
+		return "", fmt.Errorf("connect to helper at %s: %w", c.SocketPath, err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	req := Request{Action: ActionVersion}
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		return "", fmt.Errorf("send request: %w", err)
+	}
+
+	var resp Response
+	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+	if !resp.OK {
+		return "", fmt.Errorf("helper: %s", resp.Error)
+	}
+	return resp.Version, nil
+}
+
 // IsReachable returns true if the helper daemon is responding.
 func (c *Client) IsReachable() bool {
 	conn, err := net.DialTimeout("unix", c.SocketPath, 2*time.Second)

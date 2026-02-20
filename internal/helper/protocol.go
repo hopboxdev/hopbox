@@ -6,6 +6,7 @@ const (
 	ActionCleanupTUN   = "cleanup_tun"
 	ActionAddHost      = "add_host"
 	ActionRemoveHost   = "remove_host"
+	ActionVersion      = "version"
 )
 
 // Request is sent from hop to the helper daemon over the Unix socket.
@@ -24,6 +25,7 @@ type Response struct {
 	OK        bool   `json:"ok"`
 	Error     string `json:"error,omitempty"`
 	Interface string `json:"interface,omitempty"`
+	Version   string `json:"version,omitempty"`
 }
 
 // SocketPath is where the helper daemon listens.
