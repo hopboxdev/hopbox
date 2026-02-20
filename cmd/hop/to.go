@@ -3,11 +3,14 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+
+	"github.com/hopboxdev/hopbox/internal/rpcclient"
 )
 
 // ToCmd migrates the workspace to a new host.
@@ -44,6 +47,20 @@ func (c *ToCmd) Run(globals *CLI) error {
 		return nil
 	}
 
+	// Step 1/4: Snapshot source.
+	fmt.Printf("\nStep 1/4  Snapshot  creating snapshot on %s...\n", sourceHost)
+	snapResult, err := rpcclient.Call(sourceHost, "snap.create", nil)
+	if err != nil {
+		return fmt.Errorf("create snapshot on %s: %w", sourceHost, err)
+	}
+	var snap struct {
+		SnapshotID string `json:"snapshot_id"`
+	}
+	if err := json.Unmarshal(snapResult, &snap); err != nil || snap.SnapshotID == "" {
+		return fmt.Errorf("could not parse snapshot ID from response: %s", string(snapResult))
+	}
+	fmt.Printf("            snapshot %s created.\n", snap.SnapshotID)
+
 	_ = ctx
-	return fmt.Errorf("rest not yet implemented")
+	return fmt.Errorf("steps 2-4 not yet implemented")
 }
