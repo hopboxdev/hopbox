@@ -12,6 +12,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
+	"github.com/hopboxdev/hopbox/internal/version"
 )
 
 // StatusCmd shows tunnel and workspace health.
@@ -32,6 +33,7 @@ func (c *StatusCmd) Run(globals *CLI) error {
 	_, _ = fmt.Fprintf(tw, "HOST\t%s\n", cfg.Name)
 	_, _ = fmt.Fprintf(tw, "ENDPOINT\t%s\n", cfg.Endpoint)
 	_, _ = fmt.Fprintf(tw, "AGENT-IP\t%s\n", cfg.AgentIP)
+	_, _ = fmt.Fprintf(tw, "CLIENT-VERSION\t%s\n", version.Version)
 
 	state, _ := tunnel.LoadState(hostName)
 	if state == nil {
@@ -71,6 +73,9 @@ func (c *StatusCmd) Run(globals *CLI) error {
 	}
 	_, _ = fmt.Fprintf(tw, "TUNNEL\t%s\n", tunnelStatus)
 	_, _ = fmt.Fprintf(tw, "AGENT\t%s\n", agentStatus)
+	if v, ok := health["version"]; ok {
+		_, _ = fmt.Fprintf(tw, "AGENT-VERSION\t%s\n", v)
+	}
 	_ = tw.Flush()
 
 	// Fetch and display services.

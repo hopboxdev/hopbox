@@ -17,6 +17,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/packages"
 	"github.com/hopboxdev/hopbox/internal/service"
 	"github.com/hopboxdev/hopbox/internal/snapshot"
+	"github.com/hopboxdev/hopbox/internal/version"
 )
 
 // maxRPCBodySize caps the request body on /rpc to prevent memory exhaustion
@@ -47,7 +48,7 @@ func (a *Agent) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	body := map[string]any{"status": "ok", "tunnel": false, "local_ip": ""}
+	body := map[string]any{"status": "ok", "tunnel": false, "local_ip": "", "version": version.Version}
 	if a.tunnel != nil {
 		s := a.tunnel.Status()
 		body["tunnel"] = s.IsUp
