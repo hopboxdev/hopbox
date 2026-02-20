@@ -5,13 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
 	"github.com/hopboxdev/hopbox/internal/setup"
+	"github.com/hopboxdev/hopbox/internal/tunnel"
 )
 
 // ToCmd migrates the workspace to a new host.
@@ -76,6 +79,34 @@ func (c *ToCmd) Run(globals *CLI) error {
 	}
 	fmt.Printf("            %s bootstrapped.\n", c.Target)
 
-	_ = targetCfg
-	return fmt.Errorf("steps 3-4 not yet implemented")
+	// Step 3/4: Restore via temporary WireGuard tunnel.
+	fmt.Printf("\nStep 3/4  Restore    connecting to %s...\n", c.Target)
+	tunCfg, err := targetCfg.ToTunnelConfig()
+	if err != nil {
+		return fmt.Errorf("build tunnel config: %w", err)
+	}
+	tun := tunnel.NewClientTunnel(tunCfg)
+
+	tunCtx, tunCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer tunCancel()
+	go func() { _ = tun.Start(tunCtx) }()
+
+	agentClient := &http.Client{
+		Timeout:   agentClientTimeout,
+		Transport: &http.Transport{DialContext: tun.DialContext},
+	}
+	agentURL := fmt.Sprintf("http://%s:%d/health", targetCfg.AgentIP, tunnel.AgentAPIPort)
+	if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
+		return fmt.Errorf("target agent unreachable after bootstrap: %w", err)
+	}
+
+	fmt.Printf("            restoring snapshot %s...\n", snap.SnapshotID)
+	if _, err := rpcclient.CallVia(agentClient, c.Target, "snap.restore", map[string]string{"id": snap.SnapshotID}); err != nil {
+		fmt.Fprintf(os.Stderr, "\nRestore failed. To retry manually:\n")
+		fmt.Fprintf(os.Stderr, "  hop snap restore %s --host %s\n", snap.SnapshotID, c.Target)
+		return fmt.Errorf("restore on %s: %w", c.Target, err)
+	}
+	fmt.Printf("            snapshot restored.\n")
+
+	return fmt.Errorf("step 4 not yet implemented")
 }
