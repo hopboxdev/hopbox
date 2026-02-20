@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
 	"github.com/hopboxdev/hopbox/internal/setup"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
@@ -108,5 +109,13 @@ func (c *ToCmd) Run(globals *CLI) error {
 	}
 	fmt.Printf("            snapshot restored.\n")
 
-	return fmt.Errorf("step 4 not yet implemented")
+	// Step 4/4: Switch default host.
+	fmt.Printf("\nStep 4/4  Switch     setting default host to %s...\n", c.Target)
+	if err := hostconfig.SetDefaultHost(c.Target); err != nil {
+		return fmt.Errorf("set default host: %w", err)
+	}
+
+	fmt.Printf("\nMigration complete. Default host set to %q.\n", c.Target)
+	fmt.Printf("Run 'hop up' to connect to %s.\n", c.Target)
+	return nil
 }
