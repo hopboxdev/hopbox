@@ -183,6 +183,11 @@ keys are temporarily out of sync. The server keeps `agent.key.bak` for manual
 recovery. The config save is a single `os.WriteFile` and is very unlikely to fail
 after the agent restart succeeds.
 
+**`hop services ls` only shows manifest-registered services:** The agent's service
+manager only knows about services declared in `hopbox.yaml` and loaded at startup
+(or via `workspace.sync`). Docker containers running independently on the host are
+not visible — `hop services ls` will return "No services." if no manifest was loaded.
+
 ## Technical Decisions
 
 - **Language:** Go — single binary, no runtime deps, same ecosystem as Coder/DevPod/Devbox
