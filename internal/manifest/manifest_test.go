@@ -46,7 +46,9 @@ backup:
   backend: restic
   target: s3://mybucket/myapp
 
-editor: nvim
+editor:
+  type: vscode-remote
+  path: /root/myapp
 
 session:
   manager: zellij
@@ -94,8 +96,8 @@ func TestParseExampleYAML(t *testing.T) {
 	if len(ws.Bridges) != 2 {
 		t.Errorf("Bridges len = %d, want 2", len(ws.Bridges))
 	}
-	if ws.Editor != "nvim" {
-		t.Errorf("Editor = %q, want nvim", ws.Editor)
+	if ws.Editor == nil || ws.Editor.Path != "/root/myapp" {
+		t.Errorf("Editor.Path = %v, want /root/myapp", ws.Editor)
 	}
 	if ws.Session == nil || ws.Session.Manager != "zellij" {
 		t.Error("Session.Manager should be zellij")

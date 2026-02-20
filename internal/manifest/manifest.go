@@ -18,7 +18,7 @@ type Workspace struct {
 	Secrets  []Secret           `yaml:"secrets,omitempty"`
 	Scripts  map[string]string  `yaml:"scripts,omitempty"`
 	Backup   *BackupConfig      `yaml:"backup,omitempty"`
-	Editor   string             `yaml:"editor,omitempty"`
+	Editor   *EditorConfig      `yaml:"editor,omitempty"`
 	Session  *SessionConfig     `yaml:"session,omitempty"`
 }
 
@@ -77,6 +77,13 @@ type BackupConfig struct {
 type SessionConfig struct {
 	Manager string `yaml:"manager"` // "zellij", "tmux"
 	Name    string `yaml:"name,omitempty"`
+}
+
+// EditorConfig configures the remote editor.
+type EditorConfig struct {
+	Type       string   `yaml:"type"`                 // "vscode-remote"
+	Path       string   `yaml:"path,omitempty"`       // remote workspace path
+	Extensions []string `yaml:"extensions,omitempty"` // VS Code extension IDs
 }
 
 // Parse reads and parses a hopbox.yaml file.

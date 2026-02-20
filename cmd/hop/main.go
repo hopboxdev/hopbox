@@ -24,7 +24,7 @@ type CLI struct {
 	Status    StatusCmd   `cmd:"" help:"Show tunnel and workspace health."`
 	Services  ServicesCmd `cmd:"" help:"Manage workspace services."`
 	Logs      LogsCmd     `cmd:"" help:"Stream service logs."`
-	Shell     ShellCmd    `cmd:"" help:"Drop into remote shell."`
+	Code      CodeCmd     `cmd:"" help:"Open VS Code connected to the workspace."`
 	RunScript RunCmd      `cmd:"" name:"run" help:"Execute a script from hopbox.yaml."`
 	Snap      SnapCmd     `cmd:"" help:"Snapshot workspace state (create/restore/ls)."`
 	To        ToCmd       `cmd:"" help:"Migrate workspace to a new host."`
