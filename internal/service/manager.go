@@ -90,6 +90,7 @@ func (m *Manager) StartAll(ctx context.Context) error {
 }
 
 // Start starts a single service by name, then waits for it to be healthy.
+// If the service is already running it is a no-op.
 func (m *Manager) Start(ctx context.Context, name string) error {
 	m.mu.Lock()
 	backend, ok := m.backends[name]
@@ -97,6 +98,9 @@ func (m *Manager) Start(ctx context.Context, name string) error {
 	m.mu.Unlock()
 	if !ok {
 		return fmt.Errorf("service %q not registered", name)
+	}
+	if running, err := backend.IsRunning(name); err == nil && running {
+		return nil
 	}
 	if err := backend.Start(ctx, name); err != nil {
 		return err

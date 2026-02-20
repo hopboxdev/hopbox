@@ -58,18 +58,29 @@ func (a *Agent) WithManifestPath(path string) {
 	a.manifestPath = path
 }
 
-// Reload re-wires the agent's runtime state (scripts, backup config) from the
-// given workspace manifest. Called after workspace.sync is received.
+// Reload re-wires the agent's runtime state from the given workspace manifest.
+// Called after workspace.sync is received. Rebuilds the service manager and
+// starts any services that are not already running.
 func (a *Agent) Reload(ws *manifest.Workspace) {
+	mgr := BuildServiceManager(ws)
+
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	a.scripts = ws.Scripts
 	if ws.Backup != nil {
 		a.backupTarget = ws.Backup.Target
+		a.backupPaths = mgr.DataPaths()
 	} else {
 		a.backupTarget = ""
 		a.backupPaths = nil
 	}
+	a.services = mgr
+	a.mu.Unlock()
+
+	go func() {
+		if err := mgr.StartAll(context.Background()); err != nil {
+			slog.Warn("service startup on reload", "err", err)
+		}
+	}()
 }
 
 // Handler returns the HTTP mux for the agent's control API.

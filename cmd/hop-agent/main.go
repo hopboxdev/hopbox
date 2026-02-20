@@ -8,13 +8,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/alecthomas/kong"
 
 	"github.com/hopboxdev/hopbox/internal/agent"
 	"github.com/hopboxdev/hopbox/internal/manifest"
-	"github.com/hopboxdev/hopbox/internal/service"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 	"github.com/hopboxdev/hopbox/internal/version"
 	"github.com/hopboxdev/hopbox/internal/wgkey"
@@ -60,66 +58,11 @@ func (c *ServeCmd) Run() error {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to parse manifest %s: %v\n", wsPath, err)
 		} else {
-			mgr := service.NewManager()
-			for name, svc := range ws.Services {
-				// Collect host-side data paths for backup and volume mounts.
-				var dataPaths []string
-				var volumes []string
-				for _, d := range svc.Data {
-					if d.Host != "" {
-						dataPaths = append(dataPaths, d.Host)
-					}
-					if d.Host != "" && d.Container != "" {
-						volumes = append(volumes, d.Host+":"+d.Container)
-					}
-				}
-
-				// Convert manifest HealthCheck to service.HealthCheck.
-				var hc *service.HealthCheck
-				if svc.Health != nil && svc.Health.HTTP != "" {
-					hc = &service.HealthCheck{HTTP: svc.Health.HTTP}
-					if svc.Health.Interval != "" {
-						hc.Interval, _ = time.ParseDuration(svc.Health.Interval)
-					}
-					if svc.Health.Timeout != "" {
-						hc.Timeout, _ = time.ParseDuration(svc.Health.Timeout)
-					}
-				}
-
-				def := &service.Def{
-					Name:      name,
-					Type:      svc.Type,
-					Image:     svc.Image,
-					Command:   svc.Command,
-					Ports:     svc.Ports,
-					Env:       svc.Env,
-					DependsOn: svc.DependsOn,
-					Health:    hc,
-					DataPaths: dataPaths,
-				}
-
-				var backend service.Backend
-				if svc.Type == "docker" {
-					ports := make([]string, 0, len(svc.Ports))
-					for _, p := range svc.Ports {
-						ports = append(ports, fmt.Sprintf("%d:%d", p, p))
-					}
-					backend = &service.DockerBackend{
-						Image:   svc.Image,
-						Env:     svc.Env,
-						Ports:   ports,
-						Volumes: volumes,
-					}
-				}
-				if backend != nil {
-					mgr.Register(def, backend)
-				}
-			}
+			mgr := agent.BuildServiceManager(ws)
 			a.WithServices(mgr)
 			if len(ws.Scripts) > 0 {
 				a.WithScripts(ws.Scripts)
 			}
-			// Configure backup if the manifest specifies a target.
 			if ws.Backup != nil && ws.Backup.Target != "" {
 				a.WithBackupConfig(ws.Backup.Target, mgr.DataPaths())
 			}
