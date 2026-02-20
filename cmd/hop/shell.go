@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 
@@ -34,21 +33,18 @@ func (c *ShellCmd) Run(globals *CLI) error {
 		return fmt.Errorf("tunnel to %q is not running; start it with 'hop up'", hostName)
 	}
 
-	sshHost := cfg.AgentIP
-	sshExtraArgs := []string{"-o", "ConnectTimeout=10"}
-	if state.SSHAddr != "" {
-		proxyHost, proxyPort, splitErr := net.SplitHostPort(state.SSHAddr)
-		if splitErr == nil {
-			sshHost = proxyHost
-			sshExtraArgs = append(sshExtraArgs, "-p", proxyPort, "-o", "NoHostAuthenticationForLocalhost=yes")
-		}
+	hostname := state.Hostname
+	if hostname == "" {
+		hostname = hostName + ".hop"
 	}
+
+	sshExtraArgs := []string{"-o", "ConnectTimeout=10"}
 	if cfg.SSHKeyPath != "" {
 		sshExtraArgs = append(sshExtraArgs, "-i", cfg.SSHKeyPath)
 	}
 
 	sshArgs := append([]string{"-t"}, sshExtraArgs...)
-	sshArgs = append(sshArgs, user+"@"+sshHost)
+	sshArgs = append(sshArgs, user+"@"+hostname)
 
 	// Attach to session manager if a local hopbox.yaml specifies one.
 	if ws, wsErr := manifest.Parse("hopbox.yaml"); wsErr == nil && ws.Session != nil {

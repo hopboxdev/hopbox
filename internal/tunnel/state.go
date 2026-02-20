@@ -13,14 +13,13 @@ import (
 // TunnelState describes a running hop up process.
 // Written to ~/.config/hopbox/run/<host>.json.
 type TunnelState struct {
-	PID          int               `json:"pid"`
-	Host         string            `json:"host"`
-	AgentAPIAddr string            `json:"agent_api_addr"`          // "127.0.0.1:4200"
-	SSHAddr      string            `json:"ssh_addr,omitempty"`      // "127.0.0.1:2222"
-	ServicePorts map[string]string `json:"service_ports,omitempty"` // "postgres:5432" → "127.0.0.1:5432"
-	StartedAt    time.Time         `json:"started_at"`
-	Connected    bool              `json:"connected"`
-	LastHealthy  time.Time         `json:"last_healthy,omitempty"`
+	PID         int       `json:"pid"`
+	Host        string    `json:"host"`
+	Hostname    string    `json:"hostname"`
+	Interface   string    `json:"interface,omitempty"`
+	StartedAt   time.Time `json:"started_at"`
+	Connected   bool      `json:"connected"`
+	LastHealthy time.Time `json:"last_healthy,omitempty"`
 }
 
 // stateDir returns ~/.config/hopbox/run.

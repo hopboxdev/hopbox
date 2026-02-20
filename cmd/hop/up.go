@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hopboxdev/hopbox/internal/bridge"
+	"github.com/hopboxdev/hopbox/internal/helper"
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/manifest"
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
@@ -52,7 +53,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 	if err != nil {
 		return fmt.Errorf("convert tunnel config: %w", err)
 	}
-	tun := tunnel.NewClientTunnel(tunCfg)
+	tun := tunnel.NewKernelTunnel(tunCfg)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -65,8 +66,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 		tunnelErr <- tun.Start(ctx)
 	}()
 
-	// Wait for the tunnel netstack to be ready before using DialContext.
-	// Without this, DialContext races against Start's assignment of t.tnet.
+	// Wait for the TUN device to be ready.
 	select {
 	case <-tun.Ready():
 	case err := <-tunnelErr:
@@ -74,6 +74,30 @@ func (c *UpCmd) Run(globals *CLI) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+
+	// Configure the TUN interface via the privileged helper.
+	helperClient := helper.NewClient()
+	if !helperClient.IsReachable() {
+		tun.Stop()
+		return fmt.Errorf("hopbox helper is not running; install with 'sudo hop-helper --install' or re-run 'hop setup'")
+	}
+
+	localIP := strings.TrimSuffix(tunCfg.LocalIP, "/24")
+	peerIP := strings.TrimSuffix(tunCfg.PeerIP, "/32")
+	if err := helperClient.ConfigureTUN(tun.InterfaceName(), localIP, peerIP); err != nil {
+		tun.Stop()
+		return fmt.Errorf("configure TUN: %w", err)
+	}
+	defer func() { _ = helperClient.CleanupTUN(tun.InterfaceName()) }()
+
+	hostname := cfg.Name + ".hop"
+	if err := helperClient.AddHost(peerIP, hostname); err != nil {
+		tun.Stop()
+		return fmt.Errorf("add host entry: %w", err)
+	}
+	defer func() { _ = helperClient.RemoveHost(hostname) }()
+
+	fmt.Printf("Interface %s up, %s → %s\n", tun.InterfaceName(), localIP, hostname)
 
 	// Load workspace manifest if provided or if hopbox.yaml exists locally.
 	wsPath := c.Workspace
@@ -114,18 +138,11 @@ func (c *UpCmd) Run(globals *CLI) error {
 		}
 	}
 
-	// Build an HTTP client that routes through the WireGuard netstack.
-	// The standard net/http dialer uses the OS network stack, which has no
-	// route to 10.10.0.2 — only tun.DialContext can reach it.
-	agentClient := &http.Client{
-		Timeout: agentClientTimeout,
-		Transport: &http.Transport{
-			DialContext: tun.DialContext,
-		},
-	}
+	// With kernel TUN, the agent is reachable via the OS network stack.
+	agentClient := &http.Client{Timeout: agentClientTimeout}
+	agentURL := fmt.Sprintf("http://%s:%d/health", hostname, tunnel.AgentAPIPort)
 
 	// Probe /health with retry loop.
-	agentURL := fmt.Sprintf("http://%s:%d/health", cfg.AgentIP, tunnel.AgentAPIPort)
 	fmt.Printf("Probing agent at %s...\n", agentURL)
 
 	if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
@@ -160,7 +177,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 	if ws != nil {
 		rawManifest, readErr := os.ReadFile(wsPath)
 		if readErr == nil {
-			if _, syncErr := rpcclient.CallVia(agentClient, hostName, "workspace.sync", map[string]string{"yaml": string(rawManifest)}); syncErr != nil {
+			if _, syncErr := rpcclient.Call(hostName, "workspace.sync", map[string]string{"yaml": string(rawManifest)}); syncErr != nil {
 				_, _ = fmt.Fprintf(os.Stderr, "Warning: manifest sync failed: %v\n", syncErr)
 			} else {
 				fmt.Println("Manifest synced.")
@@ -179,88 +196,22 @@ func (c *UpCmd) Run(globals *CLI) error {
 				"version": p.Version,
 			})
 		}
-		if _, err := rpcclient.CallVia(agentClient, hostName, "packages.install", map[string]any{"packages": pkgs}); err != nil {
+		if _, err := rpcclient.Call(hostName, "packages.install", map[string]any{"packages": pkgs}); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Warning: package installation failed: %v\n", err)
 		} else {
 			fmt.Println("Packages installed.")
 		}
 	}
 
-	// Start TCP proxies so other hop commands can reach the agent via the OS network.
-	// On macOS, 10.10.0.2 only exists inside this process (netstack); proxies expose
-	// the tunnel on localhost so external processes can use it.
-	var proxies []*tunnel.Proxy
-	defer func() {
-		for _, p := range proxies {
-			p.Stop()
-		}
-	}()
-
-	startProxy := func(label, localAddr, remoteAddr string) *tunnel.Proxy {
-		p, proxyErr := tunnel.StartProxy(ctx, tunnel.ProxyConfig{
-			LocalAddr:  localAddr,
-			RemoteAddr: remoteAddr,
-			Label:      label,
-		}, tun.DialContext)
-		if proxyErr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Warning: proxy %s: %v\n", label, proxyErr)
-			return nil
-		}
-		proxies = append(proxies, p)
-		return p
-	}
-
-	agentProxy := startProxy("agent-api",
-		"127.0.0.1:4200",
-		fmt.Sprintf("%s:%d", cfg.AgentIP, tunnel.AgentAPIPort))
-	if agentProxy != nil {
-		fmt.Printf("Forwarding %s → agent API\n", agentProxy.LocalAddr())
-	}
-
-	sshProxy := startProxy("ssh", "127.0.0.1:2222", cfg.AgentIP+":22")
-	if sshProxy != nil {
-		fmt.Printf("Forwarding %s → SSH\n", sshProxy.LocalAddr())
-	}
-
-	// Start proxies for declared service ports.
-	// Port specs are "hostPort" or "hostPort:containerPort"; the proxy always
-	// binds 127.0.0.1:<hostPort> locally and forwards to agent:<hostPort>.
-	servicePorts := make(map[string]string)
-	if ws != nil {
-		for svcName, svc := range ws.Services {
-			for _, portSpec := range svc.Ports {
-				hostPort := portSpec
-				if i := strings.IndexByte(portSpec, ':'); i >= 0 {
-					hostPort = portSpec[:i]
-				}
-				label := fmt.Sprintf("%s:%s", svcName, hostPort)
-				p := startProxy(label,
-					fmt.Sprintf("127.0.0.1:%s", hostPort),
-					fmt.Sprintf("%s:%s", cfg.AgentIP, hostPort))
-				if p != nil {
-					addr := p.LocalAddr().String()
-					fmt.Printf("Forwarding %s → %s\n", addr, label)
-					servicePorts[label] = addr
-				}
-			}
-		}
-	}
-
-	// Write tunnel state so other hop commands (hop status, hop shell, etc.) can
-	// find the proxy addresses without needing kernel WireGuard routing.
+	// Write tunnel state so other hop commands can find the tunnel.
 	state := &tunnel.TunnelState{
-		PID:          os.Getpid(),
-		Host:         hostName,
-		ServicePorts: servicePorts,
-		StartedAt:    time.Now(),
-	}
-	state.Connected = true
-	state.LastHealthy = time.Now()
-	if agentProxy != nil {
-		state.AgentAPIAddr = agentProxy.LocalAddr().String()
-	}
-	if sshProxy != nil {
-		state.SSHAddr = sshProxy.LocalAddr().String()
+		PID:         os.Getpid(),
+		Host:        hostName,
+		Hostname:    hostname,
+		Interface:   tun.InterfaceName(),
+		StartedAt:   time.Now(),
+		Connected:   true,
+		LastHealthy: time.Now(),
 	}
 	if err := tunnel.WriteState(state); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Warning: write tunnel state: %v\n", err)

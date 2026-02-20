@@ -112,7 +112,7 @@ func (c *ToCmd) Run(globals *CLI) error {
 	}
 
 	fmt.Printf("            restoring snapshot %s...\n", snap.SnapshotID)
-	if _, err := rpcclient.CallVia(agentClient, c.Target, "snap.restore", map[string]string{"id": snap.SnapshotID}); err != nil {
+	if _, err := rpcclient.CallWithClient(agentClient, targetCfg.AgentIP, "snap.restore", map[string]string{"id": snap.SnapshotID}); err != nil {
 		fmt.Fprintf(os.Stderr, "\nRestore failed. To retry manually:\n")
 		fmt.Fprintf(os.Stderr, "  hop snap restore %s --host %s\n", snap.SnapshotID, c.Target)
 		return fmt.Errorf("restore on %s: %w", c.Target, err)

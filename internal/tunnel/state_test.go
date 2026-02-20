@@ -11,12 +11,12 @@ import (
 func TestStateRoundTrip(t *testing.T) {
 	hostName := "test-state-roundtrip"
 	state := &TunnelState{
-		PID:          os.Getpid(),
-		Host:         hostName,
-		AgentAPIAddr: "127.0.0.1:4200",
-		SSHAddr:      "127.0.0.1:2222",
-		ServicePorts: map[string]string{"postgres:5432": "127.0.0.1:5432"},
-		StartedAt:    time.Now(),
+		PID:       os.Getpid(),
+		Host:      hostName,
+		Hostname:  hostName + ".hop",
+		Interface: "utun5",
+		StartedAt: time.Now(),
+		Connected: true,
 	}
 
 	if err := WriteState(state); err != nil {
@@ -34,14 +34,11 @@ func TestStateRoundTrip(t *testing.T) {
 	if loaded.PID != state.PID {
 		t.Errorf("PID: got %d, want %d", loaded.PID, state.PID)
 	}
-	if loaded.AgentAPIAddr != state.AgentAPIAddr {
-		t.Errorf("AgentAPIAddr: got %q, want %q", loaded.AgentAPIAddr, state.AgentAPIAddr)
+	if loaded.Hostname != state.Hostname {
+		t.Errorf("Hostname: got %q, want %q", loaded.Hostname, state.Hostname)
 	}
-	if loaded.SSHAddr != state.SSHAddr {
-		t.Errorf("SSHAddr: got %q, want %q", loaded.SSHAddr, state.SSHAddr)
-	}
-	if loaded.ServicePorts["postgres:5432"] != "127.0.0.1:5432" {
-		t.Errorf("ServicePorts: got %v", loaded.ServicePorts)
+	if loaded.Interface != state.Interface {
+		t.Errorf("Interface: got %q, want %q", loaded.Interface, state.Interface)
 	}
 }
 
@@ -55,10 +52,10 @@ func TestStateStalePID(t *testing.T) {
 
 	hostName := "test-state-stale"
 	state := &TunnelState{
-		PID:          deadPID,
-		Host:         hostName,
-		AgentAPIAddr: "127.0.0.1:4200",
-		StartedAt:    time.Now(),
+		PID:       deadPID,
+		Host:      hostName,
+		Hostname:  hostName + ".hop",
+		StartedAt: time.Now(),
 	}
 
 	if err := WriteState(state); err != nil {

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 )
 
@@ -40,32 +39,22 @@ func doRPC(client *http.Client, url, method string, params any) (json.RawMessage
 	return rpcResp.Result, nil
 }
 
-// CallVia makes an RPC call using the provided client, looking up the agent URL
-// from the named host's config. Use this when you already have a tunnel-aware
-// client (e.g. one with tun.DialContext set as the transport).
-func CallVia(client *http.Client, hostName, method string, params any) (json.RawMessage, error) {
+// Call makes an RPC call using the host's .hop hostname.
+func Call(hostName, method string, params any) (json.RawMessage, error) {
 	if hostName == "" {
 		return nil, fmt.Errorf("--host <name> required")
 	}
-	cfg, err := hostconfig.Load(hostName)
-	if err != nil {
-		return nil, fmt.Errorf("load host config: %w", err)
-	}
-	url := fmt.Sprintf("http://%s:%d/rpc", cfg.AgentIP, tunnel.AgentAPIPort)
+	client := &http.Client{Timeout: 5 * time.Second}
+	url := fmt.Sprintf("http://%s.hop:%d/rpc", hostName, tunnel.AgentAPIPort)
 	return doRPC(client, url, method, params)
 }
 
-// Call makes an RPC call using a plain HTTP client. It checks the tunnel state
-// file for a local proxy address first; if found it dials that (works on all
-// platforms). Falls back to dialing the WireGuard IP directly (works on Linux
-// with kernel WireGuard active).
-func Call(hostName, method string, params any) (json.RawMessage, error) {
-	client := &http.Client{Timeout: 5 * time.Second}
-	if state, _ := tunnel.LoadState(hostName); state != nil && state.AgentAPIAddr != "" {
-		url := "http://" + state.AgentAPIAddr + "/rpc"
-		return doRPC(client, url, method, params)
-	}
-	return CallVia(client, hostName, method, params)
+// CallWithClient makes an RPC call using the provided HTTP client and agent IP.
+// Used by hop to for temporary netstack tunnels where the agent is reached via
+// DialContext rather than the OS network stack.
+func CallWithClient(client *http.Client, agentIP, method string, params any) (json.RawMessage, error) {
+	url := fmt.Sprintf("http://%s:%d/rpc", agentIP, tunnel.AgentAPIPort)
+	return doRPC(client, url, method, params)
 }
 
 // CallAndPrint calls Call and prints the JSON result to stdout.
@@ -82,26 +71,14 @@ func CallAndPrint(hostName, method string, params any) error {
 // Used for streaming endpoints (e.g. logs.stream) that write text/plain instead
 // of wrapping output in a JSON envelope.
 func CopyTo(hostName, method string, params any, dst io.Writer) error {
-	reqBody, _ := json.Marshal(map[string]any{"method": method, "params": params})
-
-	var rpcURL string
-	if state, _ := tunnel.LoadState(hostName); state != nil && state.AgentAPIAddr != "" {
-		rpcURL = "http://" + state.AgentAPIAddr + "/rpc"
-	} else {
-		if hostName == "" {
-			return fmt.Errorf("--host <name> required")
-		}
-		cfg, err := hostconfig.Load(hostName)
-		if err != nil {
-			return fmt.Errorf("load host config: %w", err)
-		}
-		rpcURL = fmt.Sprintf("http://%s:%d/rpc", cfg.AgentIP, tunnel.AgentAPIPort)
+	if hostName == "" {
+		return fmt.Errorf("--host <name> required")
 	}
+	reqBody, _ := json.Marshal(map[string]any{"method": method, "params": params})
+	url := fmt.Sprintf("http://%s.hop:%d/rpc", hostName, tunnel.AgentAPIPort)
 
-	// No timeout: streaming responses run until the container exits or
-	// the user presses Ctrl-C.
 	client := &http.Client{}
-	resp, err := client.Post(rpcURL, "application/json", bytes.NewReader(reqBody))
+	resp, err := client.Post(url, "application/json", bytes.NewReader(reqBody))
 	if err != nil {
 		return fmt.Errorf("RPC call: %w", err)
 	}

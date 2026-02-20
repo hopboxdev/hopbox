@@ -56,11 +56,11 @@ func (c *StatusCmd) Run(globals *CLI) error {
 			time.Since(state.LastHealthy).Round(time.Second))
 	}
 
-	healthAddr := state.AgentAPIAddr
-	if healthAddr == "" {
-		healthAddr = fmt.Sprintf("%s:%d", cfg.AgentIP, tunnel.AgentAPIPort)
+	hostname := state.Hostname
+	if hostname == "" {
+		hostname = hostName + ".hop"
 	}
-	agentURL := "http://" + healthAddr + "/health"
+	agentURL := fmt.Sprintf("http://%s:%d/health", hostname, tunnel.AgentAPIPort)
 	healthClient := &http.Client{Timeout: 5 * time.Second}
 	resp, err := healthClient.Get(agentURL)
 	if err != nil {
