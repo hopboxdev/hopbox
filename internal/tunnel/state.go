@@ -19,6 +19,8 @@ type TunnelState struct {
 	SSHAddr      string            `json:"ssh_addr,omitempty"`      // "127.0.0.1:2222"
 	ServicePorts map[string]string `json:"service_ports,omitempty"` // "postgres:5432" → "127.0.0.1:5432"
 	StartedAt    time.Time         `json:"started_at"`
+	Connected    bool              `json:"connected"`
+	LastHealthy  time.Time         `json:"last_healthy,omitempty"`
 }
 
 // stateDir returns ~/.config/hopbox/run.

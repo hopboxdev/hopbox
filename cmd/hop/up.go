@@ -244,6 +244,8 @@ func (c *UpCmd) Run(globals *CLI) error {
 		ServicePorts: servicePorts,
 		StartedAt:    time.Now(),
 	}
+	state.Connected = true
+	state.LastHealthy = time.Now()
 	if agentProxy != nil {
 		state.AgentAPIAddr = agentProxy.LocalAddr().String()
 	}
@@ -262,6 +264,34 @@ func (c *UpCmd) Run(globals *CLI) error {
 	}
 
 	fmt.Println("Tunnel up. Press Ctrl-C to stop.")
+
+	monitor := tunnel.NewConnMonitor(tunnel.MonitorConfig{
+		HealthURL: agentURL,
+		Client:    agentClient,
+		OnStateChange: func(evt tunnel.ConnEvent) {
+			switch evt.State {
+			case tunnel.ConnStateDisconnected:
+				fmt.Printf("\n[%s] Agent unreachable — waiting for reconnection...\n",
+					evt.At.Format("15:04:05"))
+				state.Connected = false
+			case tunnel.ConnStateConnected:
+				fmt.Printf("[%s] Agent reconnected (was down for %s)\n",
+					evt.At.Format("15:04:05"), evt.Duration.Round(time.Second))
+				state.Connected = true
+				state.LastHealthy = evt.At
+			}
+			if err := tunnel.WriteState(state); err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Warning: update tunnel state: %v\n", err)
+			}
+		},
+		OnHealthy: func(t time.Time) {
+			state.LastHealthy = t
+			if err := tunnel.WriteState(state); err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Warning: update tunnel state: %v\n", err)
+			}
+		},
+	})
+	go monitor.Run(ctx)
 
 	// Block until Ctrl-C
 	select {

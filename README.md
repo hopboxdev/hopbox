@@ -170,6 +170,13 @@ userspace fallback.
 **Agent control API:** HTTP/JSON-RPC on `10.10.0.2:4200`, reachable only over
 the tunnel.
 
+**Reconnection resilience:** `hop up` runs a 5-second heartbeat against the
+agent. Two consecutive failures trigger a warning; when the agent comes back it
+logs how long it was unreachable. `hop status` shows `CONNECTED` and
+`LAST HEALTHY` so you can tell at a glance whether the tunnel is actively
+healthy or just structurally up. WireGuard handles re-keying natively; the
+heartbeat only observes and reports.
+
 ---
 
 ## Development

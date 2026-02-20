@@ -56,6 +56,35 @@ cmd/hop-agent/  — Server daemon (Linux VPS, runs as systemd service)
 
 **No coordination server, no DERP relay.** The server is a public-IP VPS. Key exchange happens once over SSH during `hop setup`; all subsequent communication is over Wireguard.
 
+**Reconnection resilience:** The `hop up` process monitors agent connectivity with a 5-second heartbeat (`internal/tunnel.ConnMonitor`). If the agent becomes unreachable for 2+ consecutive checks, it prints a warning and updates the tunnel state file. When connectivity returns, it logs the outage duration. `hop status` shows `CONNECTED` and `LAST HEALTHY` fields from the state file. WireGuard handles tunnel re-establishment natively; the monitor only observes and reports.
+
+To test reconnection resilience manually:
+
+```bash
+# 1. Bring up the tunnel
+hop up
+
+# 2. In another terminal, verify LAST HEALTHY advances every ~5s
+watch -n 3 hop status   # LAST HEALTHY should always show ≤ ~5s ago
+
+# 3. Block WireGuard UDP on the server to simulate an outage
+ssh user@server "sudo iptables -A INPUT -p udp --dport 51820 -j DROP"
+# hop up terminal should print within ~10s:
+#   [HH:MM:SS] Agent unreachable — waiting for reconnection...
+# hop status should show CONNECTED: no
+
+# 4. Restore connectivity
+ssh user@server "sudo iptables -D INPUT -p udp --dport 51820 -j DROP"
+# hop up terminal should print:
+#   [HH:MM:SS] Agent reconnected (was down for Xs)
+# hop status should show CONNECTED: yes, LAST HEALTHY: a few seconds ago
+
+# Alternatively, simulate a shorter outage by restarting the agent:
+ssh user@server "sudo systemctl restart hop-agent"
+# The agent takes a few seconds to restart; the monitor should detect the gap
+# and recover automatically without any intervention.
+```
+
 ## Key Library Choices
 
 | Component | Library |

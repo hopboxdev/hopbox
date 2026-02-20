@@ -43,6 +43,19 @@ func (c *StatusCmd) Run(globals *CLI) error {
 		return nil
 	}
 
+	_, _ = fmt.Fprintf(tw, "TUNNEL\tup (PID %d, started %s ago)\n",
+		state.PID, time.Since(state.StartedAt).Round(time.Second))
+	if !state.LastHealthy.IsZero() {
+		connLabel := "yes"
+		if !state.Connected {
+			connLabel = "no"
+		}
+		_, _ = fmt.Fprintf(tw, "CONNECTED\t%s\n", connLabel)
+		_, _ = fmt.Fprintf(tw, "LAST HEALTHY\t%s (%s ago)\n",
+			state.LastHealthy.Format("15:04:05"),
+			time.Since(state.LastHealthy).Round(time.Second))
+	}
+
 	healthAddr := state.AgentAPIAddr
 	if healthAddr == "" {
 		healthAddr = fmt.Sprintf("%s:%d", cfg.AgentIP, tunnel.AgentAPIPort)
