@@ -41,7 +41,7 @@ func UpgradeAgent(ctx context.Context, cfg *hostconfig.HostConfig, out io.Writer
 	}
 
 	logf("Uploading new hop-agent binary...")
-	if err := installAgent(ctx, client, out); err != nil {
+	if err := installAgent(ctx, client, out, clientVersion); err != nil {
 		return fmt.Errorf("install agent: %w", err)
 	}
 

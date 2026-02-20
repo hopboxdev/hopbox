@@ -10,8 +10,6 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/ssh"
-
-	"github.com/hopboxdev/hopbox/internal/version"
 )
 
 const systemdUnit = `[Unit]
@@ -31,7 +29,7 @@ WantedBy=multi-user.target
 // It checks $HOP_AGENT_BINARY for a local override first; otherwise downloads
 // the release binary matching the VPS architecture and verifies its SHA256
 // checksum against the published checksums file.
-func installAgent(ctx context.Context, client *ssh.Client, out io.Writer) error {
+func installAgent(ctx context.Context, client *ssh.Client, out io.Writer, targetVersion string) error {
 	logf := func(format string, args ...any) {
 		_, _ = fmt.Fprintf(out, "  "+format+"\n", args...)
 	}
@@ -47,10 +45,11 @@ func installAgent(ctx context.Context, client *ssh.Client, out io.Writer) error 
 			return fmt.Errorf("read agent binary: %w", err)
 		}
 	} else {
-		v := version.Version
-		if v == "dev" {
+		v := targetVersion
+		if v == "" || v == "dev" {
 			return fmt.Errorf(
-				"no release found for version dev; set HOP_AGENT_BINARY to a local hop-agent binary",
+				"no release found for version %q; set HOP_AGENT_BINARY to a local hop-agent binary",
+				v,
 			)
 		}
 
@@ -68,7 +67,7 @@ func installAgent(ctx context.Context, client *ssh.Client, out io.Writer) error 
 		)
 		logf("Downloading hop-agent %s (%s)...", v, goarch)
 
-		data, err = fetchURL(ctx, binURL)
+		data, err = FetchURL(ctx, binURL)
 		if err != nil {
 			return fmt.Errorf("download hop-agent: %w", err)
 		}
@@ -76,10 +75,10 @@ func installAgent(ctx context.Context, client *ssh.Client, out io.Writer) error 
 		// Verify the downloaded binary against the published SHA256 checksums.
 		logf("Verifying checksum...")
 		csURL := fmt.Sprintf(
-			"https://github.com/hopboxdev/hopbox/releases/download/v%s/hop-agent_%s_checksums.txt",
-			v, v,
+			"https://github.com/hopboxdev/hopbox/releases/download/v%s/checksums.txt",
+			v,
 		)
-		expected, err := lookupChecksum(ctx, csURL, binName)
+		expected, err := LookupChecksum(ctx, csURL, binName)
 		if err != nil {
 			return fmt.Errorf("checksum lookup: %w", err)
 		}
@@ -116,8 +115,8 @@ func archToGoarch(uname string) string {
 	}
 }
 
-// fetchURL fetches url using ctx and returns the response body.
-func fetchURL(ctx context.Context, url string) ([]byte, error) {
+// FetchURL fetches url using ctx and returns the response body.
+func FetchURL(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -133,11 +132,11 @@ func fetchURL(ctx context.Context, url string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-// lookupChecksum downloads the checksums file at url and returns the expected
+// LookupChecksum downloads the checksums file at url and returns the expected
 // SHA256 hex digest for filename. The file format is "<hash>  <filename>" per
 // goreleaser defaults; both one-space and two-space separators are accepted.
-func lookupChecksum(ctx context.Context, url, filename string) (string, error) {
-	data, err := fetchURL(ctx, url)
+func LookupChecksum(ctx context.Context, url, filename string) (string, error) {
+	data, err := FetchURL(ctx, url)
 	if err != nil {
 		return "", err
 	}

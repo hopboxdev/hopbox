@@ -19,6 +19,7 @@ import (
 
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
+	"github.com/hopboxdev/hopbox/internal/version"
 	"github.com/hopboxdev/hopbox/internal/wgkey"
 )
 
@@ -93,7 +94,7 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 	defer func() { _ = client.Close() }()
 
 	logf("Connected. Installing hop-agent...")
-	if err := installAgent(ctx, client, out); err != nil {
+	if err := installAgent(ctx, client, out, version.Version); err != nil {
 		return nil, fmt.Errorf("install agent: %w", err)
 	}
 
