@@ -32,3 +32,6 @@ hopbox.yaml
 
 # goreleaser build output
 dist/
+
+# Worktrees
+.worktrees/
