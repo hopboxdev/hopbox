@@ -17,6 +17,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/manifest"
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
+	"github.com/hopboxdev/hopbox/internal/tui"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 	"github.com/hopboxdev/hopbox/internal/ui"
 	"github.com/hopboxdev/hopbox/internal/version"
@@ -105,7 +106,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 
 	fmt.Println(ui.StepOK(fmt.Sprintf("Interface %s up, %s → %s", tun.InterfaceName(), localIP, hostname)))
 
-	// Load workspace manifest if provided or if hopbox.yaml exists locally.
+	// Load workspace manifest.
 	wsPath := c.Workspace
 	if wsPath == "" {
 		wsPath = "hopbox.yaml"
@@ -116,10 +117,84 @@ func (c *UpCmd) Run(globals *CLI) error {
 		if err != nil {
 			return fmt.Errorf("parse manifest: %w", err)
 		}
-		fmt.Println(ui.StepOK(fmt.Sprintf("Loaded workspace: %s", ws.Name)))
 	}
 
-	// Start bridges
+	// Application setup steps via TUI runner.
+	agentClient := &http.Client{Timeout: agentClientTimeout}
+	agentURL := fmt.Sprintf("http://%s:%d/health", hostname, tunnel.AgentAPIPort)
+
+	var steps []tui.Step
+	steps = append(steps, tui.Step{
+		Title: fmt.Sprintf("Probing agent at %s", agentURL),
+		Run: func(ctx context.Context, sub func(string)) error {
+			if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
+				return fmt.Errorf("agent probe failed: %w", err)
+			}
+			// Check agent version.
+			if resp, err := agentClient.Get(agentURL); err == nil {
+				body, _ := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
+				var health map[string]any
+				if json.Unmarshal(body, &health) == nil {
+					if agentVer, ok := health["version"].(string); ok && agentVer != version.Version {
+						_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf(
+							"agent version %q differs from client %q — run 'hop upgrade' to sync",
+							agentVer, version.Version)))
+					}
+				}
+			}
+			sub("Agent is up")
+			return nil
+		},
+	})
+
+	if ws != nil {
+		steps = append(steps, tui.Step{
+			Title: fmt.Sprintf("Loading workspace: %s", ws.Name),
+			Run: func(ctx context.Context, sub func(string)) error {
+				rawManifest, err := os.ReadFile(wsPath)
+				if err != nil {
+					return nil // non-fatal
+				}
+				if _, err := rpcclient.Call(hostName, "workspace.sync", map[string]string{"yaml": string(rawManifest)}); err != nil {
+					_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("manifest sync failed: %v", err)))
+				} else {
+					sub("Manifest synced")
+				}
+				return nil
+			},
+		})
+	}
+
+	if ws != nil && len(ws.Packages) > 0 {
+		steps = append(steps, tui.Step{
+			Title: fmt.Sprintf("Installing %d package(s)", len(ws.Packages)),
+			Run: func(ctx context.Context, sub func(string)) error {
+				pkgs := make([]map[string]string, 0, len(ws.Packages))
+				for _, p := range ws.Packages {
+					pkgs = append(pkgs, map[string]string{
+						"name":    p.Name,
+						"backend": p.Backend,
+						"version": p.Version,
+					})
+				}
+				if _, err := rpcclient.Call(hostName, "packages.install", map[string]any{"packages": pkgs}); err != nil {
+					_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("package installation failed: %v", err)))
+				} else {
+					sub("Packages installed")
+				}
+				return nil
+			},
+		})
+	}
+
+	if len(steps) > 0 {
+		if err := tui.RunSteps(ctx, steps); err != nil {
+			return err
+		}
+	}
+
+	// Start bridges (after RunSteps, before monitoring).
 	var bridges []bridge.Bridge
 	if ws != nil {
 		for _, b := range ws.Bridges {
@@ -144,64 +219,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 		}
 	}
 
-	// With kernel TUN, the agent is reachable via the OS network stack.
-	agentClient := &http.Client{Timeout: agentClientTimeout}
-	agentURL := fmt.Sprintf("http://%s:%d/health", hostname, tunnel.AgentAPIPort)
-
-	// Probe /health with retry loop.
-	fmt.Println(ui.StepRun(fmt.Sprintf("Probing agent at %s", agentURL)))
-
-	if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("agent probe failed: %v", err)))
-	} else {
-		fmt.Println(ui.StepOK("Agent is up"))
-
-		// Check agent version and warn if it differs from the client.
-		if resp, err := agentClient.Get(agentURL); err == nil {
-			body, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
-			var health map[string]any
-			if json.Unmarshal(body, &health) == nil {
-				if agentVer, ok := health["version"].(string); ok && agentVer != version.Version {
-					_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf(
-						"agent version %q differs from client %q — run 'hop upgrade' to sync",
-						agentVer, version.Version)))
-				}
-			}
-		}
-	}
-
-	// Sync manifest to agent so scripts, backup, and services reload.
-	if ws != nil {
-		rawManifest, readErr := os.ReadFile(wsPath)
-		if readErr == nil {
-			if _, syncErr := rpcclient.Call(hostName, "workspace.sync", map[string]string{"yaml": string(rawManifest)}); syncErr != nil {
-				_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("manifest sync failed: %v", syncErr)))
-			} else {
-				fmt.Println(ui.StepOK("Manifest synced"))
-			}
-		}
-	}
-
-	// Install packages declared in the manifest.
-	if ws != nil && len(ws.Packages) > 0 {
-		fmt.Println(ui.StepRun(fmt.Sprintf("Installing %d package(s)", len(ws.Packages))))
-		pkgs := make([]map[string]string, 0, len(ws.Packages))
-		for _, p := range ws.Packages {
-			pkgs = append(pkgs, map[string]string{
-				"name":    p.Name,
-				"backend": p.Backend,
-				"version": p.Version,
-			})
-		}
-		if _, err := rpcclient.Call(hostName, "packages.install", map[string]any{"packages": pkgs}); err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("package installation failed: %v", err)))
-		} else {
-			fmt.Println(ui.StepOK("Packages installed"))
-		}
-	}
-
-	// Write tunnel state so other hop commands can find the tunnel.
+	// Write tunnel state.
 	state := &tunnel.TunnelState{
 		PID:         os.Getpid(),
 		Host:        hostName,
