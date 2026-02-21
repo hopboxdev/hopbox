@@ -73,89 +73,88 @@ func (c *ToCmd) Run(globals *CLI) error {
 	var snapID string
 	var targetCfg *hostconfig.HostConfig
 
-	steps := []tui.Step{
-		// Step 1: Snapshot source.
-		{Title: fmt.Sprintf("Creating snapshot on %s", sourceHost), Run: func(ctx context.Context, sub func(string)) error {
-			snapResult, err := rpcclient.Call(sourceHost, "snap.create", nil)
-			if err != nil {
-				return fmt.Errorf("create snapshot on %s: %w", sourceHost, err)
-			}
-			var snap struct {
-				SnapshotID string `json:"snapshot_id"`
-			}
-			if err := json.Unmarshal(snapResult, &snap); err != nil || snap.SnapshotID == "" {
-				return fmt.Errorf("could not parse snapshot ID from response: %s", string(snapResult))
-			}
-			snapID = snap.SnapshotID
-			sub(fmt.Sprintf("Snapshot %s created", snapID))
-			return nil
+	phases := []tui.Phase{
+		{Title: "Snapshot", Steps: []tui.Step{
+			{Title: fmt.Sprintf("Creating snapshot on %s", sourceHost), Run: func(ctx context.Context, send func(tui.StepEvent)) error {
+				snapResult, err := rpcclient.Call(sourceHost, "snap.create", nil)
+				if err != nil {
+					return fmt.Errorf("create snapshot on %s: %w", sourceHost, err)
+				}
+				var snap struct {
+					SnapshotID string `json:"snapshot_id"`
+				}
+				if err := json.Unmarshal(snapResult, &snap); err != nil || snap.SnapshotID == "" {
+					return fmt.Errorf("could not parse snapshot ID from response: %s", string(snapResult))
+				}
+				snapID = snap.SnapshotID
+				send(tui.StepEvent{Message: fmt.Sprintf("Snapshot %s created", snapID)})
+				return nil
+			}},
 		}},
-
-		// Step 2: Bootstrap target.
-		{Title: fmt.Sprintf("Bootstrapping %s", c.Target), Run: func(ctx context.Context, sub func(string)) error {
-			bootstrapOpts.OnStep = sub
-			var err error
-			targetCfg, err = setup.BootstrapWithClient(ctx, sshClient, capturedKey, bootstrapOpts, os.Stdout)
-			if err != nil {
-				return fmt.Errorf("bootstrap %s: %w", c.Target, err)
-			}
-			sub(fmt.Sprintf("%s bootstrapped", c.Target))
-			return nil
+		{Title: "Bootstrap Target", Steps: []tui.Step{
+			{Title: fmt.Sprintf("Bootstrapping %s", c.Target), Run: func(ctx context.Context, send func(tui.StepEvent)) error {
+				bootstrapOpts.OnStep = func(msg string) { send(tui.StepEvent{Message: msg}) }
+				var err error
+				targetCfg, err = setup.BootstrapWithClient(ctx, sshClient, capturedKey, bootstrapOpts, os.Stdout)
+				if err != nil {
+					return fmt.Errorf("bootstrap %s: %w", c.Target, err)
+				}
+				send(tui.StepEvent{Message: fmt.Sprintf("%s bootstrapped", c.Target)})
+				return nil
+			}},
 		}},
+		{Title: "Restore", Steps: []tui.Step{
+			{Title: fmt.Sprintf("Restoring snapshot on %s", c.Target), Run: func(ctx context.Context, send func(tui.StepEvent)) error {
+				send(tui.StepEvent{Message: fmt.Sprintf("Connecting to %s", c.Target)})
+				tunCfg, err := targetCfg.ToTunnelConfig()
+				if err != nil {
+					return fmt.Errorf("build tunnel config: %w", err)
+				}
+				tun := tunnel.NewClientTunnel(tunCfg)
 
-		// Step 3: Restore via temporary WireGuard tunnel.
-		{Title: fmt.Sprintf("Restoring snapshot on %s", c.Target), Run: func(ctx context.Context, sub func(string)) error {
-			sub(fmt.Sprintf("Connecting to %s", c.Target))
-			tunCfg, err := targetCfg.ToTunnelConfig()
-			if err != nil {
-				return fmt.Errorf("build tunnel config: %w", err)
-			}
-			tun := tunnel.NewClientTunnel(tunCfg)
+				tunCtx, tunCancel := context.WithTimeout(ctx, 5*time.Minute)
+				defer tunCancel()
+				tunErr := make(chan error, 1)
+				go func() { tunErr <- tun.Start(tunCtx) }()
 
-			tunCtx, tunCancel := context.WithTimeout(ctx, 5*time.Minute)
-			defer tunCancel()
-			tunErr := make(chan error, 1)
-			go func() { tunErr <- tun.Start(tunCtx) }()
+				select {
+				case <-tun.Ready():
+				case err := <-tunErr:
+					return fmt.Errorf("tunnel failed to start: %w", err)
+				case <-tunCtx.Done():
+					return fmt.Errorf("tunnel start timed out")
+				}
 
-			select {
-			case <-tun.Ready():
-			case err := <-tunErr:
-				return fmt.Errorf("tunnel failed to start: %w", err)
-			case <-tunCtx.Done():
-				return fmt.Errorf("tunnel start timed out")
-			}
+				agentClient := &http.Client{
+					Timeout:   agentClientTimeout,
+					Transport: &http.Transport{DialContext: tun.DialContext},
+				}
+				agentURL := fmt.Sprintf("http://%s:%d/health", targetCfg.AgentIP, tunnel.AgentAPIPort)
+				if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
+					return fmt.Errorf("target agent unreachable after bootstrap: %w", err)
+				}
+				send(tui.StepEvent{Message: fmt.Sprintf("Connected to %s", c.Target)})
 
-			agentClient := &http.Client{
-				Timeout:   agentClientTimeout,
-				Transport: &http.Transport{DialContext: tun.DialContext},
-			}
-			agentURL := fmt.Sprintf("http://%s:%d/health", targetCfg.AgentIP, tunnel.AgentAPIPort)
-			if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
-				return fmt.Errorf("target agent unreachable after bootstrap: %w", err)
-			}
-			sub(fmt.Sprintf("Connected to %s", c.Target))
-
-			sub(fmt.Sprintf("Restoring snapshot %s", snapID))
-			if _, err := rpcclient.CallWithClient(agentClient, targetCfg.AgentIP, "snap.restore", map[string]string{"id": snapID}); err != nil {
-				fmt.Fprintf(os.Stderr, "\nRestore failed. To retry manually:\n")
-				fmt.Fprintf(os.Stderr, "  hop snap restore %s --host %s\n", snapID, c.Target)
-				return fmt.Errorf("restore on %s: %w", c.Target, err)
-			}
-			sub(fmt.Sprintf("Snapshot restored on %s", c.Target))
-			return nil
-		}},
-
-		// Step 4: Switch default host.
-		{Title: fmt.Sprintf("Setting default host to %q", c.Target), Run: func(ctx context.Context, sub func(string)) error {
-			if err := hostconfig.SetDefaultHost(c.Target); err != nil {
-				return fmt.Errorf("set default host: %w", err)
-			}
-			sub(fmt.Sprintf("Default host set to %q", c.Target))
-			return nil
+				send(tui.StepEvent{Message: fmt.Sprintf("Restoring snapshot %s", snapID)})
+				if _, err := rpcclient.CallWithClient(agentClient, targetCfg.AgentIP, "snap.restore", map[string]string{"id": snapID}); err != nil {
+					fmt.Fprintf(os.Stderr, "\nRestore failed. To retry manually:\n")
+					fmt.Fprintf(os.Stderr, "  hop snap restore %s --host %s\n", snapID, c.Target)
+					return fmt.Errorf("restore on %s: %w", c.Target, err)
+				}
+				send(tui.StepEvent{Message: fmt.Sprintf("Snapshot restored on %s", c.Target)})
+				return nil
+			}},
+			{Title: fmt.Sprintf("Setting default host to %q", c.Target), Run: func(ctx context.Context, send func(tui.StepEvent)) error {
+				if err := hostconfig.SetDefaultHost(c.Target); err != nil {
+					return fmt.Errorf("set default host: %w", err)
+				}
+				send(tui.StepEvent{Message: fmt.Sprintf("Default host set to %q", c.Target)})
+				return nil
+			}},
 		}},
 	}
 
-	if err := tui.RunSteps(ctx, steps); err != nil {
+	if err := tui.RunPhases(ctx, "hop to "+c.Target, phases); err != nil {
 		return err
 	}
 

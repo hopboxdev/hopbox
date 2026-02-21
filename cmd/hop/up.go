@@ -123,14 +123,14 @@ func (c *UpCmd) Run(globals *CLI) error {
 	agentClient := &http.Client{Timeout: agentClientTimeout}
 	agentURL := fmt.Sprintf("http://%s:%d/health", hostname, tunnel.AgentAPIPort)
 
-	var steps []tui.Step
-	steps = append(steps, tui.Step{
-		Title: fmt.Sprintf("Probing agent at %s", agentURL),
-		Run: func(ctx context.Context, sub func(string)) error {
+	var phases []tui.Phase
+
+	// Agent phase.
+	agentSteps := []tui.Step{
+		{Title: fmt.Sprintf("Probing agent at %s", agentURL), Run: func(ctx context.Context, send func(tui.StepEvent)) error {
 			if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
 				return fmt.Errorf("agent probe failed: %w", err)
 			}
-			// Check agent version.
 			if resp, err := agentClient.Get(agentURL); err == nil {
 				body, _ := io.ReadAll(resp.Body)
 				_ = resp.Body.Close()
@@ -143,58 +143,61 @@ func (c *UpCmd) Run(globals *CLI) error {
 					}
 				}
 			}
-			sub("Agent is up")
+			send(tui.StepEvent{Message: "Agent is up"})
 			return nil
-		},
-	})
+		}},
+	}
+	phases = append(phases, tui.Phase{Title: "Agent", Steps: agentSteps})
 
+	// Workspace phase (optional).
 	if ws != nil {
-		steps = append(steps, tui.Step{
-			Title: fmt.Sprintf("Loading workspace: %s", ws.Name),
-			Run: func(ctx context.Context, sub func(string)) error {
+		var wsSteps []tui.Step
+		wsSteps = append(wsSteps, tui.Step{
+			Title: fmt.Sprintf("Syncing manifest: %s", ws.Name),
+			Run: func(ctx context.Context, send func(tui.StepEvent)) error {
 				rawManifest, err := os.ReadFile(wsPath)
 				if err != nil {
-					return nil // non-fatal
+					return err
 				}
 				if _, err := rpcclient.Call(hostName, "workspace.sync", map[string]string{"yaml": string(rawManifest)}); err != nil {
-					_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("manifest sync failed: %v", err)))
-				} else {
-					sub("Manifest synced")
+					return fmt.Errorf("manifest sync: %w", err)
 				}
+				send(tui.StepEvent{Message: "Manifest synced"})
 				return nil
 			},
+			NonFatal: true,
 		})
+		if len(ws.Packages) > 0 {
+			wsSteps = append(wsSteps, tui.Step{
+				Title: fmt.Sprintf("Installing %d package(s)", len(ws.Packages)),
+				Run: func(ctx context.Context, send func(tui.StepEvent)) error {
+					pkgs := make([]map[string]string, 0, len(ws.Packages))
+					for _, p := range ws.Packages {
+						pkgs = append(pkgs, map[string]string{
+							"name":    p.Name,
+							"backend": p.Backend,
+							"version": p.Version,
+						})
+					}
+					if _, err := rpcclient.Call(hostName, "packages.install", map[string]any{"packages": pkgs}); err != nil {
+						return fmt.Errorf("package install: %w", err)
+					}
+					send(tui.StepEvent{Message: "Packages installed"})
+					return nil
+				},
+				NonFatal: true,
+			})
+		}
+		phases = append(phases, tui.Phase{Title: "Workspace", Steps: wsSteps})
 	}
 
-	if ws != nil && len(ws.Packages) > 0 {
-		steps = append(steps, tui.Step{
-			Title: fmt.Sprintf("Installing %d package(s)", len(ws.Packages)),
-			Run: func(ctx context.Context, sub func(string)) error {
-				pkgs := make([]map[string]string, 0, len(ws.Packages))
-				for _, p := range ws.Packages {
-					pkgs = append(pkgs, map[string]string{
-						"name":    p.Name,
-						"backend": p.Backend,
-						"version": p.Version,
-					})
-				}
-				if _, err := rpcclient.Call(hostName, "packages.install", map[string]any{"packages": pkgs}); err != nil {
-					_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("package installation failed: %v", err)))
-				} else {
-					sub("Packages installed")
-				}
-				return nil
-			},
-		})
-	}
-
-	if len(steps) > 0 {
-		if err := tui.RunSteps(ctx, steps); err != nil {
+	if len(phases) > 0 {
+		if err := tui.RunPhases(ctx, "hop up", phases); err != nil {
 			return err
 		}
 	}
 
-	// Start bridges (after RunSteps, before monitoring).
+	// Start bridges (after RunPhases, before monitoring).
 	var bridges []bridge.Bridge
 	if ws != nil {
 		for _, b := range ws.Bridges {

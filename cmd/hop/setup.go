@@ -44,19 +44,21 @@ func (c *SetupCmd) Run() error {
 	}
 	defer func() { _ = client.Close() }()
 
-	// Bootstrap via TUI step runner.
-	steps := []tui.Step{
-		{Title: "Setting up " + c.Name, Run: func(ctx context.Context, sub func(string)) error {
-			opts.OnStep = sub
-			_, err := setup.BootstrapWithClient(ctx, client, capturedKey, opts, os.Stdout)
-			if err != nil {
-				return err
-			}
-			sub(fmt.Sprintf("%s ready", c.Name))
-			return nil
+	// Bootstrap via phased TUI runner.
+	phases := []tui.Phase{
+		{Title: "Bootstrap", Steps: []tui.Step{
+			{Title: "Setting up " + c.Name, Run: func(ctx context.Context, send func(tui.StepEvent)) error {
+				opts.OnStep = func(msg string) { send(tui.StepEvent{Message: msg}) }
+				_, err := setup.BootstrapWithClient(ctx, client, capturedKey, opts, os.Stdout)
+				if err != nil {
+					return err
+				}
+				send(tui.StepEvent{Message: fmt.Sprintf("%s ready", c.Name)})
+				return nil
+			}},
 		}},
 	}
-	if err := tui.RunSteps(ctx, steps); err != nil {
+	if err := tui.RunPhases(ctx, "hop setup", phases); err != nil {
 		return err
 	}
 

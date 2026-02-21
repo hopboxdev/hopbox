@@ -103,8 +103,8 @@ func (c *UpgradeCmd) Run(globals *CLI) error {
 		tv := targetVersion
 		steps = append(steps, tui.Step{
 			Title: "Upgrading client",
-			Run: func(ctx context.Context, sub func(string)) error {
-				return c.upgradeClientStep(ctx, tv, sub)
+			Run: func(ctx context.Context, send func(tui.StepEvent)) error {
+				return c.upgradeClientStep(ctx, tv, func(msg string) { send(tui.StepEvent{Message: msg}) })
 			},
 		})
 	}
@@ -112,23 +112,23 @@ func (c *UpgradeCmd) Run(globals *CLI) error {
 		tv := targetVersion
 		steps = append(steps, tui.Step{
 			Title: "Upgrading agent",
-			Run: func(ctx context.Context, sub func(string)) error {
-				return c.upgradeAgentStepWithClient(ctx, sshClient, agentCfg, agentHostName, tv, sub)
+			Run: func(ctx context.Context, send func(tui.StepEvent)) error {
+				return c.upgradeAgentStepWithClient(ctx, sshClient, agentCfg, agentHostName, tv, func(msg string) { send(tui.StepEvent{Message: msg}) })
 			},
 		})
 	} else if doAgent && sshClient == nil && agentHostName == "" {
-		// No host configured — show as skipped in the TUI.
 		steps = append(steps, tui.Step{
 			Title: "Upgrading agent",
-			Run: func(ctx context.Context, sub func(string)) error {
-				sub("Agent: skipped (no host configured)")
+			Run: func(ctx context.Context, send func(tui.StepEvent)) error {
+				send(tui.StepEvent{Message: "Agent: skipped (no host configured)"})
 				return nil
 			},
 		})
 	}
 
 	if len(steps) > 0 {
-		if err := tui.RunSteps(ctx, steps); err != nil {
+		phases := []tui.Phase{{Title: "Upgrade", Steps: steps}}
+		if err := tui.RunPhases(ctx, "hop upgrade", phases); err != nil {
 			return err
 		}
 	}
