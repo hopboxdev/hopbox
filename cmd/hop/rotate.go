@@ -8,6 +8,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/setup"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
+	"github.com/hopboxdev/hopbox/internal/ui"
 )
 
 // RotateCmd rotates WireGuard keys for a host without full re-setup.
@@ -26,7 +27,7 @@ func (c *RotateCmd) Run(globals *CLI) error {
 
 	// Warn if the tunnel is currently running.
 	if state, err := tunnel.LoadState(hostName); err == nil && state != nil {
-		fmt.Fprintf(os.Stderr, "Warning: tunnel is running (PID %d). Run 'hop down && hop up' after rotation to apply new keys.\n", state.PID)
+		fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("tunnel is running (PID %d). Run 'hop down && hop up' after rotation to apply new keys", state.PID)))
 	}
 
 	return setup.RotateKeys(context.Background(), cfg, os.Stdout)

@@ -15,6 +15,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/setup"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
+	"github.com/hopboxdev/hopbox/internal/ui"
 	"github.com/hopboxdev/hopbox/internal/version"
 )
 
@@ -54,17 +55,17 @@ func (c *UpgradeCmd) Run(globals *CLI) error {
 	// Resolve target version.
 	targetVersion := c.TargetVersion
 	if !c.Local && targetVersion == "" {
-		fmt.Println("Checking for latest release...")
+		fmt.Println(ui.StepRun("Checking for latest release"))
 		v, err := latestRelease(ctx)
 		if err != nil {
 			return fmt.Errorf("fetch latest release: %w", err)
 		}
 		targetVersion = v
-		fmt.Printf("Latest release: %s\n\n", targetVersion)
+		fmt.Println(ui.StepOK(fmt.Sprintf("Latest release: %s", targetVersion)))
 	}
 
 	if c.Local {
-		fmt.Println("Upgrading from local builds (./dist/)...")
+		fmt.Println(ui.StepRun("Upgrading from local builds (./dist/)"))
 	}
 
 	// --- Client ---
@@ -88,7 +89,7 @@ func (c *UpgradeCmd) Run(globals *CLI) error {
 		}
 	}
 
-	fmt.Println("\nUpgrade complete.")
+	fmt.Println("\n" + ui.StepOK("Upgrade complete"))
 	return nil
 }
 
@@ -104,13 +105,13 @@ func (c *UpgradeCmd) upgradeClient(ctx context.Context, targetVersion string) er
 
 	// Check package manager.
 	if pm := version.DetectPackageManager(execPath); pm != "" {
-		fmt.Printf("  Client: installed via %s — run your package manager to update.\n", pm)
+		fmt.Println(ui.StepOK(fmt.Sprintf("Client: installed via %s — run your package manager to update", pm)))
 		return nil
 	}
 
 	// Version check (skip for --local since versions are both "dev").
 	if !c.Local && targetVersion == version.Version {
-		fmt.Printf("  Client: already at %s\n", version.Version)
+		fmt.Println(ui.StepOK(fmt.Sprintf("Client: already at %s", version.Version)))
 		return nil
 	}
 
@@ -120,17 +121,17 @@ func (c *UpgradeCmd) upgradeClient(ctx context.Context, targetVersion string) er
 		if err != nil {
 			return fmt.Errorf("read %s: %w", paths.client, err)
 		}
-		fmt.Printf("  Client: upgrading from local build...")
+		fmt.Println(ui.StepRun("Client: upgrading from local build"))
 		if err := atomicReplace(execPath, data); err != nil {
 			return err
 		}
-		fmt.Printf(" done (%s)\n", execPath)
+		fmt.Println(ui.StepOK(fmt.Sprintf("Client: upgraded (%s)", execPath)))
 		return nil
 	}
 
 	binName := fmt.Sprintf("hop_%s_%s_%s", targetVersion, runtime.GOOS, runtime.GOARCH)
 	binURL := fmt.Sprintf("%s/v%s/%s", releaseBaseURL, targetVersion, binName)
-	fmt.Printf("  Client: %s → %s ", version.Version, targetVersion)
+	fmt.Println(ui.StepRun(fmt.Sprintf("Client: %s → %s", version.Version, targetVersion)))
 	data, err := setup.FetchURL(ctx, binURL)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
@@ -141,7 +142,7 @@ func (c *UpgradeCmd) upgradeClient(ctx context.Context, targetVersion string) er
 	if err := atomicReplace(execPath, data); err != nil {
 		return err
 	}
-	fmt.Printf(" done (%s)\n", execPath)
+	fmt.Println(ui.StepOK(fmt.Sprintf("Client: upgraded (%s)", execPath)))
 	return nil
 }
 
@@ -151,7 +152,7 @@ func (c *UpgradeCmd) upgradeHelper(ctx context.Context, targetVersion string) er
 	// Version check via helper daemon.
 	if !c.Local && helperClient.IsReachable() {
 		if hv, err := helperClient.Version(); err == nil && hv == targetVersion {
-			fmt.Printf("  Helper: already at %s\n", hv)
+			fmt.Println(ui.StepOK(fmt.Sprintf("Helper: already at %s", hv)))
 			return nil
 		}
 	}
@@ -164,11 +165,11 @@ func (c *UpgradeCmd) upgradeHelper(ctx context.Context, targetVersion string) er
 		if err != nil {
 			return fmt.Errorf("read %s: %w", paths.helper, err)
 		}
-		fmt.Println("  Helper: upgrading from local build (requires sudo)")
+		fmt.Println(ui.StepRun("Helper: upgrading from local build (requires sudo)"))
 	} else {
 		binName := fmt.Sprintf("hop-helper_%s_%s_%s", targetVersion, runtime.GOOS, runtime.GOARCH)
 		binURL := fmt.Sprintf("%s/v%s/%s", releaseBaseURL, targetVersion, binName)
-		fmt.Printf("  Helper: upgrading to %s (requires sudo)\n", targetVersion)
+		fmt.Println(ui.StepRun(fmt.Sprintf("Helper: upgrading to %s (requires sudo)", targetVersion)))
 		data, err = setup.FetchURL(ctx, binURL)
 		if err != nil {
 			return fmt.Errorf("download: %w", err)
@@ -203,14 +204,14 @@ func (c *UpgradeCmd) upgradeHelper(ctx context.Context, targetVersion string) er
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("helper --install: %w", err)
 	}
-	fmt.Println("  Helper: done")
+	fmt.Println(ui.StepOK("Helper: upgraded"))
 	return nil
 }
 
 func (c *UpgradeCmd) upgradeAgent(ctx context.Context, globals *CLI, targetVersion string) error {
 	hostName, err := resolveHost(globals)
 	if err != nil {
-		fmt.Printf("  Agent: skipped (no host configured)\n")
+		fmt.Println(ui.StepOK("Agent: skipped (no host configured)"))
 		return nil
 	}
 
@@ -221,7 +222,7 @@ func (c *UpgradeCmd) upgradeAgent(ctx context.Context, globals *CLI, targetVersi
 
 	// Warn if tunnel is running.
 	if state, err := tunnel.LoadState(hostName); err == nil && state != nil {
-		fmt.Fprintf(os.Stderr, "  Warning: tunnel is running (PID %d). The agent will restart.\n", state.PID)
+		fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("tunnel is running (PID %d). The agent will restart", state.PID)))
 	}
 
 	if c.Local {
@@ -238,7 +239,7 @@ func (c *UpgradeCmd) upgradeAgent(ctx context.Context, globals *CLI, targetVersi
 		agentVersion = ""
 	}
 
-	fmt.Printf("  Agent (%s): upgrading...\n", hostName)
+	fmt.Println(ui.StepRun(fmt.Sprintf("Agent (%s): upgrading", hostName)))
 	return setup.UpgradeAgent(ctx, cfg, os.Stdout, agentVersion)
 }
 
