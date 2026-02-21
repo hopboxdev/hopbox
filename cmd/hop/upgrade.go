@@ -240,7 +240,7 @@ func (c *UpgradeCmd) upgradeAgent(ctx context.Context, globals *CLI, targetVersi
 	}
 
 	fmt.Println(ui.StepRun(fmt.Sprintf("Agent (%s): upgrading", hostName)))
-	if err := setup.UpgradeAgent(ctx, cfg, os.Stdout, agentVersion); err != nil {
+	if err := setup.UpgradeAgent(ctx, cfg, os.Stdout, agentVersion, nil); err != nil {
 		return err
 	}
 	fmt.Println(ui.StepOK(fmt.Sprintf("Agent (%s): upgraded", hostName)))

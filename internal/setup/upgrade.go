@@ -13,9 +13,14 @@ import (
 // the service. It reuses the SSH credentials saved during `hop setup`.
 // If clientVersion is non-empty and the agent already reports that version,
 // the upgrade is skipped.
-func UpgradeAgent(ctx context.Context, cfg *hostconfig.HostConfig, out io.Writer, clientVersion string) error {
+func UpgradeAgent(ctx context.Context, cfg *hostconfig.HostConfig, out io.Writer, clientVersion string, onStep func(string)) error {
 	logf := func(format string, args ...any) {
-		_, _ = fmt.Fprintf(out, format+"\n", args...)
+		msg := fmt.Sprintf(format, args...)
+		if onStep != nil {
+			onStep(msg)
+		} else {
+			_, _ = fmt.Fprintln(out, msg)
+		}
 	}
 
 	logf("Connecting to %s:%d as %s...", cfg.SSHHost, cfg.SSHPort, cfg.SSHUser)
