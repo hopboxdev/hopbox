@@ -40,10 +40,13 @@ func TestStepRunnerSubStep(t *testing.T) {
 		subMsg:  "main step",
 		spinner: spinner.New(),
 	}
-	model, _ := m.Update(subStepMsg{msg: "doing work"})
+	model, cmd := m.Update(subStepMsg{msg: "doing work"})
 	r := model.(*stepRunner)
 	if r.subMsg != "doing work" {
 		t.Errorf("subMsg = %q, want %q", r.subMsg, "doing work")
+	}
+	if cmd != nil {
+		t.Errorf("subStepMsg should return nil cmd, got non-nil")
 	}
 }
 
@@ -67,6 +70,9 @@ func TestStepRunnerStepDone(t *testing.T) {
 	if r.subMsg != "step 2" {
 		t.Errorf("subMsg = %q, want %q", r.subMsg, "step 2")
 	}
+	if len(r.done) != 1 || r.done[0] != "step 1" {
+		t.Errorf("done = %v, want [step 1]", r.done)
+	}
 }
 
 func TestStepRunnerLastStepDone(t *testing.T) {
@@ -87,6 +93,9 @@ func TestStepRunnerLastStepDone(t *testing.T) {
 	}
 	if r.err != nil {
 		t.Errorf("err = %v, want nil", r.err)
+	}
+	if len(r.done) != 1 || r.done[0] != "only step" {
+		t.Errorf("done = %v, want [only step]", r.done)
 	}
 }
 
@@ -111,22 +120,28 @@ func TestStepRunnerStepError(t *testing.T) {
 
 func TestStepRunnerViewShowsSpinner(t *testing.T) {
 	steps := []Step{
-		{Title: "running", Run: func(ctx context.Context, sub func(string)) error { return nil }},
+		{Title: "step 1", Run: func(ctx context.Context, sub func(string)) error { return nil }},
+		{Title: "step 2", Run: func(ctx context.Context, sub func(string)) error { return nil }},
 	}
 	m := &stepRunner{
 		ctx:     context.Background(),
 		cancel:  func() {},
 		steps:   steps,
-		subMsg:  "running",
+		done:    []string{"completed task"},
+		current: 1,
+		subMsg:  "step 2",
 		spinner: spinner.New(),
 	}
 	view := m.View()
-	if !strings.Contains(view, "running") {
-		t.Errorf("View = %q, want to contain %q", view, "running")
+	if !strings.Contains(view, "completed task") {
+		t.Errorf("View should contain completed task, got %q", view)
+	}
+	if !strings.Contains(view, "step 2") {
+		t.Errorf("View should contain active step, got %q", view)
 	}
 }
 
-func TestStepRunnerViewEmptyWhenDone(t *testing.T) {
+func TestStepRunnerViewWhenDone(t *testing.T) {
 	steps := []Step{
 		{Title: "done", Run: func(ctx context.Context, sub func(string)) error { return nil }},
 	}
@@ -134,11 +149,31 @@ func TestStepRunnerViewEmptyWhenDone(t *testing.T) {
 		ctx:     context.Background(),
 		cancel:  func() {},
 		steps:   steps,
+		done:    []string{"done"},
 		current: 1, // past the last step
 		spinner: spinner.New(),
 	}
-	if view := m.View(); view != "" {
-		t.Errorf("View = %q, want empty", view)
+	view := m.View()
+	if !strings.Contains(view, "done") {
+		t.Errorf("View should show completed steps, got %q", view)
+	}
+}
+
+func TestStepRunnerViewShowsError(t *testing.T) {
+	steps := []Step{
+		{Title: "failing", Run: func(ctx context.Context, sub func(string)) error { return nil }},
+	}
+	m := &stepRunner{
+		ctx:     context.Background(),
+		cancel:  func() {},
+		steps:   steps,
+		subMsg:  "failing",
+		err:     errors.New("boom"),
+		spinner: spinner.New(),
+	}
+	view := m.View()
+	if !strings.Contains(view, "failing") {
+		t.Errorf("View should show failed step, got %q", view)
 	}
 }
 

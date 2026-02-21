@@ -29,9 +29,21 @@ WantedBy=multi-user.target
 // It checks $HOP_AGENT_BINARY for a local override first; otherwise downloads
 // the release binary matching the VPS architecture and verifies its SHA256
 // checksum against the published checksums file.
-func installAgent(ctx context.Context, client *ssh.Client, out io.Writer, targetVersion string) error {
+func installAgent(ctx context.Context, client *ssh.Client, out io.Writer, targetVersion string, onStep func(string)) error {
 	logf := func(format string, args ...any) {
-		_, _ = fmt.Fprintf(out, "  "+format+"\n", args...)
+		msg := fmt.Sprintf(format, args...)
+		if onStep != nil {
+			onStep(msg)
+		} else {
+			_, _ = fmt.Fprintln(out, "  "+msg)
+		}
+	}
+
+	// Suppress progress bar when running inside a TUI step — bubbletea
+	// owns the terminal and \r-based updates would garble the output.
+	var progressOut io.Writer
+	if onStep == nil {
+		progressOut = out
 	}
 
 	var data []byte
@@ -89,7 +101,7 @@ func installAgent(ctx context.Context, client *ssh.Client, out io.Writer, target
 	}
 
 	logf("Uploading hop-agent (%d bytes)...", len(data))
-	if err := scpFile(client, "/usr/local/bin/hop-agent", data, 0755, out); err != nil {
+	if err := scpFile(client, "/usr/local/bin/hop-agent", data, 0755, progressOut); err != nil {
 		return fmt.Errorf("upload hop-agent: %w", err)
 	}
 

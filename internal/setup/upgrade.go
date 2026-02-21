@@ -6,14 +6,21 @@ import (
 	"io"
 	"strings"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 )
 
-// UpgradeAgent uploads a new hop-agent binary to the remote host and restarts
-// the service. It reuses the SSH credentials saved during `hop setup`.
-// If clientVersion is non-empty and the agent already reports that version,
-// the upgrade is skipped.
-func UpgradeAgent(ctx context.Context, cfg *hostconfig.HostConfig, out io.Writer, clientVersion string, onStep func(string)) error {
+// UpgradeAgentSSH establishes an SSH connection for agent upgrade.
+// Call this before the TUI starts so passphrase prompts work.
+func UpgradeAgentSSH(ctx context.Context, cfg *hostconfig.HostConfig) (*ssh.Client, error) {
+	return SSHConnect(ctx, cfg, cfg.SSHKeyPath)
+}
+
+// UpgradeAgentWithClient uploads a new hop-agent binary to the remote host and
+// restarts the service using an already-connected SSH client.
+// Use UpgradeAgentSSH to establish the connection first.
+func UpgradeAgentWithClient(ctx context.Context, client *ssh.Client, cfg *hostconfig.HostConfig, out io.Writer, clientVersion string, onStep func(string)) error {
 	logf := func(format string, args ...any) {
 		msg := fmt.Sprintf(format, args...)
 		if onStep != nil {
@@ -22,14 +29,6 @@ func UpgradeAgent(ctx context.Context, cfg *hostconfig.HostConfig, out io.Writer
 			_, _ = fmt.Fprintln(out, msg)
 		}
 	}
-
-	logf("Connecting to %s:%d as %s...", cfg.SSHHost, cfg.SSHPort, cfg.SSHUser)
-
-	client, err := SSHConnect(ctx, cfg, cfg.SSHKeyPath)
-	if err != nil {
-		return fmt.Errorf("SSH connect: %w", err)
-	}
-	defer func() { _ = client.Close() }()
 
 	// Show the currently running agent version and exit early if already current.
 	// Output format: "hop-agent <VERSION> (commit <COMMIT>, built <DATE>)"
@@ -46,7 +45,7 @@ func UpgradeAgent(ctx context.Context, cfg *hostconfig.HostConfig, out io.Writer
 	}
 
 	logf("Uploading new hop-agent binary...")
-	if err := installAgent(ctx, client, out, clientVersion); err != nil {
+	if err := installAgent(ctx, client, out, clientVersion, onStep); err != nil {
 		return fmt.Errorf("install agent: %w", err)
 	}
 
@@ -62,4 +61,18 @@ func UpgradeAgent(ctx context.Context, cfg *hostconfig.HostConfig, out io.Writer
 
 	logf("Agent upgrade complete.")
 	return nil
+}
+
+// UpgradeAgent uploads a new hop-agent binary to the remote host and restarts
+// the service. It reuses the SSH credentials saved during `hop setup`.
+// If clientVersion is non-empty and the agent already reports that version,
+// the upgrade is skipped.
+func UpgradeAgent(ctx context.Context, cfg *hostconfig.HostConfig, out io.Writer, clientVersion string, onStep func(string)) error {
+	client, err := UpgradeAgentSSH(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("SSH connect: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	return UpgradeAgentWithClient(ctx, client, cfg, out, clientVersion, onStep)
 }

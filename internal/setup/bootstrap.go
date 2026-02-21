@@ -98,7 +98,7 @@ func BootstrapWithClient(ctx context.Context, client *ssh.Client, capturedKey ss
 	}
 
 	logf("Installing hop-agent...")
-	if err := installAgent(ctx, client, out, version.Version); err != nil {
+	if err := installAgent(ctx, client, out, version.Version, opts.OnStep); err != nil {
 		return nil, fmt.Errorf("install agent: %w", err)
 	}
 

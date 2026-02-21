@@ -99,6 +99,7 @@ func (c *ToCmd) Run(globals *CLI) error {
 			if err != nil {
 				return fmt.Errorf("bootstrap %s: %w", c.Target, err)
 			}
+			sub(fmt.Sprintf("%s bootstrapped", c.Target))
 			return nil
 		}},
 
@@ -140,6 +141,7 @@ func (c *ToCmd) Run(globals *CLI) error {
 				fmt.Fprintf(os.Stderr, "  hop snap restore %s --host %s\n", snapID, c.Target)
 				return fmt.Errorf("restore on %s: %w", c.Target, err)
 			}
+			sub(fmt.Sprintf("Snapshot restored on %s", c.Target))
 			return nil
 		}},
 
@@ -148,6 +150,7 @@ func (c *ToCmd) Run(globals *CLI) error {
 			if err := hostconfig.SetDefaultHost(c.Target); err != nil {
 				return fmt.Errorf("set default host: %w", err)
 			}
+			sub(fmt.Sprintf("Default host set to %q", c.Target))
 			return nil
 		}},
 	}

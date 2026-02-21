@@ -49,7 +49,11 @@ func (c *SetupCmd) Run() error {
 		{Title: "Setting up " + c.Name, Run: func(ctx context.Context, sub func(string)) error {
 			opts.OnStep = sub
 			_, err := setup.BootstrapWithClient(ctx, client, capturedKey, opts, os.Stdout)
-			return err
+			if err != nil {
+				return err
+			}
+			sub(fmt.Sprintf("%s ready", c.Name))
+			return nil
 		}},
 	}
 	if err := tui.RunSteps(ctx, steps); err != nil {

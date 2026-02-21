@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/hopboxdev/hopbox/internal/helper"
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/setup"
@@ -55,7 +57,7 @@ func (c *UpgradeCmd) Run(globals *CLI) error {
 	// Resolve target version.
 	targetVersion := c.TargetVersion
 	if !c.Local && targetVersion == "" {
-		fmt.Println(ui.StepRun("Checking for latest release"))
+		fmt.Println(ui.StepOK("Checking for latest release"))
 		v, err := latestRelease(ctx)
 		if err != nil {
 			return fmt.Errorf("fetch latest release: %w", err)
@@ -75,6 +77,26 @@ func (c *UpgradeCmd) Run(globals *CLI) error {
 		}
 	}
 
+	// SSH connect before TUI so passphrase prompts work.
+	var sshClient *ssh.Client
+	var agentCfg *hostconfig.HostConfig
+	var agentHostName string
+	if doAgent {
+		var err error
+		agentHostName, err = resolveHost(globals)
+		if err == nil {
+			agentCfg, err = hostconfig.Load(agentHostName)
+			if err != nil {
+				return fmt.Errorf("load host config: %w", err)
+			}
+			sshClient, err = setup.UpgradeAgentSSH(ctx, agentCfg)
+			if err != nil {
+				return fmt.Errorf("SSH connect for agent upgrade: %w", err)
+			}
+			defer func() { _ = sshClient.Close() }()
+		}
+	}
+
 	// Client + Agent upgrades via TUI step runner.
 	var steps []tui.Step
 	if doClient {
@@ -86,13 +108,21 @@ func (c *UpgradeCmd) Run(globals *CLI) error {
 			},
 		})
 	}
-	if doAgent {
+	if doAgent && sshClient != nil {
 		tv := targetVersion
-		g := globals
 		steps = append(steps, tui.Step{
 			Title: "Upgrading agent",
 			Run: func(ctx context.Context, sub func(string)) error {
-				return c.upgradeAgentStep(ctx, g, tv, sub)
+				return c.upgradeAgentStepWithClient(ctx, sshClient, agentCfg, agentHostName, tv, sub)
+			},
+		})
+	} else if doAgent && sshClient == nil && agentHostName == "" {
+		// No host configured — show as skipped in the TUI.
+		steps = append(steps, tui.Step{
+			Title: "Upgrading agent",
+			Run: func(ctx context.Context, sub func(string)) error {
+				sub("Agent: skipped (no host configured)")
+				return nil
 			},
 		})
 	}
@@ -137,6 +167,7 @@ func (c *UpgradeCmd) upgradeClientStep(ctx context.Context, targetVersion string
 		if err := atomicReplace(execPath, data); err != nil {
 			return err
 		}
+		sub("Client upgraded from local build")
 		return nil
 	}
 
@@ -175,11 +206,9 @@ func (c *UpgradeCmd) upgradeHelper(ctx context.Context, targetVersion string) er
 		if err != nil {
 			return fmt.Errorf("read %s: %w", paths.helper, err)
 		}
-		fmt.Println(ui.StepRun("Helper: upgrading from local build (requires sudo)"))
 	} else {
 		binName := fmt.Sprintf("hop-helper_%s_%s_%s", targetVersion, runtime.GOOS, runtime.GOARCH)
 		binURL := fmt.Sprintf("%s/v%s/%s", releaseBaseURL, targetVersion, binName)
-		fmt.Println(ui.StepRun(fmt.Sprintf("Helper: upgrading to %s (requires sudo)", targetVersion)))
 		data, err = setup.FetchURL(ctx, binURL)
 		if err != nil {
 			return fmt.Errorf("download: %w", err)
@@ -218,18 +247,7 @@ func (c *UpgradeCmd) upgradeHelper(ctx context.Context, targetVersion string) er
 	return nil
 }
 
-func (c *UpgradeCmd) upgradeAgentStep(ctx context.Context, globals *CLI, targetVersion string, sub func(string)) error {
-	hostName, err := resolveHost(globals)
-	if err != nil {
-		sub("Agent: skipped (no host configured)")
-		return nil
-	}
-
-	cfg, err := hostconfig.Load(hostName)
-	if err != nil {
-		return fmt.Errorf("load host config: %w", err)
-	}
-
+func (c *UpgradeCmd) upgradeAgentStepWithClient(ctx context.Context, client *ssh.Client, cfg *hostconfig.HostConfig, hostName, targetVersion string, sub func(string)) error {
 	if state, err := tunnel.LoadState(hostName); err == nil && state != nil {
 		sub(fmt.Sprintf("Agent (%s): tunnel running (PID %d), agent will restart", hostName, state.PID))
 	}
@@ -247,9 +265,10 @@ func (c *UpgradeCmd) upgradeAgentStep(ctx context.Context, globals *CLI, targetV
 	}
 
 	sub(fmt.Sprintf("Agent (%s): upgrading", hostName))
-	if err := setup.UpgradeAgent(ctx, cfg, os.Stdout, agentVersion, sub); err != nil {
+	if err := setup.UpgradeAgentWithClient(ctx, client, cfg, os.Stdout, agentVersion, sub); err != nil {
 		return err
 	}
+	sub(fmt.Sprintf("Agent (%s) upgraded", hostName))
 	return nil
 }
 

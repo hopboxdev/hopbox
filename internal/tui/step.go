@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,7 +27,6 @@ type stepDoneMsg struct {
 }
 
 // subStepMsg is sent by a step's sub callback to update the spinner text.
-// The previous message is printed with a checkmark and the spinner shows the new one.
 type subStepMsg struct {
 	msg string
 }
@@ -36,6 +36,7 @@ type stepRunner struct {
 	cancel  context.CancelFunc
 	steps   []Step
 	current int
+	done    []string // completed step messages (shown with checkmark)
 	spinner spinner.Model
 	subMsg  string // current message shown next to spinner
 	err     error
@@ -64,35 +65,25 @@ func (m *stepRunner) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "ctrl+c" {
 			m.cancel()
 			m.err = context.Canceled
-			return m, tea.Sequence(
-				tea.Println("  "+ui.StepFail(m.subMsg)),
-				tea.Quit,
-			)
+			return m, tea.Quit
 		}
 
 	case subStepMsg:
-		prev := m.subMsg
 		m.subMsg = msg.msg
-		if prev != "" {
-			return m, tea.Println("  " + ui.StepOK(prev))
-		}
 		return m, nil
 
 	case stepDoneMsg:
 		if msg.err != nil {
 			m.err = msg.err
-			return m, tea.Sequence(
-				tea.Println("  "+ui.StepFail(m.subMsg)),
-				tea.Quit,
-			)
+			return m, tea.Quit
 		}
-		printCmd := tea.Println("  " + ui.StepOK(m.subMsg))
+		m.done = append(m.done, m.subMsg)
 		m.current++
 		if m.current >= len(m.steps) {
-			return m, tea.Sequence(printCmd, tea.Quit)
+			return m, tea.Quit
 		}
 		m.subMsg = m.steps[m.current].Title
-		return m, tea.Batch(printCmd, m.runStep(m.current))
+		return m, m.runStep(m.current)
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -104,10 +95,16 @@ func (m *stepRunner) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *stepRunner) View() string {
-	if m.current >= len(m.steps) || m.err != nil {
-		return ""
+	var b strings.Builder
+	for _, msg := range m.done {
+		b.WriteString(ui.StepOK(msg) + "\n")
 	}
-	return "  " + m.spinner.View() + " " + m.subMsg
+	if m.err != nil {
+		b.WriteString(ui.StepFail(m.subMsg) + "\n")
+	} else if m.current < len(m.steps) {
+		b.WriteString(m.spinner.View() + " " + m.subMsg + "\n")
+	}
+	return b.String()
 }
 
 // RunSteps executes steps sequentially with animated spinner progress.
@@ -151,17 +148,14 @@ func RunSteps(ctx context.Context, steps []Step) error {
 // runStepsPlain runs steps without animation (non-TTY fallback).
 func runStepsPlain(ctx context.Context, steps []Step) error {
 	for _, step := range steps {
-		lastMsg := step.Title
-		sub := func(msg string) {
-			fmt.Println("  " + ui.StepOK(lastMsg))
-			lastMsg = msg
-		}
+		msg := step.Title
+		sub := func(s string) { msg = s }
 		err := step.Run(ctx, sub)
 		if err != nil {
-			fmt.Println("  " + ui.StepFail(lastMsg))
+			fmt.Println(ui.StepFail(msg))
 			return err
 		}
-		fmt.Println("  " + ui.StepOK(lastMsg))
+		fmt.Println(ui.StepOK(msg))
 	}
 	return nil
 }

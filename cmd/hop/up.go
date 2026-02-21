@@ -71,7 +71,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	fmt.Println(ui.StepRun(fmt.Sprintf("Bringing up tunnel to %s (%s)", cfg.Name, cfg.Endpoint)))
+	fmt.Println(ui.StepOK(fmt.Sprintf("Bringing up tunnel to %s (%s)", cfg.Name, cfg.Endpoint)))
 
 	tunnelErr := make(chan error, 1)
 
