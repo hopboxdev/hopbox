@@ -54,7 +54,8 @@ func (c *ToCmd) Run(globals *CLI) error {
 	}
 
 	// Step 1/4: Snapshot source.
-	fmt.Printf("\nStep 1/4  Snapshot  creating snapshot on %s...\n", sourceHost)
+	fmt.Println("\nStep 1/4  Snapshot")
+	fmt.Println("  " + ui.StepRun(fmt.Sprintf("creating snapshot on %s", sourceHost)))
 	snapResult, err := rpcclient.Call(sourceHost, "snap.create", nil)
 	if err != nil {
 		return fmt.Errorf("create snapshot on %s: %w", sourceHost, err)
@@ -65,10 +66,11 @@ func (c *ToCmd) Run(globals *CLI) error {
 	if err := json.Unmarshal(snapResult, &snap); err != nil || snap.SnapshotID == "" {
 		return fmt.Errorf("could not parse snapshot ID from response: %s", string(snapResult))
 	}
-	fmt.Printf("            snapshot %s created.\n", snap.SnapshotID)
+	fmt.Println("  " + ui.StepOK(fmt.Sprintf("snapshot %s created", snap.SnapshotID)))
 
 	// Step 2/4: Bootstrap target.
-	fmt.Printf("\nStep 2/4  Bootstrap  setting up %s...\n", c.Target)
+	fmt.Println("\nStep 2/4  Bootstrap")
+	fmt.Println("  " + ui.StepRun(fmt.Sprintf("setting up %s", c.Target)))
 	targetCfg, err := setup.Bootstrap(ctx, setup.Options{
 		Name:       c.Target,
 		SSHHost:    c.Addr,
@@ -82,10 +84,11 @@ func (c *ToCmd) Run(globals *CLI) error {
 	if err != nil {
 		return fmt.Errorf("bootstrap %s: %w", c.Target, err)
 	}
-	fmt.Printf("            %s bootstrapped.\n", c.Target)
+	fmt.Println("  " + ui.StepOK(fmt.Sprintf("%s bootstrapped", c.Target)))
 
 	// Step 3/4: Restore via temporary WireGuard tunnel.
-	fmt.Printf("\nStep 3/4  Restore    connecting to %s...\n", c.Target)
+	fmt.Println("\nStep 3/4  Restore")
+	fmt.Println("  " + ui.StepRun(fmt.Sprintf("connecting to %s", c.Target)))
 	tunCfg, err := targetCfg.ToTunnelConfig()
 	if err != nil {
 		return fmt.Errorf("build tunnel config: %w", err)
@@ -115,21 +118,22 @@ func (c *ToCmd) Run(globals *CLI) error {
 		return fmt.Errorf("target agent unreachable after bootstrap: %w", err)
 	}
 
-	fmt.Printf("            restoring snapshot %s...\n", snap.SnapshotID)
+	fmt.Println("  " + ui.StepRun(fmt.Sprintf("restoring snapshot %s", snap.SnapshotID)))
 	if _, err := rpcclient.CallWithClient(agentClient, targetCfg.AgentIP, "snap.restore", map[string]string{"id": snap.SnapshotID}); err != nil {
 		fmt.Fprintf(os.Stderr, "\nRestore failed. To retry manually:\n")
 		fmt.Fprintf(os.Stderr, "  hop snap restore %s --host %s\n", snap.SnapshotID, c.Target)
 		return fmt.Errorf("restore on %s: %w", c.Target, err)
 	}
-	fmt.Printf("            snapshot restored.\n")
+	fmt.Println("  " + ui.StepOK("snapshot restored"))
 
 	// Step 4/4: Switch default host.
-	fmt.Printf("\nStep 4/4  Switch     setting default host to %s...\n", c.Target)
+	fmt.Println("\nStep 4/4  Switch")
+	fmt.Println("  " + ui.StepOK(fmt.Sprintf("default host set to %q", c.Target)))
 	if err := hostconfig.SetDefaultHost(c.Target); err != nil {
 		return fmt.Errorf("set default host: %w", err)
 	}
 
-	fmt.Printf("\nMigration complete. Default host set to %q.\n", c.Target)
+	fmt.Println("\n" + ui.StepOK(fmt.Sprintf("Migration complete. Default host set to %q", c.Target)))
 	fmt.Printf("Run 'hop up' to connect to %s.\n", c.Target)
 	return nil
 }
