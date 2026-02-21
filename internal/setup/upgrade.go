@@ -55,6 +55,6 @@ func UpgradeAgent(ctx context.Context, cfg *hostconfig.HostConfig, out io.Writer
 		logf("New agent version: %s", ver)
 	}
 
-	logf("Upgrade complete.")
+	logf("Agent upgrade complete.")
 	return nil
 }

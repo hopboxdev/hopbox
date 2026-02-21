@@ -190,6 +190,11 @@ func (c *UpgradeCmd) upgradeHelper(ctx context.Context, targetVersion string) er
 	if err := os.WriteFile(tmpPath, data, 0755); err != nil {
 		return err
 	}
+	// WriteFile doesn't update permissions on an existing file (created by
+	// CreateTemp with 0600), so chmod explicitly to make it executable.
+	if err := os.Chmod(tmpPath, 0755); err != nil {
+		return err
+	}
 
 	cmd := exec.Command("sudo", tmpPath, "--install")
 	cmd.Stdout = os.Stdout
