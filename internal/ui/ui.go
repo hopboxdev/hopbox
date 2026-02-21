@@ -63,6 +63,74 @@ func Section(title, content string, width int) string {
 	)
 }
 
+// StepOK returns a green checkmark step line.
+func StepOK(msg string) string {
+	return lipgloss.NewStyle().Foreground(Green).Render("✔") + " " + msg
+}
+
+// StepRun returns a yellow circle step line (in progress).
+func StepRun(msg string) string {
+	return lipgloss.NewStyle().Foreground(Yellow).Render("○") + " " + msg
+}
+
+// StepFail returns a red cross step line.
+func StepFail(msg string) string {
+	return lipgloss.NewStyle().Foreground(Red).Render("✘") + " " + msg
+}
+
+// Warn returns a yellow warning message (caller writes to stderr).
+func Warn(msg string) string {
+	return lipgloss.NewStyle().Foreground(Yellow).Render("⚠") + " " + msg
+}
+
+// Error returns a red error message (caller writes to stderr).
+func Error(msg string) string {
+	return lipgloss.NewStyle().Foreground(Red).Render("✘") + " " + msg
+}
+
+// Table renders columnar data with subtle-colored headers.
+// Each row is a slice of strings matching the headers length.
+func Table(headers []string, rows [][]string) string {
+	// Calculate column widths.
+	widths := make([]int, len(headers))
+	for i, h := range headers {
+		widths[i] = len(h)
+	}
+	for _, row := range rows {
+		for i, cell := range row {
+			if i < len(widths) && len(cell) > widths[i] {
+				widths[i] = len(cell)
+			}
+		}
+	}
+
+	// Render header.
+	var headerParts []string
+	for i, h := range headers {
+		headerParts = append(headerParts, fmt.Sprintf("%-*s", widths[i], h))
+	}
+	headerLine := lipgloss.NewStyle().Foreground(Subtle).Render(
+		strings.Join(headerParts, "  "),
+	)
+
+	// Render rows.
+	var lines []string
+	lines = append(lines, headerLine)
+	for _, row := range rows {
+		var parts []string
+		for i, cell := range row {
+			w := 0
+			if i < len(widths) {
+				w = widths[i]
+			}
+			parts = append(parts, fmt.Sprintf("%-*s", w, cell))
+		}
+		lines = append(lines, strings.Join(parts, "  "))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 // Row renders a two-column key-value row, with optional second pair.
 func Row(k1, v1, k2, v2 string, width int) string {
 	left := fmt.Sprintf("%-14s %s", k1+":", v1)

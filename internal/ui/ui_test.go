@@ -52,3 +52,59 @@ func TestRowSinglePair(t *testing.T) {
 		t.Error("Row missing key")
 	}
 }
+
+func TestStepOK(t *testing.T) {
+	got := StepOK("tunnel established")
+	if !strings.Contains(got, "✔") {
+		t.Error("StepOK missing checkmark")
+	}
+	if !strings.Contains(got, "tunnel established") {
+		t.Error("StepOK missing message")
+	}
+}
+
+func TestStepRun(t *testing.T) {
+	got := StepRun("starting services")
+	if !strings.Contains(got, "○") {
+		t.Error("StepRun missing circle")
+	}
+}
+
+func TestStepFail(t *testing.T) {
+	got := StepFail("connection refused")
+	if !strings.Contains(got, "✘") {
+		t.Error("StepFail missing cross")
+	}
+}
+
+func TestWarn(t *testing.T) {
+	got := Warn("something happened")
+	if !strings.Contains(got, "⚠") {
+		t.Error("Warn missing warning symbol")
+	}
+	if !strings.Contains(got, "something happened") {
+		t.Error("Warn missing message")
+	}
+}
+
+func TestError(t *testing.T) {
+	got := Error("bad thing")
+	if !strings.Contains(got, "✘") {
+		t.Error("Error missing cross")
+	}
+}
+
+func TestTable(t *testing.T) {
+	headers := []string{"NAME", "TYPE", "STATUS"}
+	rows := [][]string{
+		{"postgres", "docker", "running"},
+		{"redis", "docker", "stopped"},
+	}
+	got := Table(headers, rows)
+	if !strings.Contains(got, "NAME") {
+		t.Error("Table missing header")
+	}
+	if !strings.Contains(got, "postgres") {
+		t.Error("Table missing row data")
+	}
+}
