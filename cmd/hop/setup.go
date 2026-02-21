@@ -14,7 +14,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/helper"
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/setup"
-	"github.com/hopboxdev/hopbox/internal/ui"
+	"github.com/hopboxdev/hopbox/internal/tui"
 )
 
 // SetupCmd bootstraps a new remote host.
@@ -33,19 +33,31 @@ func (c *SetupCmd) Run() error {
 		SSHPort:    c.Port,
 		SSHUser:    c.User,
 		SSHKeyPath: c.SSHKey,
-		OnStep: func(msg string) {
-			fmt.Println(ui.StepOK(msg))
-		},
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	if _, err := setup.Bootstrap(ctx, opts, os.Stdout); err != nil {
+	// SSH connect with TOFU happens before the TUI (interactive prompt).
+	client, capturedKey, err := setup.SSHConnectTOFU(ctx, opts, os.Stdout)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	// Bootstrap via TUI step runner.
+	steps := []tui.Step{
+		{Title: "Setting up " + c.Name, Run: func(ctx context.Context, sub func(string)) error {
+			opts.OnStep = sub
+			_, err := setup.BootstrapWithClient(ctx, client, capturedKey, opts, os.Stdout)
+			return err
+		}},
+	}
+	if err := tui.RunSteps(ctx, steps); err != nil {
 		return err
 	}
 
 	// Auto-set as default host if no default is configured yet.
-	if cfg, err := hostconfig.LoadGlobalConfig(); err == nil && cfg.DefaultHost == "" {
+	if gcfg, err := hostconfig.LoadGlobalConfig(); err == nil && gcfg.DefaultHost == "" {
 		if err := hostconfig.SetDefaultHost(c.Name); err == nil {
 			fmt.Printf("Default host set to %q.\n", c.Name)
 		}
