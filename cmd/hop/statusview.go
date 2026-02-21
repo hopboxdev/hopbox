@@ -75,7 +75,7 @@ func renderTunnelSection(d dashData, width int) string {
 		if d.ping > 0 {
 			pingStr = fmt.Sprintf("%dms", d.ping.Milliseconds())
 		}
-		lines = append(lines, renderRow("PING", pingStr, "UPTIME", formatDuration(d.uptime), width))
+		lines = append(lines, renderRow("LATENCY", pingStr, "UPTIME", formatDuration(d.uptime), width))
 
 		healthyStr := "-"
 		if d.lastHealthy > 0 {
