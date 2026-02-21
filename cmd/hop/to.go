@@ -15,6 +15,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
 	"github.com/hopboxdev/hopbox/internal/setup"
+	"github.com/hopboxdev/hopbox/internal/tui"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 	"github.com/hopboxdev/hopbox/internal/ui"
 )
@@ -40,7 +41,7 @@ func (c *ToCmd) Run(globals *CLI) error {
 		return fmt.Errorf("target host must differ from source host")
 	}
 
-	// Show confirmation prompt before any work begins.
+	// Confirmation prompt (before TUI).
 	fmt.Printf("Migrate workspace from %s → %s (%s)?\n", sourceHost, c.Target, c.Addr)
 	fmt.Println("  1. Create snapshot on", sourceHost)
 	fmt.Println("  2. Bootstrap", c.Target, "via SSH")
@@ -52,86 +53,107 @@ func (c *ToCmd) Run(globals *CLI) error {
 		fmt.Println("Aborted.")
 		return nil
 	}
+	fmt.Println()
 
-	// Step 1/4: Snapshot source.
-	fmt.Println("\nStep 1/4  Snapshot")
-	fmt.Println("  " + ui.StepRun(fmt.Sprintf("creating snapshot on %s", sourceHost)))
-	snapResult, err := rpcclient.Call(sourceHost, "snap.create", nil)
-	if err != nil {
-		return fmt.Errorf("create snapshot on %s: %w", sourceHost, err)
-	}
-	var snap struct {
-		SnapshotID string `json:"snapshot_id"`
-	}
-	if err := json.Unmarshal(snapResult, &snap); err != nil || snap.SnapshotID == "" {
-		return fmt.Errorf("could not parse snapshot ID from response: %s", string(snapResult))
-	}
-	fmt.Println("  " + ui.StepOK(fmt.Sprintf("snapshot %s created", snap.SnapshotID)))
-
-	// Step 2/4: Bootstrap target.
-	fmt.Println("\nStep 2/4  Bootstrap")
-	fmt.Println("  " + ui.StepRun(fmt.Sprintf("setting up %s", c.Target)))
-	targetCfg, err := setup.Bootstrap(ctx, setup.Options{
+	// SSH connect with TOFU for bootstrap target (before TUI).
+	bootstrapOpts := setup.Options{
 		Name:       c.Target,
 		SSHHost:    c.Addr,
 		SSHPort:    c.Port,
 		SSHUser:    c.User,
 		SSHKeyPath: c.SSHKey,
-		OnStep: func(msg string) {
-			fmt.Println("  " + ui.StepOK(msg))
-		},
-	}, os.Stdout)
+	}
+	sshClient, capturedKey, err := setup.SSHConnectTOFU(ctx, bootstrapOpts, os.Stdout)
 	if err != nil {
-		return fmt.Errorf("bootstrap %s: %w", c.Target, err)
+		return fmt.Errorf("SSH connect to %s: %w", c.Target, err)
 	}
-	fmt.Println("  " + ui.StepOK(fmt.Sprintf("%s bootstrapped", c.Target)))
+	defer func() { _ = sshClient.Close() }()
 
-	// Step 3/4: Restore via temporary WireGuard tunnel.
-	fmt.Println("\nStep 3/4  Restore")
-	fmt.Println("  " + ui.StepRun(fmt.Sprintf("connecting to %s", c.Target)))
-	tunCfg, err := targetCfg.ToTunnelConfig()
-	if err != nil {
-		return fmt.Errorf("build tunnel config: %w", err)
+	// Shared state across steps.
+	var snapID string
+	var targetCfg *hostconfig.HostConfig
+
+	steps := []tui.Step{
+		// Step 1: Snapshot source.
+		{Title: fmt.Sprintf("Creating snapshot on %s", sourceHost), Run: func(ctx context.Context, sub func(string)) error {
+			snapResult, err := rpcclient.Call(sourceHost, "snap.create", nil)
+			if err != nil {
+				return fmt.Errorf("create snapshot on %s: %w", sourceHost, err)
+			}
+			var snap struct {
+				SnapshotID string `json:"snapshot_id"`
+			}
+			if err := json.Unmarshal(snapResult, &snap); err != nil || snap.SnapshotID == "" {
+				return fmt.Errorf("could not parse snapshot ID from response: %s", string(snapResult))
+			}
+			snapID = snap.SnapshotID
+			sub(fmt.Sprintf("Snapshot %s created", snapID))
+			return nil
+		}},
+
+		// Step 2: Bootstrap target.
+		{Title: fmt.Sprintf("Bootstrapping %s", c.Target), Run: func(ctx context.Context, sub func(string)) error {
+			bootstrapOpts.OnStep = sub
+			var err error
+			targetCfg, err = setup.BootstrapWithClient(ctx, sshClient, capturedKey, bootstrapOpts, os.Stdout)
+			if err != nil {
+				return fmt.Errorf("bootstrap %s: %w", c.Target, err)
+			}
+			return nil
+		}},
+
+		// Step 3: Restore via temporary WireGuard tunnel.
+		{Title: fmt.Sprintf("Restoring snapshot on %s", c.Target), Run: func(ctx context.Context, sub func(string)) error {
+			sub(fmt.Sprintf("Connecting to %s", c.Target))
+			tunCfg, err := targetCfg.ToTunnelConfig()
+			if err != nil {
+				return fmt.Errorf("build tunnel config: %w", err)
+			}
+			tun := tunnel.NewClientTunnel(tunCfg)
+
+			tunCtx, tunCancel := context.WithTimeout(ctx, 5*time.Minute)
+			defer tunCancel()
+			tunErr := make(chan error, 1)
+			go func() { tunErr <- tun.Start(tunCtx) }()
+
+			select {
+			case <-tun.Ready():
+			case err := <-tunErr:
+				return fmt.Errorf("tunnel failed to start: %w", err)
+			case <-tunCtx.Done():
+				return fmt.Errorf("tunnel start timed out")
+			}
+
+			agentClient := &http.Client{
+				Timeout:   agentClientTimeout,
+				Transport: &http.Transport{DialContext: tun.DialContext},
+			}
+			agentURL := fmt.Sprintf("http://%s:%d/health", targetCfg.AgentIP, tunnel.AgentAPIPort)
+			if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
+				return fmt.Errorf("target agent unreachable after bootstrap: %w", err)
+			}
+			sub(fmt.Sprintf("Connected to %s", c.Target))
+
+			sub(fmt.Sprintf("Restoring snapshot %s", snapID))
+			if _, err := rpcclient.CallWithClient(agentClient, targetCfg.AgentIP, "snap.restore", map[string]string{"id": snapID}); err != nil {
+				fmt.Fprintf(os.Stderr, "\nRestore failed. To retry manually:\n")
+				fmt.Fprintf(os.Stderr, "  hop snap restore %s --host %s\n", snapID, c.Target)
+				return fmt.Errorf("restore on %s: %w", c.Target, err)
+			}
+			return nil
+		}},
+
+		// Step 4: Switch default host.
+		{Title: fmt.Sprintf("Setting default host to %q", c.Target), Run: func(ctx context.Context, sub func(string)) error {
+			if err := hostconfig.SetDefaultHost(c.Target); err != nil {
+				return fmt.Errorf("set default host: %w", err)
+			}
+			return nil
+		}},
 	}
-	tun := tunnel.NewClientTunnel(tunCfg)
 
-	tunCtx, tunCancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer tunCancel()
-	tunErr := make(chan error, 1)
-	go func() { tunErr <- tun.Start(tunCtx) }()
-
-	// Wait for the tunnel netstack to be ready before using DialContext.
-	select {
-	case <-tun.Ready():
-	case err := <-tunErr:
-		return fmt.Errorf("tunnel failed to start: %w", err)
-	case <-tunCtx.Done():
-		return fmt.Errorf("tunnel start timed out")
-	}
-
-	agentClient := &http.Client{
-		Timeout:   agentClientTimeout,
-		Transport: &http.Transport{DialContext: tun.DialContext},
-	}
-	agentURL := fmt.Sprintf("http://%s:%d/health", targetCfg.AgentIP, tunnel.AgentAPIPort)
-	if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
-		return fmt.Errorf("target agent unreachable after bootstrap: %w", err)
-	}
-	fmt.Println("  " + ui.StepOK(fmt.Sprintf("connected to %s", c.Target)))
-
-	fmt.Println("  " + ui.StepRun(fmt.Sprintf("restoring snapshot %s", snap.SnapshotID)))
-	if _, err := rpcclient.CallWithClient(agentClient, targetCfg.AgentIP, "snap.restore", map[string]string{"id": snap.SnapshotID}); err != nil {
-		fmt.Fprintf(os.Stderr, "\nRestore failed. To retry manually:\n")
-		fmt.Fprintf(os.Stderr, "  hop snap restore %s --host %s\n", snap.SnapshotID, c.Target)
-		return fmt.Errorf("restore on %s: %w", c.Target, err)
-	}
-	fmt.Println("  " + ui.StepOK("snapshot restored"))
-
-	// Step 4/4: Switch default host.
-	fmt.Println("\nStep 4/4  Switch")
-	fmt.Println("  " + ui.StepOK(fmt.Sprintf("default host set to %q", c.Target)))
-	if err := hostconfig.SetDefaultHost(c.Target); err != nil {
-		return fmt.Errorf("set default host: %w", err)
+	if err := tui.RunSteps(ctx, steps); err != nil {
+		return err
 	}
 
 	fmt.Println("\n" + ui.StepOK(fmt.Sprintf("Migration complete. Default host set to %q", c.Target)))
