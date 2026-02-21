@@ -3,10 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"text/tabwriter"
 
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
+	"github.com/hopboxdev/hopbox/internal/ui"
 )
 
 // ServicesCmd manages workspace services.
@@ -38,22 +37,27 @@ func (c *ServicesLsCmd) Run(globals *CLI) error {
 		return fmt.Errorf("parse response: %w", err)
 	}
 	if len(svcs) == 0 {
-		fmt.Println("No services.")
+		fmt.Println(ui.Section("Services", "No services.", ui.MaxWidth))
 		return nil
 	}
-	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintf(tw, "NAME\tTYPE\tSTATUS\n")
+
+	headers := []string{"NAME", "STATUS", "TYPE"}
+	var rows [][]string
 	for _, s := range svcs {
+		dot := ui.Dot(ui.StateStopped)
 		status := "stopped"
 		if s.Running {
+			dot = ui.Dot(ui.StateConnected)
 			status = "running"
 		}
 		if s.Error != "" {
+			dot = ui.Dot(ui.StateDisconnected)
 			status = "error: " + s.Error
 		}
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", s.Name, s.Type, status)
+		rows = append(rows, []string{dot + " " + s.Name, status, s.Type})
 	}
-	return tw.Flush()
+	fmt.Println(ui.Section("Services", ui.Table(headers, rows), ui.MaxWidth))
+	return nil
 }
 
 // ServicesRestartCmd restarts a named service.
