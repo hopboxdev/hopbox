@@ -20,6 +20,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
 	"github.com/hopboxdev/hopbox/internal/setup"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
+	"github.com/hopboxdev/hopbox/internal/ui"
 	"github.com/hopboxdev/hopbox/internal/version"
 )
 
@@ -71,7 +72,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	fmt.Printf("Bringing up tunnel to %s (%s)...\n", cfg.Name, cfg.Endpoint)
+	fmt.Println(ui.StepRun(fmt.Sprintf("Bringing up tunnel to %s (%s)", cfg.Name, cfg.Endpoint)))
 
 	tunnelErr := make(chan error, 1)
 
@@ -104,7 +105,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 	}
 	defer func() { _ = helperClient.RemoveHost(hostname) }()
 
-	fmt.Printf("Interface %s up, %s → %s\n", tun.InterfaceName(), localIP, hostname)
+	fmt.Println(ui.StepOK(fmt.Sprintf("Interface %s up, %s → %s", tun.InterfaceName(), localIP, hostname)))
 
 	// Load workspace manifest if provided or if hopbox.yaml exists locally.
 	wsPath := c.Workspace
@@ -117,7 +118,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 		if err != nil {
 			return fmt.Errorf("parse manifest: %w", err)
 		}
-		fmt.Printf("Loaded workspace: %s\n", ws.Name)
+		fmt.Println(ui.StepOK(fmt.Sprintf("Loaded workspace: %s", ws.Name)))
 	}
 
 	// Start bridges
@@ -130,7 +131,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 				bridges = append(bridges, br)
 				go func(br bridge.Bridge) {
 					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
-						_, _ = fmt.Fprintf(os.Stderr, "clipboard bridge error: %v\n", err)
+						_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("clipboard bridge error: %v", err)))
 					}
 				}(br)
 			case "cdp":
@@ -138,7 +139,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 				bridges = append(bridges, br)
 				go func(br bridge.Bridge) {
 					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
-						_, _ = fmt.Fprintf(os.Stderr, "CDP bridge error: %v\n", err)
+						_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("CDP bridge error: %v", err)))
 					}
 				}(br)
 			}
@@ -150,12 +151,12 @@ func (c *UpCmd) Run(globals *CLI) error {
 	agentURL := fmt.Sprintf("http://%s:%d/health", hostname, tunnel.AgentAPIPort)
 
 	// Probe /health with retry loop.
-	fmt.Printf("Probing agent at %s...\n", agentURL)
+	fmt.Println(ui.StepRun(fmt.Sprintf("Probing agent at %s", agentURL)))
 
 	if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Warning: agent probe failed: %v\n", err)
+		_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("agent probe failed: %v", err)))
 	} else {
-		fmt.Println("Agent is up.")
+		fmt.Println(ui.StepOK("Agent is up"))
 
 		// Check agent version and offer to upgrade if it differs from the client.
 		if resp, err := agentClient.Get(agentURL); err == nil {
@@ -168,11 +169,11 @@ func (c *UpCmd) Run(globals *CLI) error {
 					scanner := bufio.NewScanner(os.Stdin)
 					if scanner.Scan() && strings.ToLower(strings.TrimSpace(scanner.Text())) == "y" {
 						if err := setup.UpgradeAgent(ctx, cfg, os.Stdout, version.Version); err != nil {
-							_, _ = fmt.Fprintf(os.Stderr, "Warning: agent upgrade failed: %v\n", err)
+							_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("agent upgrade failed: %v", err)))
 						} else if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
-							_, _ = fmt.Fprintf(os.Stderr, "Warning: post-upgrade agent probe failed: %v\n", err)
+							_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("post-upgrade agent probe failed: %v", err)))
 						} else {
-							fmt.Println("Agent upgraded and reachable.")
+							fmt.Println(ui.StepOK("Agent upgraded and reachable"))
 						}
 					}
 				}
@@ -185,16 +186,16 @@ func (c *UpCmd) Run(globals *CLI) error {
 		rawManifest, readErr := os.ReadFile(wsPath)
 		if readErr == nil {
 			if _, syncErr := rpcclient.Call(hostName, "workspace.sync", map[string]string{"yaml": string(rawManifest)}); syncErr != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "Warning: manifest sync failed: %v\n", syncErr)
+				_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("manifest sync failed: %v", syncErr)))
 			} else {
-				fmt.Println("Manifest synced.")
+				fmt.Println(ui.StepOK("Manifest synced"))
 			}
 		}
 	}
 
 	// Install packages declared in the manifest.
 	if ws != nil && len(ws.Packages) > 0 {
-		fmt.Printf("Installing %d package(s)...\n", len(ws.Packages))
+		fmt.Println(ui.StepRun(fmt.Sprintf("Installing %d package(s)", len(ws.Packages))))
 		pkgs := make([]map[string]string, 0, len(ws.Packages))
 		for _, p := range ws.Packages {
 			pkgs = append(pkgs, map[string]string{
@@ -204,9 +205,9 @@ func (c *UpCmd) Run(globals *CLI) error {
 			})
 		}
 		if _, err := rpcclient.Call(hostName, "packages.install", map[string]any{"packages": pkgs}); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Warning: package installation failed: %v\n", err)
+			_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("package installation failed: %v", err)))
 		} else {
-			fmt.Println("Packages installed.")
+			fmt.Println(ui.StepOK("Packages installed"))
 		}
 	}
 
@@ -221,7 +222,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 		LastHealthy: time.Now(),
 	}
 	if err := tunnel.WriteState(state); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Warning: write tunnel state: %v\n", err)
+		_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("write tunnel state: %v", err)))
 	}
 	defer func() { _ = tunnel.RemoveState(hostName) }()
 
@@ -231,7 +232,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 		}
 	}
 
-	fmt.Println("Tunnel up. Press Ctrl-C to stop.")
+	fmt.Println(ui.StepOK("Tunnel up. Press Ctrl-C to stop"))
 
 	monitor := tunnel.NewConnMonitor(tunnel.MonitorConfig{
 		HealthURL: agentURL,
@@ -249,13 +250,13 @@ func (c *UpCmd) Run(globals *CLI) error {
 				state.LastHealthy = evt.At
 			}
 			if err := tunnel.WriteState(state); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "Warning: update tunnel state: %v\n", err)
+				_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("update tunnel state: %v", err)))
 			}
 		},
 		OnHealthy: func(t time.Time) {
 			state.LastHealthy = t
 			if err := tunnel.WriteState(state); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "Warning: update tunnel state: %v\n", err)
+				_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("update tunnel state: %v", err)))
 			}
 		},
 	})
@@ -264,7 +265,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 	// Block until Ctrl-C
 	select {
 	case <-ctx.Done():
-		fmt.Println("\nShutting down...")
+		fmt.Println("\n" + ui.StepRun("Shutting down..."))
 	case err := <-tunnelErr:
 		if err != nil {
 			return fmt.Errorf("tunnel error: %w", err)
