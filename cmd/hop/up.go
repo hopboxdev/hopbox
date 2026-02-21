@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,7 +17,6 @@ import (
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/manifest"
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
-	"github.com/hopboxdev/hopbox/internal/setup"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 	"github.com/hopboxdev/hopbox/internal/ui"
 	"github.com/hopboxdev/hopbox/internal/version"
@@ -158,24 +156,16 @@ func (c *UpCmd) Run(globals *CLI) error {
 	} else {
 		fmt.Println(ui.StepOK("Agent is up"))
 
-		// Check agent version and offer to upgrade if it differs from the client.
+		// Check agent version and warn if it differs from the client.
 		if resp, err := agentClient.Get(agentURL); err == nil {
 			body, _ := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
 			var health map[string]any
 			if json.Unmarshal(body, &health) == nil {
 				if agentVer, ok := health["version"].(string); ok && agentVer != version.Version {
-					fmt.Printf("Agent version %q differs from client %q. Upgrade agent? [y/N] ", agentVer, version.Version)
-					scanner := bufio.NewScanner(os.Stdin)
-					if scanner.Scan() && strings.ToLower(strings.TrimSpace(scanner.Text())) == "y" {
-						if err := setup.UpgradeAgent(ctx, cfg, os.Stdout, version.Version); err != nil {
-							_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("agent upgrade failed: %v", err)))
-						} else if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
-							_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("post-upgrade agent probe failed: %v", err)))
-						} else {
-							fmt.Println(ui.StepOK("Agent upgraded and reachable"))
-						}
-					}
+					_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf(
+						"agent version %q differs from client %q — run 'hop upgrade' to sync",
+						agentVer, version.Version)))
 				}
 			}
 		}

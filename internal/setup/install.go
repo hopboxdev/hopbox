@@ -172,7 +172,8 @@ func scpFile(client *ssh.Client, remotePath string, data []byte, mode os.FileMod
 	return nil
 }
 
-// progressReader wraps a byte slice and reports upload progress to out every 10%.
+// progressReader wraps a byte slice and reports upload progress to out as
+// an inline progress bar that updates in place via carriage return.
 type progressReader struct {
 	data    []byte
 	pos     int
@@ -180,6 +181,8 @@ type progressReader struct {
 	out     io.Writer
 	lastPct int
 }
+
+const barWidth = 30
 
 func (r *progressReader) Read(p []byte) (int, error) {
 	if r.pos >= len(r.data) {
@@ -189,9 +192,14 @@ func (r *progressReader) Read(p []byte) (int, error) {
 	r.pos += n
 	if r.total > 0 && r.out != nil {
 		pct := r.pos * 100 / r.total
-		if pct/10 > r.lastPct/10 {
+		if pct != r.lastPct {
 			r.lastPct = pct
-			_, _ = fmt.Fprintf(r.out, "    %d%%\n", pct)
+			filled := barWidth * pct / 100
+			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+			_, _ = fmt.Fprintf(r.out, "\r    [%s] %3d%%", bar, pct)
+			if pct == 100 {
+				_, _ = fmt.Fprintln(r.out)
+			}
 		}
 	}
 	return n, nil
