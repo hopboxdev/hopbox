@@ -27,10 +27,6 @@ var (
 	dotConnected    = lipgloss.NewStyle().Foreground(green).Render("●")
 	dotDisconnected = lipgloss.NewStyle().Foreground(red).Render("●")
 	dotStopped      = lipgloss.NewStyle().Foreground(yellow).Render("●")
-
-	footerStyle = lipgloss.NewStyle().
-			Foreground(subtle).
-			Align(lipgloss.Right)
 )
 
 // renderDashboard renders the full dashboard view from dashData.
@@ -57,10 +53,6 @@ func renderDashboard(d dashData, width int) string {
 	if d.tunnelUp && len(d.bridges) > 0 {
 		sections = append(sections, renderBridgesSection(d, contentWidth))
 	}
-
-	// --- Footer ---
-	footer := footerStyle.Width(width).Render("q quit · r refresh")
-	sections = append(sections, footer)
 
 	return strings.Join(sections, "\n")
 }
@@ -148,13 +140,12 @@ func renderBridgesSection(d dashData, width int) string {
 
 // renderRow renders a two-column key-value row, with optional second pair.
 func renderRow(k1, v1, k2, v2 string, width int) string {
-	half := width / 2
 	left := fmt.Sprintf("%-14s %s", k1+":", v1)
 	if k2 == "" {
 		return left
 	}
-	right := fmt.Sprintf("%-14s %s", k2+":", v2)
-	gap := half - len(left)
+	right := fmt.Sprintf("%s %s", k2+":", v2)
+	gap := width/2 - len(left)
 	if gap < 2 {
 		gap = 2
 	}
