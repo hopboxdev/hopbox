@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
+	"github.com/hopboxdev/hopbox/internal/ui"
 )
 
 // HostCmd manages the host registry.
@@ -50,17 +52,19 @@ func (c *HostLsCmd) Run() error {
 		return err
 	}
 	if len(names) == 0 {
-		fmt.Println("No hosts configured. Use 'hop setup' to add one.")
+		fmt.Println(ui.Section("Hosts", "No hosts configured. Use 'hop setup' to add one.", ui.MaxWidth))
 		return nil
 	}
 	cfg, _ := hostconfig.LoadGlobalConfig()
+	var lines []string
 	for _, n := range names {
 		if cfg != nil && n == cfg.DefaultHost {
-			fmt.Println("* " + n)
+			lines = append(lines, fmt.Sprintf("%s %s   (default)", ui.Dot(ui.StateConnected), n))
 		} else {
-			fmt.Println("  " + n)
+			lines = append(lines, "  "+n)
 		}
 	}
+	fmt.Println(ui.Section("Hosts", strings.Join(lines, "\n"), ui.MaxWidth))
 	return nil
 }
 
