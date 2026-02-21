@@ -65,7 +65,7 @@ func (c *UpgradeCmd) Run(globals *CLI) error {
 	}
 
 	if c.Local {
-		fmt.Println(ui.StepRun("Upgrading from local builds (./dist/)"))
+		fmt.Println(ui.StepOK("Upgrading from local builds (./dist/)"))
 	}
 
 	// --- Client ---
@@ -240,7 +240,11 @@ func (c *UpgradeCmd) upgradeAgent(ctx context.Context, globals *CLI, targetVersi
 	}
 
 	fmt.Println(ui.StepRun(fmt.Sprintf("Agent (%s): upgrading", hostName)))
-	return setup.UpgradeAgent(ctx, cfg, os.Stdout, agentVersion)
+	if err := setup.UpgradeAgent(ctx, cfg, os.Stdout, agentVersion); err != nil {
+		return err
+	}
+	fmt.Println(ui.StepOK(fmt.Sprintf("Agent (%s): upgraded", hostName)))
+	return nil
 }
 
 // atomicReplace writes data to path atomically via rename.

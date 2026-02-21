@@ -117,6 +117,7 @@ func (c *ToCmd) Run(globals *CLI) error {
 	if err := probeAgent(ctx, agentURL, agentProbeTimeout, agentClient); err != nil {
 		return fmt.Errorf("target agent unreachable after bootstrap: %w", err)
 	}
+	fmt.Println("  " + ui.StepOK(fmt.Sprintf("connected to %s", c.Target)))
 
 	fmt.Println("  " + ui.StepRun(fmt.Sprintf("restoring snapshot %s", snap.SnapshotID)))
 	if _, err := rpcclient.CallWithClient(agentClient, targetCfg.AgentIP, "snap.restore", map[string]string{"id": snap.SnapshotID}); err != nil {
