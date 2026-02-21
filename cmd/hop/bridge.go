@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"text/tabwriter"
+	"strings"
 
 	"github.com/hopboxdev/hopbox/internal/manifest"
+	"github.com/hopboxdev/hopbox/internal/ui"
 )
 
 // BridgeCmd manages local-remote bridges.
@@ -25,15 +25,15 @@ func (c *BridgeLsCmd) Run() error {
 		return fmt.Errorf("load manifest: %w", err)
 	}
 	if len(ws.Bridges) == 0 {
-		fmt.Println("No bridges configured.")
+		fmt.Println(ui.Section("Bridges", "No bridges configured.", ui.MaxWidth))
 		return nil
 	}
-	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintf(tw, "TYPE\tSTATUS\n")
+	var lines []string
 	for _, b := range ws.Bridges {
-		_, _ = fmt.Fprintf(tw, "%s\tconfigured\n", b.Type)
+		lines = append(lines, fmt.Sprintf("%s %s   configured", ui.Dot(ui.StateConnected), b.Type))
 	}
-	return tw.Flush()
+	fmt.Println(ui.Section("Bridges", strings.Join(lines, "\n"), ui.MaxWidth))
+	return nil
 }
 
 // BridgeRestartCmd restarts a bridge (requires tunnel to be up via hop up).
