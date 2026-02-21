@@ -8,6 +8,10 @@ Phase 0 complete, Phase 1 in progress. `hop setup`, `hop up`, `hop to`,
 `hop upgrade` verified working. Reconnection monitoring, snapshot/restore,
 and bridges all operational.
 
+**ROADMAP.md** (repo root) is the living roadmap. When a feature is completed,
+update the relevant checklist item in ROADMAP.md (change `[ ]` to `[x]`) and
+move any newly implemented items into the correct phase.
+
 ## Build & Development Commands
 
 ```bash
