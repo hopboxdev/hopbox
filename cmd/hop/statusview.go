@@ -35,6 +35,9 @@ var (
 
 // renderDashboard renders the full dashboard view from dashData.
 func renderDashboard(d dashData, width int) string {
+	if width > 80 {
+		width = 80
+	}
 	contentWidth := width - 4 // account for border + padding
 	if contentWidth < 40 {
 		contentWidth = 40
