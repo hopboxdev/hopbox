@@ -42,6 +42,10 @@ func main() {
 		kong.Name("hop"),
 		kong.Description("Hopbox CLI — instant dev environments on your VPS"),
 		kong.UsageOnError(),
+		kong.ConfigureHelp(kong.HelpOptions{
+			NoExpandSubcommands: true,
+			Compact:             true,
+		}),
 	)
 	if err != nil {
 		panic(err)
