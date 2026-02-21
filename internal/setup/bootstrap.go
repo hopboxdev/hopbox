@@ -45,15 +45,11 @@ type Options struct {
 	OnStep func(msg string)
 }
 
-// Bootstrap performs the full setup sequence:
-//  1. SSH into the remote host (TOFU: capture and save the host key)
-//  2. Upload and install hop-agent
-//  3. Generate server keys (hop-agent setup)
-//  4. Exchange public keys
-//  5. Start systemd service
-//  6. Verify tunnel
-//  7. Save HostConfig (including the captured SSH host key)
-func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.HostConfig, error) {
+// SSHConnectTOFU establishes an SSH connection to a new host using
+// trust-on-first-use key verification. It prompts the user to confirm
+// the server's host key fingerprint. Returns the connected client and
+// the captured host key for later use.
+func SSHConnectTOFU(ctx context.Context, opts Options, out io.Writer) (*ssh.Client, ssh.PublicKey, error) {
 	if opts.SSHPort == 0 {
 		opts.SSHPort = 22
 	}
@@ -61,24 +57,11 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 		opts.SSHUser = "root"
 	}
 
-	logf := func(format string, args ...any) {
-		msg := fmt.Sprintf(format, args...)
-		if opts.OnStep != nil {
-			opts.OnStep(msg)
-		} else {
-			_, _ = fmt.Fprintln(out, msg)
-		}
-	}
-
-	logf("Connecting to %s:%d as %s...", opts.SSHHost, opts.SSHPort, opts.SSHUser)
-
 	confirmIn := opts.ConfirmReader
 	if confirmIn == nil {
 		confirmIn = os.Stdin
 	}
 
-	// TOFU: show the server's host key fingerprint and prompt for confirmation
-	// before proceeding. Subsequent connections use ssh.FixedHostKey instead.
 	var capturedKey ssh.PublicKey
 	captureCallback := func(hostname string, _ net.Addr, key ssh.PublicKey) error {
 		capturedKey = key
@@ -97,11 +80,24 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 
 	client, err := sshConnect(ctx, opts, captureCallback)
 	if err != nil {
-		return nil, fmt.Errorf("SSH connect: %w", err)
+		return nil, nil, fmt.Errorf("SSH connect: %w", err)
 	}
-	defer func() { _ = client.Close() }()
+	return client, capturedKey, nil
+}
 
-	logf("Connected. Installing hop-agent...")
+// BootstrapWithClient performs bootstrap using an already-connected SSH client.
+// Use SSHConnectTOFU to establish the connection first.
+func BootstrapWithClient(ctx context.Context, client *ssh.Client, capturedKey ssh.PublicKey, opts Options, out io.Writer) (*hostconfig.HostConfig, error) {
+	logf := func(format string, args ...any) {
+		msg := fmt.Sprintf(format, args...)
+		if opts.OnStep != nil {
+			opts.OnStep(msg)
+		} else {
+			_, _ = fmt.Fprintln(out, msg)
+		}
+	}
+
+	logf("Installing hop-agent...")
 	if err := installAgent(ctx, client, out, version.Version); err != nil {
 		return nil, fmt.Errorf("install agent: %w", err)
 	}
@@ -110,9 +106,7 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 	if _, err := runRemote(client, "sudo hop-agent setup"); err != nil {
 		return nil, fmt.Errorf("hop-agent setup (phase 1): %w", err)
 	}
-	// Read the public key from the file it wrote rather than capturing stdout.
-	// SSH stdout capture after a large binary upload is unreliable — the
-	// key file is the authoritative source of truth anyway.
+
 	pubKeyLine, err := runRemote(client, "sudo grep '^public=' /etc/hopbox/agent.key")
 	if err != nil {
 		return nil, fmt.Errorf("read agent public key: %w", err)
@@ -134,9 +128,6 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 		return nil, fmt.Errorf("hop-agent setup (phase 2): %w", err)
 	}
 
-	// Enable at boot, then force a restart so the service picks up the
-	// freshly-written peer.pub. A running service won't reload keys on its
-	// own; `enable --now` only starts it if it isn't already running.
 	logf("Restarting hop-agent service...")
 	_, err = runRemote(client, "sudo systemctl enable hop-agent && sudo systemctl restart hop-agent")
 	if err != nil {
@@ -162,6 +153,24 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 
 	logf("Host config saved. Bootstrap complete.")
 	return cfg, nil
+}
+
+// Bootstrap performs the full setup sequence:
+//  1. SSH into the remote host (TOFU: capture and save the host key)
+//  2. Upload and install hop-agent
+//  3. Generate server keys (hop-agent setup)
+//  4. Exchange public keys
+//  5. Start systemd service
+//  6. Verify tunnel
+//  7. Save HostConfig (including the captured SSH host key)
+func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.HostConfig, error) {
+	client, capturedKey, err := SSHConnectTOFU(ctx, opts, out)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = client.Close() }()
+
+	return BootstrapWithClient(ctx, client, capturedKey, opts, out)
 }
 
 // SSHConnect establishes an SSH connection to a known host, verifying its
