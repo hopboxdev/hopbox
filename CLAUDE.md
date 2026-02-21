@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-Phase 0 implemented (Milestones 0a - 0c). WireGuard tunnel, agent control API,
-service management, bridges, and CLI commands are all in place.
-`hop setup` + `hop up` verified working end-to-end.
+Phase 0 complete, Phase 1 in progress. `hop setup`, `hop up`, `hop to`,
+`hop upgrade` verified working. Reconnection monitoring, snapshot/restore,
+and bridges all operational.
 
 ## Build & Development Commands
 
@@ -16,6 +16,9 @@ make build
 
 # Cross-compile agent for Linux (required for deployment)
 CGO_ENABLED=0 GOOS=linux go build -o dist/hop-agent-linux ./cmd/hop-agent/...
+
+# Dev workflow: upgrade all binaries from local builds
+hop upgrade --local
 
 # Dev workflow: use a local agent binary during hop setup
 HOP_AGENT_BINARY=./dist/hop-agent-linux hop setup mybox -a <ip> -u <user> -k ~/.ssh/key
@@ -148,6 +151,7 @@ hop snap [create|restore|ls]    Manage workspace snapshots (restic backend)
 hop to <newhost>                Migrate workspace to new host (snap → restore)
 hop bridge [ls|restart]         Manage local-remote bridges
 hop host [add|rm|ls|default]    Manage host registry; default shows/sets default host
+hop upgrade [--version V] [--local] Upgrade hop binaries (client, helper, agent)
 hop rotate [host]               Rotate WireGuard keys without full re-setup
 hop init                        Generate hopbox.yaml scaffold
 hop version                     Print version info
@@ -213,6 +217,11 @@ service. Always use `systemctl enable && systemctl restart` after updating keys.
 keys are temporarily out of sync. The server keeps `agent.key.bak` for manual
 recovery. The config save is a single `os.WriteFile` and is very unlikely to fail
 after the agent restart succeeds.
+
+**`os.WriteFile` on existing files:** `os.WriteFile` does not update permissions
+on an existing file — the mode argument only applies when creating a new file.
+If you `os.CreateTemp` (mode 0600) and then `os.WriteFile` to it, the file stays
+0600. Always `os.Chmod` explicitly after writing if you need specific permissions.
 
 **`hop services ls` only shows manifest-registered services:** The agent's service
 manager only knows about services declared in `hopbox.yaml` and loaded at startup

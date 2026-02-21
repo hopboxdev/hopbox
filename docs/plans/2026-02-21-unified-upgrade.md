@@ -1,5 +1,7 @@
 # Unified `hop upgrade` Implementation Plan
 
+> **Status: Implemented** (2026-02-21)
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace the agent-only `hop upgrade` with a single command that updates all three binaries (client, helper, agent) from GitHub releases or local dev builds.

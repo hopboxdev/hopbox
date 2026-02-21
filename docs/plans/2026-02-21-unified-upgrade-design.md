@@ -1,5 +1,7 @@
 # Unified `hop upgrade` Design
 
+> **Status: Implemented** (2026-02-21)
+
 ## Goal
 
 Replace the agent-only `hop upgrade` with a single command that updates all three

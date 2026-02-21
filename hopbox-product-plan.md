@@ -463,14 +463,14 @@ session:
   - `hop snap restore <id>` — pulls snapshot, extracts, restarts services
   - Snapshot metadata: timestamp, hopbox.yaml hash, package versions
 
-- [ ] **`hop to <newhost>`** — the killer command
+- [x] **`hop to <newhost>`** — the killer command
   - Snapshot current workspace
   - Run `hop setup` on new host
   - Restore snapshot on new host
   - Verify services, switch DNS/config to new host
   - Interactive: shows transfer size, confirms before proceeding
 
-- [ ] **Reconnection resilience**
+- [x] **Reconnection resilience**
   - Wireguard handles roaming natively — tunnel survives WiFi→mobile
   - Agent health heartbeat over Wireguard
   - Session survives disconnect (zellij/tmux)
