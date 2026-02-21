@@ -14,6 +14,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/helper"
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/setup"
+	"github.com/hopboxdev/hopbox/internal/ui"
 )
 
 // SetupCmd bootstraps a new remote host.
@@ -32,6 +33,9 @@ func (c *SetupCmd) Run() error {
 		SSHPort:    c.Port,
 		SSHUser:    c.User,
 		SSHKeyPath: c.SSHKey,
+		OnStep: func(msg string) {
+			fmt.Println(ui.StepOK(msg))
+		},
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()

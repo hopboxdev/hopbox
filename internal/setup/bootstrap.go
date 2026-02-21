@@ -40,6 +40,9 @@ type Options struct {
 	// ConfirmReader is used to read the user's yes/no answer during TOFU host
 	// key verification. Defaults to os.Stdin if nil.
 	ConfirmReader io.Reader
+	// OnStep is called with a progress message at each bootstrap milestone.
+	// If nil, messages are written to the out io.Writer passed to Bootstrap.
+	OnStep func(msg string)
 }
 
 // Bootstrap performs the full setup sequence:
@@ -59,7 +62,12 @@ func Bootstrap(ctx context.Context, opts Options, out io.Writer) (*hostconfig.Ho
 	}
 
 	logf := func(format string, args ...any) {
-		_, _ = fmt.Fprintf(out, format+"\n", args...)
+		msg := fmt.Sprintf(format, args...)
+		if opts.OnStep != nil {
+			opts.OnStep(msg)
+		} else {
+			_, _ = fmt.Fprintln(out, msg)
+		}
 	}
 
 	logf("Connecting to %s:%d as %s...", opts.SSHHost, opts.SSHPort, opts.SSHUser)

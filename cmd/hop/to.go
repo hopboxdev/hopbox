@@ -16,6 +16,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
 	"github.com/hopboxdev/hopbox/internal/setup"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
+	"github.com/hopboxdev/hopbox/internal/ui"
 )
 
 // ToCmd migrates the workspace to a new host.
@@ -74,6 +75,9 @@ func (c *ToCmd) Run(globals *CLI) error {
 		SSHPort:    c.Port,
 		SSHUser:    c.User,
 		SSHKeyPath: c.SSHKey,
+		OnStep: func(msg string) {
+			fmt.Println("  " + ui.StepOK(msg))
+		},
 	}, os.Stdout)
 	if err != nil {
 		return fmt.Errorf("bootstrap %s: %w", c.Target, err)
