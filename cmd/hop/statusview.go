@@ -5,34 +5,13 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-)
-
-var (
-	// Colors.
-	green  = lipgloss.Color("2")
-	red    = lipgloss.Color("1")
-	yellow = lipgloss.Color("3")
-	subtle = lipgloss.Color("8")
-
-	// Styles.
-	sectionStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(subtle).
-			Padding(0, 1).
-			MarginBottom(1)
-
-	titleStyle = lipgloss.NewStyle().
-			Bold(true)
-
-	dotConnected    = lipgloss.NewStyle().Foreground(green).Render("●")
-	dotDisconnected = lipgloss.NewStyle().Foreground(red).Render("●")
-	dotStopped      = lipgloss.NewStyle().Foreground(yellow).Render("●")
+	"github.com/hopboxdev/hopbox/internal/ui"
 )
 
 // renderDashboard renders the full dashboard view from dashData.
 func renderDashboard(d dashData, width int) string {
-	if width > 80 {
-		width = 80
+	if width > ui.MaxWidth {
+		width = ui.MaxWidth
 	}
 	contentWidth := width - 4 // account for border + padding
 	if contentWidth < 40 {
@@ -60,22 +39,22 @@ func renderDashboard(d dashData, width int) string {
 func renderTunnelSection(d dashData, width int) string {
 	var lines []string
 
-	status := dotDisconnected + " down"
+	status := ui.Dot(ui.StateDisconnected) + " down"
 	if d.tunnelUp && d.connected {
-		status = dotConnected + " connected"
+		status = ui.Dot(ui.StateConnected) + " connected"
 	} else if d.tunnelUp {
-		status = dotDisconnected + " disconnected"
+		status = ui.Dot(ui.StateDisconnected) + " disconnected"
 	}
 
-	lines = append(lines, renderRow("HOST", d.hostName, "STATUS", status, width))
-	lines = append(lines, renderRow("ENDPOINT", d.endpoint, "", "", width))
+	lines = append(lines, ui.Row("HOST", d.hostName, "STATUS", status, width))
+	lines = append(lines, ui.Row("ENDPOINT", d.endpoint, "", "", width))
 
 	if d.tunnelUp {
 		pingStr := "-"
 		if d.ping > 0 {
 			pingStr = fmt.Sprintf("%dms", d.ping.Milliseconds())
 		}
-		lines = append(lines, renderRow("LATENCY", pingStr, "UPTIME", formatDuration(d.uptime), width))
+		lines = append(lines, ui.Row("LATENCY", pingStr, "UPTIME", formatDuration(d.uptime), width))
 
 		healthyStr := "-"
 		if d.lastHealthy > 0 {
@@ -85,69 +64,49 @@ func renderTunnelSection(d dashData, width int) string {
 		if agentStr == "" {
 			agentStr = "-"
 		}
-		lines = append(lines, renderRow("LAST HEALTHY", healthyStr, "AGENT", agentStr, width))
+		lines = append(lines, ui.Row("LAST HEALTHY", healthyStr, "AGENT", agentStr, width))
 	}
 
 	content := strings.Join(lines, "\n")
-	return sectionStyle.Width(width).Render(
-		titleStyle.Render("Tunnel") + "\n" + content,
-	)
+	return ui.Section("Tunnel", content, width)
 }
 
 func renderServicesSection(d dashData, width int) string {
 	header := fmt.Sprintf("%-16s %-10s %s", "NAME", "STATUS", "TYPE")
 	var lines []string
-	lines = append(lines, lipgloss.NewStyle().Foreground(subtle).Render(header))
+	lines = append(lines, lipgloss.NewStyle().Foreground(ui.Subtle).Render(header))
 
 	for _, s := range d.services {
-		dot := dotStopped
+		dot := ui.Dot(ui.StateStopped)
 		status := "stopped"
 		if s.Running {
-			dot = dotConnected
+			dot = ui.Dot(ui.StateConnected)
 			status = "running"
 		}
 		if s.Error != "" {
-			dot = dotDisconnected
+			dot = ui.Dot(ui.StateDisconnected)
 			status = "error"
 		}
 		lines = append(lines, fmt.Sprintf("%-16s %s %-8s %s", s.Name, dot, status, s.Type))
 	}
 
 	content := strings.Join(lines, "\n")
-	return sectionStyle.Width(width).Render(
-		titleStyle.Render("Services") + "\n" + content,
-	)
+	return ui.Section("Services", content, width)
 }
 
 func renderBridgesSection(d dashData, width int) string {
 	var lines []string
 
 	for _, b := range d.bridges {
-		dot := dotStopped
+		dot := ui.Dot(ui.StateStopped)
 		status := "inactive"
 		if b.Active {
-			dot = dotConnected
+			dot = ui.Dot(ui.StateConnected)
 			status = "active"
 		}
 		lines = append(lines, fmt.Sprintf("%-16s %s %s", b.Type, dot, status))
 	}
 
 	content := strings.Join(lines, "\n")
-	return sectionStyle.Width(width).Render(
-		titleStyle.Render("Bridges") + "\n" + content,
-	)
-}
-
-// renderRow renders a two-column key-value row, with optional second pair.
-func renderRow(k1, v1, k2, v2 string, width int) string {
-	left := fmt.Sprintf("%-14s %s", k1+":", v1)
-	if k2 == "" {
-		return left
-	}
-	right := fmt.Sprintf("%s %s", k2+":", v2)
-	gap := width/2 - len(left)
-	if gap < 2 {
-		gap = 2
-	}
-	return left + strings.Repeat(" ", gap) + right
+	return ui.Section("Bridges", content, width)
 }
