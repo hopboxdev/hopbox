@@ -1,18 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"text/tabwriter"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
-	"github.com/hopboxdev/hopbox/internal/rpcclient"
-	"github.com/hopboxdev/hopbox/internal/tunnel"
-	"github.com/hopboxdev/hopbox/internal/version"
 )
 
 // StatusCmd shows tunnel and workspace health.
@@ -29,86 +23,81 @@ func (c *StatusCmd) Run(globals *CLI) error {
 		return fmt.Errorf("load host config: %w", err)
 	}
 
-	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintf(tw, "HOST\t%s\n", cfg.Name)
-	_, _ = fmt.Fprintf(tw, "ENDPOINT\t%s\n", cfg.Endpoint)
-	_, _ = fmt.Fprintf(tw, "AGENT-IP\t%s\n", cfg.AgentIP)
-	_, _ = fmt.Fprintf(tw, "CLIENT-VERSION\t%s\n", version.Version)
+	p := tea.NewProgram(newDashModel(hostName, cfg))
+	_, err = p.Run()
+	return err
+}
 
-	state, _ := tunnel.LoadState(hostName)
-	if state == nil {
-		_, _ = fmt.Fprintf(tw, "TUNNEL\tdown\n")
-		_, _ = fmt.Fprintf(tw, "AGENT\tnot reachable (tunnel is not running)\n")
-		_ = tw.Flush()
-		return nil
+// dashModel is the Bubble Tea model for the status dashboard.
+type dashModel struct {
+	hostName string
+	cfg      *hostconfig.HostConfig
+	data     dashData
+	width    int
+	quitting bool
+}
+
+func newDashModel(hostName string, cfg *hostconfig.HostConfig) dashModel {
+	return dashModel{
+		hostName: hostName,
+		cfg:      cfg,
+		data:     fetchDashData(hostName, cfg),
+		width:    80,
 	}
+}
 
-	_, _ = fmt.Fprintf(tw, "TUNNEL\tup (PID %d, started %s ago)\n",
-		state.PID, time.Since(state.StartedAt).Round(time.Second))
-	if !state.LastHealthy.IsZero() {
-		connLabel := "yes"
-		if !state.Connected {
-			connLabel = "no"
+// Messages.
+type tickMsg time.Time
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
+type refreshMsg struct {
+	data dashData
+}
+
+func (m dashModel) fetchCmd() tea.Cmd {
+	return func() tea.Msg {
+		return refreshMsg{data: fetchDashData(m.hostName, m.cfg)}
+	}
+}
+
+func (m dashModel) Init() tea.Cmd {
+	return tickCmd()
+}
+
+func (m dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q", "ctrl+c":
+			m.quitting = true
+			return m, tea.Quit
+		case "r":
+			return m, m.fetchCmd()
 		}
-		_, _ = fmt.Fprintf(tw, "CONNECTED\t%s\n", connLabel)
-		_, _ = fmt.Fprintf(tw, "LAST HEALTHY\t%s (%s ago)\n",
-			state.LastHealthy.Format("15:04:05"),
-			time.Since(state.LastHealthy).Round(time.Second))
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		return m, nil
+
+	case tickMsg:
+		return m, tea.Batch(m.fetchCmd(), tickCmd())
+
+	case refreshMsg:
+		m.data = msg.data
+		return m, nil
 	}
 
-	hostname := state.Hostname
-	if hostname == "" {
-		hostname = hostName + ".hop"
-	}
-	agentURL := fmt.Sprintf("http://%s:%d/health", hostname, tunnel.AgentAPIPort)
-	healthClient := &http.Client{Timeout: 5 * time.Second}
-	resp, err := healthClient.Get(agentURL)
-	if err != nil {
-		_, _ = fmt.Fprintf(tw, "AGENT\tunreachable: %v\n", err)
-		_ = tw.Flush()
-		return nil
-	}
-	defer func() { _ = resp.Body.Close() }()
+	return m, nil
+}
 
-	var health map[string]any
-	body, _ := io.ReadAll(resp.Body)
-	_ = json.Unmarshal(body, &health)
-
-	agentStatus := "ok"
-	if v, ok := health["status"]; ok {
-		agentStatus = fmt.Sprint(v)
+func (m dashModel) View() string {
+	if m.quitting {
+		return ""
 	}
-	_, _ = fmt.Fprintf(tw, "AGENT\t%s\n", agentStatus)
-	if v, ok := health["version"]; ok {
-		_, _ = fmt.Fprintf(tw, "AGENT-VERSION\t%s\n", v)
-	}
-	_ = tw.Flush()
-
-	// Fetch and display services.
-	svcResult, err := rpcclient.Call(hostName, "services.list", nil)
-	if err == nil {
-		var svcs []struct {
-			Name    string `json:"name"`
-			Type    string `json:"type"`
-			Running bool   `json:"running"`
-			Error   string `json:"error,omitempty"`
-		}
-		if json.Unmarshal(svcResult, &svcs) == nil && len(svcs) > 0 {
-			fmt.Println("\nSERVICES")
-			sw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintf(sw, "  NAME\tTYPE\tSTATUS\n")
-			for _, s := range svcs {
-				status := "stopped"
-				if s.Running {
-					status = "running"
-				}
-				if s.Error != "" {
-					status = "error: " + s.Error
-				}
-				_, _ = fmt.Fprintf(sw, "  %s\t%s\t%s\n", s.Name, s.Type, status)
-			}
-			_ = sw.Flush()
-		}
-	}
-	return nil
+	return renderDashboard(m.data, m.width)
 }
