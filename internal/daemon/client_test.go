@@ -148,3 +148,19 @@ func TestWaitForReadyTimeout(t *testing.T) {
 		t.Fatal("expected timeout error")
 	}
 }
+
+func TestRemoveStaleSocket(t *testing.T) {
+	dir := t.TempDir()
+	sockPath := filepath.Join(dir, "stale.sock")
+
+	// Create a stale socket file (just a regular file pretending).
+	if err := os.WriteFile(sockPath, []byte{}, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	RemoveStaleSocket(sockPath)
+
+	if _, err := os.Stat(sockPath); !os.IsNotExist(err) {
+		t.Error("stale socket was not removed")
+	}
+}

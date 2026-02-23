@@ -68,6 +68,8 @@ func LoadState(hostName string) (*TunnelState, error) {
 	}
 	if state.PID > 0 && !pidAlive(state.PID) {
 		_ = os.Remove(path)
+		// Also remove stale daemon socket.
+		_ = os.Remove(filepath.Join(dir, hostName+".sock"))
 		return nil, nil
 	}
 	return &state, nil
