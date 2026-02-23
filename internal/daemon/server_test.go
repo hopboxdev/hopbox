@@ -3,6 +3,7 @@ package daemon
 import (
 	"encoding/json"
 	"net"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -96,6 +97,58 @@ func TestServerCleanupSocket(t *testing.T) {
 	if err == nil {
 		_ = conn.Close()
 		t.Error("socket should not be connectable after Stop")
+	}
+}
+
+func TestFullRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	sockPath := filepath.Join(dir, "integration.sock")
+
+	shutdownCh := make(chan struct{}, 1)
+	handler := &MockHandler{
+		status:     &DaemonStatus{PID: os.Getpid(), Connected: true, Interface: "utun7"},
+		shutdownCh: shutdownCh,
+	}
+
+	srv := NewServer(sockPath, handler)
+	if err := srv.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Stop()
+
+	client := &Client{SocketPath: sockPath}
+
+	// WaitForReady should succeed immediately.
+	if err := client.WaitForReady(time.Second); err != nil {
+		t.Fatalf("WaitForReady: %v", err)
+	}
+
+	// IsRunning should be true.
+	if !client.IsRunning() {
+		t.Error("IsRunning = false, want true")
+	}
+
+	// Status should work.
+	status, err := client.Status()
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if status.PID != os.Getpid() {
+		t.Errorf("PID = %d, want %d", status.PID, os.Getpid())
+	}
+	if status.Interface != "utun7" {
+		t.Errorf("Interface = %q, want %q", status.Interface, "utun7")
+	}
+
+	// Shutdown should work.
+	if err := client.Shutdown(); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	select {
+	case <-shutdownCh:
+	case <-time.After(time.Second):
+		t.Fatal("shutdown handler not called")
 	}
 }
 
