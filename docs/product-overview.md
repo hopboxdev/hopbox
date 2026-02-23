@@ -82,12 +82,12 @@ the stateful data.
 ### Problem 4: Service orchestration in dev is either too simple or too complex
 
 **Pain:** process-compose handles basic scenarios. Docker Compose adds indirection.
-Neither handles a k3s cluster as a first-class workspace resource, or services with health
-checks, data persistence declarations, and restart policies.
+Neither handles services with health checks, data persistence declarations, and restart
+policies alongside native processes in a single config.
 
-**Our solution: Hybrid service management.** Hopbox supports services as native processes,
-Docker containers, or Kubernetes resources — all declared in the same manifest with health
-checks, data directories, dependency ordering, and log aggregation.
+**Our solution: Hybrid service management.** Hopbox supports services as Docker containers
+or native processes — all declared in the same manifest with health checks, data directories,
+dependency ordering, and log aggregation.
 
 ### Problem 5: Existing tools are moving away from individual developers
 

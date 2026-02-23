@@ -31,7 +31,7 @@ type Package struct {
 
 // Service declares a background process managed by the agent.
 type Service struct {
-	Type      string            `yaml:"type"`              // "docker", "kubernetes", "native"
+	Type      string            `yaml:"type"`              // "docker", "native"
 	Image     string            `yaml:"image,omitempty"`   // docker image
 	Command   string            `yaml:"command,omitempty"` // native command
 	Ports     []string          `yaml:"ports,omitempty"`   // "8080" or "8080:80" (host:container)
@@ -117,7 +117,7 @@ func (w *Workspace) Validate() error {
 			return fmt.Errorf("service %q: type is required", name)
 		}
 		switch svc.Type {
-		case "docker", "kubernetes", "native":
+		case "docker", "native":
 			// valid
 		default:
 			return fmt.Errorf("service %q: unknown type %q", name, svc.Type)

@@ -48,23 +48,20 @@ via restic. Workspace migration across hosts via `hop to`.
 - [x] Port monitoring — `/proc/net/tcp` parsing
 - [x] `hop services ls/restart/stop`
 
-### Milestone 0c: Bridges + shell
+### Milestone 0c: Bridges
 
 - [x] Bridge: clipboard — TCP listener, pbcopy/xclip integration, bidirectional
 - [x] Bridge: Chrome CDP — TCP proxy on port 9222
 - [x] `hop run <script>` — execute scripts from hopbox.yaml
-- [ ] SSH fallback — `hop up --ssh` when Wireguard is blocked
 
 ---
 
 ## Phase 1 — Core Feature Set (In Progress)
 
 - [x] Service orchestration — dependency ordering, health check polling, log aggregation, data directory declarations
-- [ ] k3s as a first-class service type — install k3s, auto-apply manifests, kubectl just works
 - [x] Snapshot & restore — `hop snap create/restore/ls`, restic backend, metadata tracking
 - [x] `hop to <newhost>` — 3-phase migration: snapshot, bootstrap new host, restore
 - [x] Reconnection resilience — 5s heartbeat, ConnMonitor, state file, auto-recovery reporting
-- [ ] TUI status dashboard — live tunnel health, service status, bridge state, quick actions
 - [x] Configuration management — host registry, global config, `hop init`
 - [x] `hop upgrade` — GitHub release download, SHA256 verify, helper sudo install, `--local` dev mode
 - [x] `hop rotate` — key rotation without full re-setup
@@ -72,22 +69,29 @@ via restic. Workspace migration across hosts via `hop to`.
 - [x] `hop logs` — stream service logs (single + all)
 - [x] Bubbletea TUI step runner — phased runner with spinners, used by setup/up/to/upgrade
 - [x] CLI styling — lipgloss-based `internal/ui` package with Section, Step, Table, Row primitives
+- [ ] SSH fallback — `hop up --ssh` when Wireguard UDP is blocked
+- [ ] `hop up` as background daemon — refactor from foreground process to background service
+- [ ] `hop down` — proper teardown command that signals the background `hop up` process
 
 ---
 
 ## Phase 2 — Open Source Release (Planned)
 
+- [ ] Linux client support — helper daemon or direct TUN setup for Linux laptops
+- [ ] `hop to` error recovery — rollback or resume on mid-migration failure
+- [ ] CI/CD pipeline — GitHub Actions for tests, linting, cross-compilation, goreleaser for releases
 - [ ] Package management abstraction — backend interface, lock file (`hopbox.lock`)
 - [ ] Static package backend — download binary from URL
+- [ ] Native service backend — run processes directly without Docker
 - [ ] devcontainer.json compatibility (read-only import)
 - [ ] Wireguard-over-WebSocket fallback for restricted networks
 - [ ] Installation script (`curl | sh`) + Homebrew tap + AUR
 - [ ] Documentation site (hopbox.dev) — quickstart, manifest reference, migration guides
-- [ ] GitHub repo public release — Apache 2.0, CI, example configs
-- [ ] Native service backend — run processes directly without Docker
+- [ ] GitHub repo public release — Apache 2.0, example configs
 - [ ] xdg-open bridge — server `xdg-open` opens URLs in local browser
 - [ ] Notifications bridge — remote build notifications to local desktop
 - [ ] Secrets management — sops/age integration, `hop secret set`
+- [ ] Test coverage — expand unit and integration tests across packages
 
 ---
 
@@ -137,6 +141,6 @@ No coordination server, no DERP relay. Direct client-to-VPS topology.
 - **Browser-based IDE** — we connect your local editor, not host code-server
 - **AI agent hosting** — not building sandboxes
 - **Windows host support** — hop-agent is Linux-only; client runs anywhere
-- **GUI application** — CLI-first, TUI dashboard is the richest UI
-- **Kubernetes operator** — hop-agent is a daemon on bare Linux
+- **GUI application** — CLI-first, `hop status` is the richest UI
+- **Kubernetes management** — k3s/k8s services work over the tunnel without special support
 - **Mesh networking** — point-to-point only (client-to-server)

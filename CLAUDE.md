@@ -111,7 +111,7 @@ Do **not** use Tailscale's magicsock/DERP, tsnet, or libp2p — these are explic
 
 ## Workspace Manifest (hopbox.yaml)
 
-The user-facing config file placed in a project directory. Declares everything for a workspace: `packages` (backend: nix/apt/static), `services` (type: docker/kubernetes/native), `bridges` (clipboard, chrome CDP, xdg-open), `env`, `secrets`, `scripts`, `backup`, `editor`, `session`.
+The user-facing config file placed in a project directory. Declares everything for a workspace: `packages` (backend: nix/apt/static), `services` (type: docker/native), `bridges` (clipboard, chrome CDP, xdg-open), `env`, `secrets`, `scripts`, `backup`, `editor`, `session`.
 
 The `host:` field in `hopbox.yaml` pins which registered host to use for this workspace.
 
