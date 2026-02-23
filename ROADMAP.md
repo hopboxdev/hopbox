@@ -70,8 +70,8 @@ via restic. Workspace migration across hosts via `hop to`.
 - [x] Bubbletea TUI step runner — phased runner with spinners, used by setup/up/to/upgrade
 - [x] CLI styling — lipgloss-based `internal/ui` package with Section, Step, Table, Row primitives
 - [ ] SSH fallback — `hop up --ssh` when Wireguard UDP is blocked
-- [ ] `hop up` as background daemon — refactor from foreground process to background service
-- [ ] `hop down` — proper teardown command that signals the background `hop up` process
+- [x] `hop up` as background daemon — refactor from foreground process to background service
+- [x] `hop down` — proper teardown command that signals the background `hop up` process
 
 ---
 
