@@ -20,7 +20,8 @@ type CLI struct {
 
 	Setup     SetupCmd    `cmd:"" help:"Bootstrap a new remote host."`
 	Up        UpCmd       `cmd:"" help:"Bring up WireGuard tunnel and bridges."`
-	Down      DownCmd     `cmd:"" help:"Tear down tunnel (use Ctrl-C in foreground mode)."`
+	Down      DownCmd     `cmd:"" help:"Tear down tunnel."`
+	Daemon    DaemonCmd   `cmd:"" help:"Manage tunnel daemon."`
 	Status    StatusCmd   `cmd:"" help:"Show tunnel and workspace health."`
 	Services  ServicesCmd `cmd:"" help:"Manage workspace services."`
 	Logs      LogsCmd     `cmd:"" help:"Stream service logs."`
