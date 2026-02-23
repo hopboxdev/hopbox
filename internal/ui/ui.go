@@ -54,10 +54,7 @@ func Section(title, content string, width int) string {
 	if width > MaxWidth {
 		width = MaxWidth
 	}
-	contentWidth := width - 4
-	if contentWidth < 40 {
-		contentWidth = 40
-	}
+	contentWidth := max(width-4, 40)
 	return sectionStyle.Width(contentWidth).Render(
 		titleStyle.Render(title) + "\n" + content,
 	)
@@ -71,6 +68,11 @@ func StepOK(msg string) string {
 // StepRun returns a yellow circle step line (in progress).
 func StepRun(msg string) string {
 	return lipgloss.NewStyle().Foreground(Yellow).Render("○") + " " + msg
+}
+
+// StepInfo returns a subtle-colored info step line.
+func StepInfo(msg string) string {
+	return lipgloss.NewStyle().Foreground(Subtle).Render("●") + " " + msg
 }
 
 // StepFail returns a red cross step line.

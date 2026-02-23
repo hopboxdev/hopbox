@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -85,15 +86,17 @@ func (m *runner) runCurrentStep() tea.Cmd {
 	// Find the original Step to get the Run function.
 	var originalStep Step
 	flatIdx := 0
+	found := false
 	for _, p := range m.phases {
 		for _, s := range p.Steps {
 			if flatIdx == idx {
 				originalStep = s
+				found = true
 				break
 			}
 			flatIdx++
 		}
-		if flatIdx == idx {
+		if found {
 			break
 		}
 	}
@@ -101,7 +104,7 @@ func (m *runner) runCurrentStep() tea.Cmd {
 	return func() tea.Msg {
 		defer func() {
 			if r := recover(); r != nil {
-				m.program.Send(stepFailMsg{err: fmt.Errorf("panic: %v", r)})
+				m.program.Send(stepFailMsg{err: fmt.Errorf("panic: %v\n%s", r, debug.Stack())})
 			}
 		}()
 		send := func(evt StepEvent) {

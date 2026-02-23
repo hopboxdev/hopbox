@@ -73,7 +73,7 @@ func (c *UpCmd) Run(globals *CLI) error {
 		if err := c.launchDaemon(hostName); err != nil {
 			return err
 		}
-		fmt.Println(ui.StepRun("Starting tunnel daemon..."))
+		fmt.Println(ui.StepInfo("Starting tunnel daemon..."))
 		if err := daemonClient.WaitForReady(15 * time.Second); err != nil {
 			return fmt.Errorf("daemon failed to start: %w", err)
 		}
@@ -267,6 +267,8 @@ func (c *UpCmd) runForeground(globals *CLI, hostName string, cfg *hostconfig.Hos
 
 // runTUIPhases runs the agent probe and workspace sync phases.
 // Used by daemon mode after the daemon is already running.
+// Steps run sequentially with simple printed output (no animated TUI)
+// because the daemon is already up and steps complete quickly.
 func (c *UpCmd) runTUIPhases(hostName string, cfg *hostconfig.HostConfig) error {
 	hostname := cfg.Name + ".hop"
 	agentClient := &http.Client{Timeout: agentClientTimeout}
@@ -289,9 +291,20 @@ func (c *UpCmd) runTUIPhases(hostName string, cfg *hostconfig.HostConfig) error 
 
 	phases := c.buildTUIPhases(hostName, agentURL, agentClient, ws, wsPath)
 
-	if len(phases) > 0 {
-		if err := tui.RunPhases(ctx, "hop up", phases); err != nil {
-			return err
+	for _, phase := range phases {
+		for _, step := range phase.Steps {
+			msg := step.Title
+			send := func(evt tui.StepEvent) { msg = evt.Message }
+			err := step.Run(ctx, send)
+			if err != nil {
+				if step.NonFatal {
+					fmt.Println(ui.Warn(msg + ": " + err.Error()))
+					continue
+				}
+				fmt.Println(ui.StepFail(msg))
+				return err
+			}
+			fmt.Println(ui.StepOK(msg))
 		}
 	}
 

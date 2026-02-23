@@ -306,6 +306,45 @@ func TestRunPhasesPlainNonFatal(t *testing.T) {
 	}
 }
 
+func TestRunCurrentStepFindsStepInLaterPhase(t *testing.T) {
+	var called [3]bool
+	phases := []Phase{
+		{Title: "Phase1", Steps: []Step{
+			{Title: "s0", Run: func(ctx context.Context, send func(StepEvent)) error {
+				called[0] = true
+				return nil
+			}},
+		}},
+		{Title: "Phase2", Steps: []Step{
+			{Title: "s1", Run: func(ctx context.Context, send func(StepEvent)) error {
+				called[1] = true
+				return nil
+			}},
+			{Title: "s2", Run: func(ctx context.Context, send func(StepEvent)) error {
+				called[2] = true
+				return nil
+			}},
+		}},
+	}
+	// Run all three steps sequentially via runPhasesPlain which uses the same
+	// phase/step structure but without the TUI model lookup bug surface.
+	// To directly test the runner's lookup, simulate what runCurrentStep does.
+	m := newTestRunner(phases)
+
+	for idx := 0; idx < 3; idx++ {
+		m.current = idx
+		cmd := m.runCurrentStep()
+		// cmd is a function that returns a tea.Msg; execute it.
+		msg := cmd()
+		if _, ok := msg.(stepDoneMsg); !ok {
+			t.Fatalf("step %d returned %T, want stepDoneMsg", idx, msg)
+		}
+		if !called[idx] {
+			t.Errorf("step %d Run function was not called (wrong step looked up)", idx)
+		}
+	}
+}
+
 func TestRunPhasesFilterEmpty(t *testing.T) {
 	phases := []Phase{
 		{Title: "Empty", Steps: nil},
