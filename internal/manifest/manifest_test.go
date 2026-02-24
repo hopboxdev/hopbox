@@ -129,6 +129,35 @@ services:
 	}
 }
 
+func TestValidateNativeMissingCommand(t *testing.T) {
+	_, err := manifest.ParseBytes([]byte(`
+name: test
+services:
+  svc:
+    type: native
+`))
+	if err == nil {
+		t.Error("expected error for native service without command")
+	}
+}
+
+func TestParseWorkdir(t *testing.T) {
+	ws, err := manifest.ParseBytes([]byte(`
+name: test
+services:
+  api:
+    type: native
+    command: ./server
+    workdir: /home/user/app
+`))
+	if err != nil {
+		t.Fatalf("ParseBytes: %v", err)
+	}
+	if ws.Services["api"].Workdir != "/home/user/app" {
+		t.Errorf("Workdir = %q, want /home/user/app", ws.Services["api"].Workdir)
+	}
+}
+
 func TestValidateMissingServiceType(t *testing.T) {
 	_, err := manifest.ParseBytes([]byte(`
 name: test

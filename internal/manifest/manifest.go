@@ -34,6 +34,7 @@ type Service struct {
 	Type      string            `yaml:"type"`              // "docker", "native"
 	Image     string            `yaml:"image,omitempty"`   // docker image
 	Command   string            `yaml:"command,omitempty"` // native command
+	Workdir   string            `yaml:"workdir,omitempty"` // working directory for native
 	Ports     []string          `yaml:"ports,omitempty"`   // "8080" or "8080:80" (host:container)
 	Env       map[string]string `yaml:"env,omitempty"`
 	Health    *HealthCheck      `yaml:"health,omitempty"`
@@ -121,6 +122,9 @@ func (w *Workspace) Validate() error {
 			// valid
 		default:
 			return fmt.Errorf("service %q: unknown type %q", name, svc.Type)
+		}
+		if svc.Type == "native" && svc.Command == "" {
+			return fmt.Errorf("service %q: command is required for native services", name)
 		}
 	}
 	return nil
