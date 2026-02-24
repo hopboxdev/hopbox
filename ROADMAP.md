@@ -80,7 +80,7 @@ via restic. Workspace migration across hosts via `hop to`.
 - [ ] `hop to` error recovery — rollback or resume on mid-migration failure
 - [ ] CI/CD pipeline — GitHub Actions for tests, linting, cross-compilation, goreleaser for releases
 - [ ] Package management abstraction — backend interface, lock file (`hopbox.lock`)
-- [ ] Static package backend — download binary from URL
+- [x] Static package backend — download binary from URL
 - [x] Native service backend — run processes directly without Docker
 - [ ] devcontainer.json compatibility (read-only import)
 - [ ] Network fallbacks for restricted environments — SSH tunneling (`hop up --ssh`), Wireguard-over-WebSocket
