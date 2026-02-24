@@ -1,8 +1,15 @@
 package packages_test
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,10 +108,155 @@ func TestInstall_NixWithVersion(t *testing.T) {
 	}
 }
 
-func TestInstall_Static(t *testing.T) {
-	err := packages.Install(context.Background(), packages.Package{Name: "tool", Backend: "static"})
+func createTestTarGz(t *testing.T, dir, archiveName, binaryName string) (path string, sha256hex string) {
+	t.Helper()
+	archivePath := filepath.Join(dir, archiveName)
+	f, err := os.Create(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := sha256.New()
+	mw := io.MultiWriter(f, h)
+	gw := gzip.NewWriter(mw)
+	tw := tar.NewWriter(gw)
+
+	_ = tw.WriteHeader(&tar.Header{
+		Name:     "tool-v1.0/",
+		Typeflag: tar.TypeDir,
+		Mode:     0755,
+	})
+
+	content := []byte("#!/bin/sh\necho hello\n")
+	_ = tw.WriteHeader(&tar.Header{
+		Name:     "tool-v1.0/" + binaryName,
+		Size:     int64(len(content)),
+		Mode:     0755,
+		Typeflag: tar.TypeReg,
+	})
+	_, _ = tw.Write(content)
+
+	_ = tw.Close()
+	_ = gw.Close()
+	_ = f.Close()
+
+	return archivePath, hex.EncodeToString(h.Sum(nil))
+}
+
+func TestInstall_StaticTarGz(t *testing.T) {
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "opt", "hopbox", "bin")
+
+	origBinDir := packages.StaticBinDir
+	packages.StaticBinDir = binDir
+	t.Cleanup(func() { packages.StaticBinDir = origBinDir })
+
+	archivePath, sha256hex := createTestTarGz(t, tmpDir, "tool.tar.gz", "mytool")
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, archivePath)
+	}))
+	defer ts.Close()
+
+	err := packages.Install(context.Background(), packages.Package{
+		Name:    "mytool",
+		Backend: "static",
+		URL:     ts.URL + "/tool.tar.gz",
+		SHA256:  sha256hex,
+	})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	info, err := os.Stat(filepath.Join(binDir, "mytool"))
+	if err != nil {
+		t.Fatalf("binary not found: %v", err)
+	}
+	if info.Mode()&0111 == 0 {
+		t.Error("binary is not executable")
+	}
+}
+
+func TestInstall_StaticSHA256Mismatch(t *testing.T) {
+	tmpDir := t.TempDir()
+	packages.StaticBinDir = filepath.Join(tmpDir, "bin")
+	t.Cleanup(func() { packages.StaticBinDir = "/opt/hopbox/bin" })
+
+	archivePath, _ := createTestTarGz(t, tmpDir, "tool.tar.gz", "mytool")
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, archivePath)
+	}))
+	defer ts.Close()
+
+	err := packages.Install(context.Background(), packages.Package{
+		Name:    "mytool",
+		Backend: "static",
+		URL:     ts.URL + "/tool.tar.gz",
+		SHA256:  "0000000000000000000000000000000000000000000000000000000000000000",
+	})
 	if err == nil {
-		t.Error("expected error for static backend")
+		t.Error("expected SHA256 mismatch error")
+	}
+	if !strings.Contains(err.Error(), "sha256 mismatch") {
+		t.Errorf("error = %q, want sha256 mismatch", err)
+	}
+}
+
+func TestInstall_StaticRawBinary(t *testing.T) {
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	packages.StaticBinDir = binDir
+	t.Cleanup(func() { packages.StaticBinDir = "/opt/hopbox/bin" })
+
+	binaryContent := []byte("#!/bin/sh\necho hello\n")
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(binaryContent)
+	}))
+	defer ts.Close()
+
+	err := packages.Install(context.Background(), packages.Package{
+		Name:    "mytool",
+		Backend: "static",
+		URL:     ts.URL + "/mytool",
+	})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	installed, err := os.ReadFile(filepath.Join(binDir, "mytool"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(installed) != string(binaryContent) {
+		t.Error("installed binary content doesn't match")
+	}
+}
+
+func TestIsInstalled_Static(t *testing.T) {
+	tmpDir := t.TempDir()
+	packages.StaticBinDir = tmpDir
+	t.Cleanup(func() { packages.StaticBinDir = "/opt/hopbox/bin" })
+
+	ok, err := packages.IsInstalled(context.Background(), packages.Package{Name: "mytool", Backend: "static"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("expected not installed")
+	}
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "mytool"), []byte("bin"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	ok, err = packages.IsInstalled(context.Background(), packages.Package{Name: "mytool", Backend: "static"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("expected installed")
 	}
 }
 
