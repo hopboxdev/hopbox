@@ -158,6 +158,31 @@ services:
 	}
 }
 
+func TestValidateStaticPackageWithURL(t *testing.T) {
+	_, err := manifest.ParseBytes([]byte(`
+name: test
+packages:
+  - name: ripgrep
+    backend: static
+    url: https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-unknown-linux-musl.tar.gz
+`))
+	if err != nil {
+		t.Errorf("expected valid manifest, got: %v", err)
+	}
+}
+
+func TestValidateStaticPackageMissingURL(t *testing.T) {
+	_, err := manifest.ParseBytes([]byte(`
+name: test
+packages:
+  - name: ripgrep
+    backend: static
+`))
+	if err == nil {
+		t.Error("expected error for static package without url")
+	}
+}
+
 func TestValidateMissingServiceType(t *testing.T) {
 	_, err := manifest.ParseBytes([]byte(`
 name: test
