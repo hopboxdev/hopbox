@@ -81,7 +81,7 @@ via restic. Workspace migration across hosts via `hop to`.
 - [ ] CI/CD pipeline — GitHub Actions for tests, linting, cross-compilation, goreleaser for releases
 - [ ] Package management abstraction — backend interface, lock file (`hopbox.lock`)
 - [ ] Static package backend — download binary from URL
-- [ ] Native service backend — run processes directly without Docker
+- [x] Native service backend — run processes directly without Docker
 - [ ] devcontainer.json compatibility (read-only import)
 - [ ] Network fallbacks for restricted environments — SSH tunneling (`hop up --ssh`), Wireguard-over-WebSocket
 - [ ] Installation script (`curl | sh`) + Homebrew tap + AUR
