@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -10,8 +12,7 @@ import (
 )
 
 // BuildServiceManager creates a service.Manager populated from the workspace
-// manifest. Only docker-type services are registered; others are skipped.
-// This is called both at agent startup and on workspace.sync.
+// manifest. This is called both at agent startup and on workspace.sync.
 func BuildServiceManager(ws *manifest.Workspace) *service.Manager {
 	mgr := service.NewManager()
 	for name, svc := range ws.Services {
@@ -42,6 +43,7 @@ func BuildServiceManager(ws *manifest.Workspace) *service.Manager {
 			Type:      svc.Type,
 			Image:     svc.Image,
 			Command:   svc.Command,
+			Workdir:   svc.Workdir,
 			Ports:     svc.Ports,
 			Env:       svc.Env,
 			DependsOn: svc.DependsOn,
@@ -50,7 +52,8 @@ func BuildServiceManager(ws *manifest.Workspace) *service.Manager {
 		}
 
 		var backend service.Backend
-		if svc.Type == "docker" {
+		switch svc.Type {
+		case "docker":
 			ports := make([]string, 0, len(svc.Ports))
 			for _, p := range svc.Ports {
 				if strings.ContainsRune(p, ':') {
@@ -73,6 +76,15 @@ func BuildServiceManager(ws *manifest.Workspace) *service.Manager {
 				Env:     svc.Env,
 				Ports:   ports,
 				Volumes: volumes,
+			}
+		case "native":
+			logDir, _ := os.UserConfigDir()
+			logDir = filepath.Join(logDir, "hopbox", "logs")
+			backend = &service.NativeBackend{
+				Command: svc.Command,
+				Workdir: svc.Workdir,
+				Env:     svc.Env,
+				LogDir:  logDir,
 			}
 		}
 		if backend != nil {

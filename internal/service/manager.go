@@ -39,6 +39,7 @@ type Def struct {
 	Type      string // "docker", "native"
 	Image     string // for docker
 	Command   string // for native
+	Workdir   string // for native
 	Ports     []string
 	Env       map[string]string
 	DependsOn []string
