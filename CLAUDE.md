@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-Phase 0 complete, Phase 1 in progress. `hop setup`, `hop up`, `hop to`,
-`hop upgrade` verified working. Reconnection monitoring, snapshot/restore,
-and bridges all operational.
+Phases 0 and 1 complete. `hop setup`, `hop up` (daemon mode), `hop down`,
+`hop to`, `hop upgrade` verified working. Reconnection monitoring,
+snapshot/restore, and bridges all operational.
 
 **ROADMAP.md** (repo root) is the living roadmap. When a feature is completed,
 update the relevant checklist item in ROADMAP.md (change `[ ]` to `[x]`) and

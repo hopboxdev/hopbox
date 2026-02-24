@@ -14,7 +14,7 @@ and competitive analysis.
 
 ## Current State
 
-Phase 0 is complete. Phase 1 is in progress.
+Phases 0 and 1 are complete. Phase 2 is next.
 
 **What works today:** `hop setup`, `hop up`, `hop status`, `hop to`, `hop upgrade`,
 `hop rotate`, `hop code`, `hop init`, `hop run`, `hop services`, `hop logs`,
@@ -56,7 +56,7 @@ via restic. Workspace migration across hosts via `hop to`.
 
 ---
 
-## Phase 1 — Core Feature Set (In Progress)
+## Phase 1 — Core Feature Set (Done)
 
 - [x] Service orchestration — dependency ordering, health check polling, log aggregation, data directory declarations
 - [x] Snapshot & restore — `hop snap create/restore/ls`, restic backend, metadata tracking
@@ -69,7 +69,6 @@ via restic. Workspace migration across hosts via `hop to`.
 - [x] `hop logs` — stream service logs (single + all)
 - [x] Bubbletea TUI step runner — phased runner with spinners, used by setup/up/to/upgrade
 - [x] CLI styling — lipgloss-based `internal/ui` package with Section, Step, Table, Row primitives
-- [ ] SSH fallback — `hop up --ssh` when Wireguard UDP is blocked
 - [x] `hop up` as background daemon — refactor from foreground process to background service
 - [x] `hop down` — proper teardown command that signals the background `hop up` process
 
@@ -84,7 +83,7 @@ via restic. Workspace migration across hosts via `hop to`.
 - [ ] Static package backend — download binary from URL
 - [ ] Native service backend — run processes directly without Docker
 - [ ] devcontainer.json compatibility (read-only import)
-- [ ] Wireguard-over-WebSocket fallback for restricted networks
+- [ ] Network fallbacks for restricted environments — SSH tunneling (`hop up --ssh`), Wireguard-over-WebSocket
 - [ ] Installation script (`curl | sh`) + Homebrew tap + AUR
 - [ ] Documentation site (hopbox.dev) — quickstart, manifest reference, migration guides
 - [ ] GitHub repo public release — Apache 2.0, example configs

@@ -34,7 +34,6 @@ const (
 // UpCmd brings up the WireGuard tunnel and bridges.
 type UpCmd struct {
 	Workspace  string `arg:"" optional:"" help:"Path to hopbox.yaml (default: ./hopbox.yaml)."`
-	SSH        bool   `help:"Fall back to SSH tunneling instead of WireGuard."`
 	Foreground bool   `short:"f" help:"Run in foreground (don't daemonize)."`
 }
 
