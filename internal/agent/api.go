@@ -310,29 +310,6 @@ func (a *Agent) rpcWorkspaceSync(w http.ResponseWriter, req rpcRequest) {
 	writeRPCResult(w, map[string]string{"status": "synced", "name": ws.Name})
 }
 
-// isValidContainerName reports whether name is a safe Docker container name.
-// Docker allows [a-zA-Z0-9][a-zA-Z0-9_.-]* — no spaces or shell metacharacters.
-// Using "--" in the docker command prevents flag injection, but we validate
-// anyway to surface bad input early with a clear error.
-func isValidContainerName(name string) bool {
-	if len(name) == 0 {
-		return false
-	}
-	for i, c := range name {
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-			// always valid
-		case c == '_' || c == '.' || c == '-':
-			if i == 0 {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-	return true
-}
-
 // flushWriter wraps http.ResponseWriter and flushes after every Write call.
 // Required for streaming responses so the client receives output incrementally.
 type flushWriter struct {
@@ -363,26 +340,35 @@ func (a *Agent) rpcLogsStream(w http.ResponseWriter, r *http.Request, req rpcReq
 }
 
 func (a *Agent) streamSingleLog(w http.ResponseWriter, r *http.Request, name string) {
-	if !isValidContainerName(name) {
-		writeRPCError(w, http.StatusBadRequest, "invalid container name")
+	if a.services == nil {
+		writeRPCError(w, http.StatusServiceUnavailable, "service manager not initialised")
+		return
+	}
+	backend := a.services.Backend(name)
+	if backend == nil {
+		writeRPCError(w, http.StatusBadRequest, fmt.Sprintf("unknown service %q", name))
 		return
 	}
 
-	// Use an io.Pipe so we can return a proper JSON error if docker fails to
-	// start, yet still stream output once it's running.
+	cmd := backend.LogCmd(name, 100)
 	pr, pw := io.Pipe()
-	cmd := exec.CommandContext(r.Context(), "docker", "logs", "--follow", "--tail", "100", "--", name)
 	cmd.Stdout = pw
 	cmd.Stderr = pw
 
 	if err := cmd.Start(); err != nil {
 		_ = pw.Close()
-		writeRPCError(w, http.StatusInternalServerError, fmt.Sprintf("docker logs: %v", err))
+		writeRPCError(w, http.StatusInternalServerError, fmt.Sprintf("log stream: %v", err))
 		return
 	}
 	go func() {
 		_ = cmd.Wait()
 		_ = pw.Close()
+	}()
+
+	// Cancel the command when the client disconnects.
+	go func() {
+		<-r.Context().Done()
+		_ = cmd.Process.Kill()
 	}()
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -400,14 +386,8 @@ func (a *Agent) streamAllServiceLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	statuses := a.services.ListStatus()
-	var names []string
-	for _, s := range statuses {
-		if s.Type == "docker" {
-			names = append(names, s.Name)
-		}
-	}
-	if len(names) == 0 {
-		writeRPCError(w, http.StatusBadRequest, "no docker services registered")
+	if len(statuses) == 0 {
+		writeRPCError(w, http.StatusBadRequest, "no services registered")
 		return
 	}
 
@@ -420,12 +400,16 @@ func (a *Agent) streamAllServiceLogs(w http.ResponseWriter, r *http.Request) {
 
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	for _, name := range names {
+	for _, s := range statuses {
+		backend := a.services.Backend(s.Name)
+		if backend == nil {
+			continue
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			cmd := backend.LogCmd(s.Name, 50)
 			pr, pw := io.Pipe()
-			cmd := exec.CommandContext(r.Context(), "docker", "logs", "--follow", "--tail", "50", "--", name)
 			cmd.Stdout = pw
 			cmd.Stderr = pw
 			if err := cmd.Start(); err != nil {
@@ -436,9 +420,13 @@ func (a *Agent) streamAllServiceLogs(w http.ResponseWriter, r *http.Request) {
 				_ = cmd.Wait()
 				_ = pw.Close()
 			}()
+			go func() {
+				<-r.Context().Done()
+				_ = cmd.Process.Kill()
+			}()
 			scanner := bufio.NewScanner(pr)
 			for scanner.Scan() {
-				line := fmt.Sprintf("[%s] %s\n", name, scanner.Text())
+				line := fmt.Sprintf("[%s] %s\n", s.Name, scanner.Text())
 				mu.Lock()
 				_, _ = fw.Write([]byte(line))
 				mu.Unlock()
