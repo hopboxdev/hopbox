@@ -13,6 +13,7 @@ import (
 
 	"github.com/hopboxdev/hopbox/internal/agent"
 	"github.com/hopboxdev/hopbox/internal/manifest"
+	"github.com/hopboxdev/hopbox/internal/packages"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 	"github.com/hopboxdev/hopbox/internal/version"
 	"github.com/hopboxdev/hopbox/internal/wgkey"
@@ -26,6 +27,9 @@ type ServeCmd struct {
 }
 
 func (c *ServeCmd) Run() error {
+	// Ensure static package binaries are on PATH for scripts and checks.
+	_ = os.Setenv("PATH", packages.StaticBinDir+":"+os.Getenv("PATH"))
+
 	kp, err := loadOrGenerateKey()
 	if err != nil {
 		return fmt.Errorf("load agent key: %w", err)
