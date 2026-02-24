@@ -243,6 +243,53 @@ func TestManagerBackendAccessor(t *testing.T) {
 	}
 }
 
+func TestManagerStopAllReverseDependencyOrder(t *testing.T) {
+	m := service.NewManager()
+	var stopOrder []string
+
+	for _, name := range []string{"db", "cache", "api"} {
+		n := name
+		b := &stubBackend{
+			running: true,
+			stopFn: func() error {
+				stopOrder = append(stopOrder, n)
+				return nil
+			},
+		}
+		var deps []string
+		if n == "api" {
+			deps = []string{"db", "cache"}
+		}
+		m.Register(&service.Def{Name: n, Type: "docker", DependsOn: deps}, b)
+	}
+
+	if err := m.StopAll(); err != nil {
+		t.Fatalf("StopAll: %v", err)
+	}
+
+	// api must stop before both db and cache
+	apiIdx := -1
+	for i, name := range stopOrder {
+		if name == "api" {
+			apiIdx = i
+		}
+	}
+	if apiIdx == -1 {
+		t.Fatal("api was not stopped")
+	}
+	for _, dep := range []string{"db", "cache"} {
+		depIdx := -1
+		for i, name := range stopOrder {
+			if name == dep {
+				depIdx = i
+			}
+		}
+		if depIdx <= apiIdx {
+			t.Errorf("expected %s to stop after api (stop order: %v)", dep, stopOrder)
+		}
+	}
+}
+
 // errorBackend always returns an error from IsRunning.
 type errorBackend struct{ err error }
 

@@ -133,6 +133,34 @@ func (m *Manager) Stop(name string) error {
 	return backend.Stop(name)
 }
 
+// StopAll stops all registered services in reverse dependency order.
+func (m *Manager) StopAll() error {
+	m.mu.Lock()
+	defs := make(map[string]*Def, len(m.services))
+	for k, v := range m.services {
+		defs[k] = v
+	}
+	m.mu.Unlock()
+
+	order, err := topoSort(defs)
+	if err != nil {
+		return fmt.Errorf("service ordering: %w", err)
+	}
+
+	// Reverse: stop dependents before their dependencies.
+	for i, j := 0, len(order)-1; i < j; i, j = i+1, j-1 {
+		order[i], order[j] = order[j], order[i]
+	}
+
+	var firstErr error
+	for _, name := range order {
+		if err := m.Stop(name); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 // Restart stops then starts a service.
 func (m *Manager) Restart(name string) error {
 	_ = m.Stop(name) // ignore stop errors
