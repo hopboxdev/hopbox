@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os/exec"
 	"sort"
 	"sync"
 	"time"
@@ -29,6 +30,7 @@ type Backend interface {
 	Start(ctx context.Context, name string) error
 	Stop(name string) error
 	IsRunning(name string) (bool, error)
+	LogCmd(name string, tail int) *exec.Cmd
 }
 
 // Def is the parsed definition of a single service from the manifest.
@@ -65,6 +67,13 @@ func (m *Manager) Register(def *Def, backend Backend) {
 	defer m.mu.Unlock()
 	m.services[def.Name] = def
 	m.backends[def.Name] = backend
+}
+
+// Backend returns the backend for the named service, or nil if not found.
+func (m *Manager) Backend(name string) Backend {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.backends[name]
 }
 
 // StartAll starts all registered services in dependency order.

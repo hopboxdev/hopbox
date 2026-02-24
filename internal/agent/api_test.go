@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -464,3 +465,5 @@ func (s *stubBackend) Stop(_ string) error {
 func (s *stubBackend) IsRunning(_ string) (bool, error) {
 	return s.running, nil
 }
+
+func (s *stubBackend) LogCmd(_ string, _ int) *exec.Cmd { return nil }

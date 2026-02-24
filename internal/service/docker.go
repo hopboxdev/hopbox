@@ -59,6 +59,11 @@ func (d *DockerBackend) Stop(name string) error {
 	return nil
 }
 
+// LogCmd returns a command that streams container logs.
+func (d *DockerBackend) LogCmd(name string, tail int) *exec.Cmd {
+	return exec.Command("docker", "logs", "--follow", "--tail", fmt.Sprintf("%d", tail), "--", name)
+}
+
 // IsRunning checks whether the named container is running.
 func (d *DockerBackend) IsRunning(name string) (bool, error) {
 	var out bytes.Buffer

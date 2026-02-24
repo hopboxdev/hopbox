@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"os/exec"
 	"testing"
 
 	"github.com/hopboxdev/hopbox/internal/service"
@@ -34,6 +35,8 @@ func (s *stubBackend) Stop(_ string) error {
 func (s *stubBackend) IsRunning(_ string) (bool, error) {
 	return s.running, nil
 }
+
+func (s *stubBackend) LogCmd(_ string, _ int) *exec.Cmd { return nil }
 
 func TestManagerRegisterAndList(t *testing.T) {
 	m := service.NewManager()
@@ -226,9 +229,24 @@ func TestManagerStartAllUnknownDep(t *testing.T) {
 	}
 }
 
+func TestManagerBackendAccessor(t *testing.T) {
+	m := service.NewManager()
+	b := &stubBackend{}
+	m.Register(&service.Def{Name: "app", Type: "native"}, b)
+
+	got := m.Backend("app")
+	if got != b {
+		t.Error("Backend accessor should return registered backend")
+	}
+	if m.Backend("nonexistent") != nil {
+		t.Error("Backend accessor should return nil for unknown service")
+	}
+}
+
 // errorBackend always returns an error from IsRunning.
 type errorBackend struct{ err error }
 
 func (e *errorBackend) Start(_ context.Context, _ string) error { return nil }
 func (e *errorBackend) Stop(_ string) error                     { return nil }
 func (e *errorBackend) IsRunning(_ string) (bool, error)        { return false, e.err }
+func (e *errorBackend) LogCmd(_ string, _ int) *exec.Cmd        { return nil }
