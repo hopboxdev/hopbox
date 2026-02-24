@@ -27,6 +27,8 @@ type Package struct {
 	Name    string `yaml:"name"`
 	Backend string `yaml:"backend,omitempty"` // "nix", "apt", "static"
 	Version string `yaml:"version,omitempty"`
+	URL     string `yaml:"url,omitempty"`    // download URL (required for static)
+	SHA256  string `yaml:"sha256,omitempty"` // optional hex-encoded SHA256
 }
 
 // Service declares a background process managed by the agent.
@@ -125,6 +127,11 @@ func (w *Workspace) Validate() error {
 		}
 		if svc.Type == "native" && svc.Command == "" {
 			return fmt.Errorf("service %q: command is required for native services", name)
+		}
+	}
+	for _, pkg := range w.Packages {
+		if pkg.Backend == "static" && pkg.URL == "" {
+			return fmt.Errorf("package %q: url is required for static backend", pkg.Name)
 		}
 	}
 	return nil

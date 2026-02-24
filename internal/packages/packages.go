@@ -13,6 +13,8 @@ type Package struct {
 	Name    string `json:"name"`
 	Backend string `json:"backend,omitempty"` // "apt", "nix", "static"
 	Version string `json:"version,omitempty"`
+	URL     string `json:"url,omitempty"`    // download URL (required for static)
+	SHA256  string `json:"sha256,omitempty"` // optional hex-encoded SHA256
 }
 
 // Install installs pkg using the appropriate backend.
