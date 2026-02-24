@@ -35,8 +35,8 @@ want it; PATH ordering decides precedence.
 
 - **Agent process**: prepend `/opt/hopbox/bin` to `PATH` at startup in
   `cmd/hop-agent/main.go`. Covers `IsInstalled` checks and `run.script` execution.
-- **User SSH sessions**: write `/etc/profile.d/hopbox.sh` with
-  `export PATH="/opt/hopbox/bin:$PATH"` on first static install (idempotent).
+- **User SSH sessions**: users add `/opt/hopbox/bin` to their own shell config
+  if they want it available interactively. Hopbox doesn't manage user shell files.
 
 ## Installation Flow
 
@@ -50,7 +50,6 @@ want it; PATH ordering decides precedence.
 5. Find binary — walk extracted files for an executable matching `pkg.Name`;
    fall back to the sole executable if only one exists
 6. Install — move to `/opt/hopbox/bin/<name>`, chmod 0755
-7. PATH file — ensure `/etc/profile.d/hopbox.sh` exists
 
 `staticIsInstalled(pkg)`: check if `/opt/hopbox/bin/<name>` exists and is executable.
 
