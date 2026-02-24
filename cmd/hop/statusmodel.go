@@ -32,6 +32,9 @@ type dashData struct {
 
 	// Bridges (from manifest)
 	bridges []bridgeInfo
+
+	// Forwarded ports
+	forwardedPorts []tunnel.ForwardedPort
 }
 
 type svcInfo struct {
@@ -64,6 +67,7 @@ func fetchDashData(hostName string, cfg *hostconfig.HostConfig) dashData {
 	if !state.LastHealthy.IsZero() {
 		d.lastHealthy = time.Since(state.LastHealthy)
 	}
+	d.forwardedPorts = state.ForwardedPorts
 
 	// 2. Health ping (measures round-trip).
 	hostname := state.Hostname

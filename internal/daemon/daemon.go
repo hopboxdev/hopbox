@@ -107,6 +107,19 @@ func Run(cfg Config) error {
 		}
 	}
 
+	// Start port forwarder.
+	pf := bridge.NewPortForwarder(cfg.HostName, tunnel.ServerIP,
+		bridge.WithInterval(3*time.Second),
+		bridge.WithOnForward(func(port int) {
+			log.Printf("forwarding localhost:%d", port)
+		}),
+		bridge.WithOnUnforward(func(port int) {
+			log.Printf("stopped forwarding localhost:%d", port)
+		}),
+	)
+	go func() { _ = pf.Run(ctx) }()
+	defer pf.Stop()
+
 	// Write state file.
 	state := &tunnel.TunnelState{
 		PID:         os.Getpid(),
@@ -145,6 +158,7 @@ func Run(cfg Config) error {
 		},
 		OnHealthy: func(t time.Time) {
 			state.LastHealthy = t
+			state.ForwardedPorts = pf.PortInfo()
 			if err := tunnel.WriteState(state); err != nil {
 				log.Printf("update tunnel state: %v", err)
 			}

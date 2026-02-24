@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/manifest"
 	"github.com/hopboxdev/hopbox/internal/rpcclient"
+	"github.com/hopboxdev/hopbox/internal/setup"
 	"github.com/hopboxdev/hopbox/internal/tui"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 	"github.com/hopboxdev/hopbox/internal/ui"
@@ -30,6 +32,50 @@ const (
 	agentClientTimeout = 5 * time.Second
 	agentProbeTimeout  = 10 * time.Second
 )
+
+// versionMismatchError is returned when the agent version differs from the client.
+type versionMismatchError struct {
+	AgentVer  string
+	ClientVer string
+}
+
+func (e *versionMismatchError) Error() string {
+	return fmt.Sprintf("agent version %q differs from client %q", e.AgentVer, e.ClientVer)
+}
+
+// promptAndUpgradeAgent asks the user whether to upgrade the agent and runs
+// the upgrade if they agree. Returns true if the upgrade was performed.
+func promptAndUpgradeAgent(ctx context.Context, cfg *hostconfig.HostConfig, mismatch *versionMismatchError) (bool, error) {
+	fmt.Println(ui.Warn(fmt.Sprintf(
+		"Agent version %q differs from client %q",
+		mismatch.AgentVer, mismatch.ClientVer)))
+	fmt.Print("Run 'hop upgrade' to sync? (y/n): ")
+
+	var answer string
+	_, _ = fmt.Scanln(&answer)
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	if answer != "y" && answer != "yes" {
+		return false, fmt.Errorf("agent out of sync — run 'hop upgrade' to update")
+	}
+
+	fmt.Println(ui.StepRun("Connecting to host for upgrade..."))
+	sshClient, err := setup.UpgradeAgentSSH(ctx, cfg)
+	if err != nil {
+		return false, fmt.Errorf("SSH connect for upgrade: %w", err)
+	}
+	defer func() { _ = sshClient.Close() }()
+
+	sub := func(msg string) { fmt.Println(ui.StepInfo(msg)) }
+	fmt.Println(ui.StepRun("Upgrading agent..."))
+	if err := setup.UpgradeAgentWithClient(ctx, sshClient, cfg, os.Stdout, version.Version, sub); err != nil {
+		return false, fmt.Errorf("agent upgrade: %w", err)
+	}
+	fmt.Println(ui.StepOK("Agent upgraded"))
+
+	// Wait briefly for agent to restart.
+	time.Sleep(2 * time.Second)
+	return true, nil
+}
 
 // UpCmd brings up the WireGuard tunnel and bridges.
 type UpCmd struct {
@@ -170,8 +216,23 @@ func (c *UpCmd) runForeground(globals *CLI, hostName string, cfg *hostconfig.Hos
 	phases := c.buildTUIPhases(hostName, agentURL, agentClient, ws, wsPath)
 
 	if len(phases) > 0 {
-		if err := tui.RunPhases(ctx, "hop up", phases); err != nil {
-			return err
+		err := tui.RunPhases(ctx, "hop up", phases)
+		if err != nil {
+			var mismatch *versionMismatchError
+			if errors.As(err, &mismatch) {
+				upgraded, err := promptAndUpgradeAgent(ctx, cfg, mismatch)
+				if err != nil {
+					return err
+				}
+				if upgraded {
+					phases = c.buildTUIPhases(hostName, agentURL, agentClient, ws, wsPath)
+					if err := tui.RunPhases(ctx, "hop up", phases); err != nil {
+						return err
+					}
+				}
+			} else {
+				return err
+			}
 		}
 	}
 
@@ -199,6 +260,19 @@ func (c *UpCmd) runForeground(globals *CLI, hostName string, cfg *hostconfig.Hos
 			}
 		}
 	}
+
+	// Start port forwarder.
+	pf := bridge.NewPortForwarder(hostName, tunnel.ServerIP,
+		bridge.WithInterval(3*time.Second),
+		bridge.WithOnForward(func(port int) {
+			fmt.Println(ui.StepOK(fmt.Sprintf("Forwarding localhost:%d", port)))
+		}),
+		bridge.WithOnUnforward(func(port int) {
+			fmt.Println(ui.StepInfo(fmt.Sprintf("Stopped forwarding localhost:%d", port)))
+		}),
+	)
+	go func() { _ = pf.Run(ctx) }()
+	defer pf.Stop()
 
 	// Write tunnel state.
 	state := &tunnel.TunnelState{
@@ -244,6 +318,7 @@ func (c *UpCmd) runForeground(globals *CLI, hostName string, cfg *hostconfig.Hos
 		},
 		OnHealthy: func(t time.Time) {
 			state.LastHealthy = t
+			state.ForwardedPorts = pf.PortInfo()
 			if err := tunnel.WriteState(state); err != nil {
 				_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("update tunnel state: %v", err)))
 			}
@@ -296,6 +371,18 @@ func (c *UpCmd) runTUIPhases(hostName string, cfg *hostconfig.HostConfig) error 
 			send := func(evt tui.StepEvent) { msg = evt.Message }
 			err := step.Run(ctx, send)
 			if err != nil {
+				var mismatch *versionMismatchError
+				if errors.As(err, &mismatch) {
+					upgraded, err := promptAndUpgradeAgent(ctx, cfg, mismatch)
+					if err != nil {
+						return err
+					}
+					if upgraded {
+						// Re-run all phases from scratch.
+						phases = c.buildTUIPhases(hostName, agentURL, agentClient, ws, wsPath)
+						return c.runTUIPhasesInner(ctx, phases)
+					}
+				}
 				if step.NonFatal {
 					fmt.Println(ui.Warn(msg + ": " + err.Error()))
 					continue
@@ -307,6 +394,29 @@ func (c *UpCmd) runTUIPhases(hostName string, cfg *hostconfig.HostConfig) error 
 		}
 	}
 
+	fmt.Println(ui.StepOK("Tunnel ready"))
+	return nil
+}
+
+// runTUIPhasesInner runs phases sequentially with printed output.
+// Used for retries after upgrade — does not handle version mismatch.
+func (c *UpCmd) runTUIPhasesInner(ctx context.Context, phases []tui.Phase) error {
+	for _, phase := range phases {
+		for _, step := range phase.Steps {
+			msg := step.Title
+			send := func(evt tui.StepEvent) { msg = evt.Message }
+			err := step.Run(ctx, send)
+			if err != nil {
+				if step.NonFatal {
+					fmt.Println(ui.Warn(msg + ": " + err.Error()))
+					continue
+				}
+				fmt.Println(ui.StepFail(msg))
+				return err
+			}
+			fmt.Println(ui.StepOK(msg))
+		}
+	}
 	fmt.Println(ui.StepOK("Tunnel ready"))
 	return nil
 }
@@ -327,9 +437,7 @@ func (c *UpCmd) buildTUIPhases(hostName, agentURL string, agentClient *http.Clie
 				var health map[string]any
 				if json.Unmarshal(body, &health) == nil {
 					if agentVer, ok := health["version"].(string); ok && agentVer != version.Version {
-						_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf(
-							"agent version %q differs from client %q — run 'hop upgrade' to sync",
-							agentVer, version.Version)))
+						return &versionMismatchError{AgentVer: agentVer, ClientVer: version.Version}
 					}
 				}
 			}

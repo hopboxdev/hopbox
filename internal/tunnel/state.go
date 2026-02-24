@@ -10,16 +10,23 @@ import (
 	"time"
 )
 
+// ForwardedPort describes a port that is being forwarded through the tunnel.
+type ForwardedPort struct {
+	Port    int    `json:"port"`
+	Program string `json:"program,omitempty"`
+}
+
 // TunnelState describes a running hop up process.
 // Written to ~/.config/hopbox/run/<host>.json.
 type TunnelState struct {
-	PID         int       `json:"pid"`
-	Host        string    `json:"host"`
-	Hostname    string    `json:"hostname"`
-	Interface   string    `json:"interface,omitempty"`
-	StartedAt   time.Time `json:"started_at"`
-	Connected   bool      `json:"connected"`
-	LastHealthy time.Time `json:"last_healthy,omitempty"`
+	PID            int             `json:"pid"`
+	Host           string          `json:"host"`
+	Hostname       string          `json:"hostname"`
+	Interface      string          `json:"interface,omitempty"`
+	StartedAt      time.Time       `json:"started_at"`
+	Connected      bool            `json:"connected"`
+	LastHealthy    time.Time       `json:"last_healthy,omitempty"`
+	ForwardedPorts []ForwardedPort `json:"forwarded_ports,omitempty"`
 }
 
 // stateDir returns ~/.config/hopbox/run.

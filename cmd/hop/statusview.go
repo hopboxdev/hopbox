@@ -28,6 +28,11 @@ func renderDashboard(d dashData, width int) string {
 		sections = append(sections, renderServicesSection(d, contentWidth))
 	}
 
+	// --- Ports section ---
+	if d.tunnelUp && len(d.forwardedPorts) > 0 {
+		sections = append(sections, renderPortsSection(d, contentWidth))
+	}
+
 	// --- Bridges section ---
 	if d.tunnelUp && len(d.bridges) > 0 {
 		sections = append(sections, renderBridgesSection(d, contentWidth))
@@ -46,8 +51,13 @@ func renderTunnelSection(d dashData, width int) string {
 		status = ui.Dot(ui.StateDisconnected) + " disconnected"
 	}
 
+	endpoint := d.endpoint
+	if host, _, ok := strings.Cut(endpoint, ":"); ok {
+		endpoint = host
+	}
+
 	lines = append(lines, ui.Row("HOST", d.hostName, "STATUS", status, width))
-	lines = append(lines, ui.Row("ENDPOINT", d.endpoint, "", "", width))
+	lines = append(lines, ui.Row("ENDPOINT", endpoint, "", "", width))
 
 	if d.tunnelUp {
 		pingStr := "-"
@@ -92,6 +102,21 @@ func renderServicesSection(d dashData, width int) string {
 
 	content := strings.Join(lines, "\n")
 	return ui.Section("Services", content, width)
+}
+
+func renderPortsSection(d dashData, width int) string {
+	header := fmt.Sprintf("%-20s %s", "PORT", "PROCESS")
+	var lines []string
+	lines = append(lines, lipgloss.NewStyle().Foreground(ui.Subtle).Render(header))
+	for _, fp := range d.forwardedPorts {
+		prog := fp.Program
+		if prog == "" {
+			prog = "-"
+		}
+		lines = append(lines, fmt.Sprintf("localhost:%-9d %s", fp.Port, prog))
+	}
+	content := strings.Join(lines, "\n")
+	return ui.Section("Ports", content, width)
 }
 
 func renderBridgesSection(d dashData, width int) string {
