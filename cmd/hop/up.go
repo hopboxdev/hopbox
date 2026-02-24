@@ -475,6 +475,8 @@ func (c *UpCmd) buildTUIPhases(hostName, agentURL string, agentClient *http.Clie
 							"name":    p.Name,
 							"backend": p.Backend,
 							"version": p.Version,
+							"url":     p.URL,
+							"sha256":  p.SHA256,
 						})
 					}
 					if _, err := rpcclient.Call(hostName, "packages.install", map[string]any{"packages": pkgs}); err != nil {
