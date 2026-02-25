@@ -20,6 +20,8 @@ services:
 
 bridges:
   - type: clipboard
+  # - type: xdg-open
+  # - type: notifications
 
 session:
   manager: zellij

@@ -45,7 +45,8 @@ via restic. Workspace migration across hosts via `hop to`.
 - [x] hopbox.yaml parser — full manifest schema with validation
 - [x] Package installation — apt and nix backends
 - [x] Docker service management — start/stop/restart, health checks, dependency ordering
-- [x] Port monitoring — `/proc/net/tcp` parsing
+- [x] Port monitoring — `/proc/net/tcp` parsing with process name resolution
+- [x] Automatic port forwarding — discover remote ports and proxy locally
 - [x] `hop services ls/restart/stop`
 
 ### Milestone 0c: Bridges
@@ -78,17 +79,19 @@ via restic. Workspace migration across hosts via `hop to`.
 
 - [ ] Linux client support — helper daemon or direct TUN setup for Linux laptops
 - [ ] `hop to` error recovery — rollback or resume on mid-migration failure
-- [ ] CI/CD pipeline — GitHub Actions for tests, linting, cross-compilation, goreleaser for releases
+- [x] CI/CD pipeline — GitHub Actions for tests, linting, cross-compilation, goreleaser for releases
 - [ ] Package management abstraction — backend interface, lock file (`hopbox.lock`)
 - [x] Static package backend — download binary from URL
+- [x] Packages in `hop status` — show installed packages from manifest in dashboard
+- [ ] Package reconciliation — remove stale binaries/packages not in current manifest
 - [x] Native service backend — run processes directly without Docker
 - [ ] devcontainer.json compatibility (read-only import)
 - [ ] Network fallbacks for restricted environments — SSH tunneling (`hop up --ssh`), Wireguard-over-WebSocket
 - [ ] Installation script (`curl | sh`) + Homebrew tap + AUR
 - [ ] Documentation site (hopbox.dev) — quickstart, manifest reference, migration guides
 - [ ] GitHub repo public release — Apache 2.0, example configs
-- [ ] xdg-open bridge — server `xdg-open` opens URLs in local browser
-- [ ] Notifications bridge — remote build notifications to local desktop
+- [x] xdg-open bridge — server `xdg-open` opens URLs in local browser
+- [x] Notifications bridge — remote build notifications to local desktop
 - [ ] Secrets management — sops/age integration, `hop secret set`
 - [ ] Test coverage — expand unit and integration tests across packages
 

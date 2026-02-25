@@ -242,7 +242,7 @@ func (c *UpCmd) runForeground(globals *CLI, hostName string, cfg *hostconfig.Hos
 		for _, b := range ws.Bridges {
 			switch b.Type {
 			case "clipboard":
-				br := bridge.NewClipboardBridge("127.0.0.1")
+				br := bridge.NewClipboardBridge(tunnel.ClientIP)
 				bridges = append(bridges, br)
 				go func(br bridge.Bridge) {
 					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
@@ -255,6 +255,22 @@ func (c *UpCmd) runForeground(globals *CLI, hostName string, cfg *hostconfig.Hos
 				go func(br bridge.Bridge) {
 					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
 						_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("CDP bridge error: %v", err)))
+					}
+				}(br)
+			case "xdg-open":
+				br := bridge.NewXDGOpenBridge(tunnel.ClientIP)
+				bridges = append(bridges, br)
+				go func(br bridge.Bridge) {
+					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
+						_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("xdg-open bridge error: %v", err)))
+					}
+				}(br)
+			case "notifications":
+				br := bridge.NewNotificationBridge(tunnel.ClientIP)
+				bridges = append(bridges, br)
+				go func(br bridge.Bridge) {
+					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
+						_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("notification bridge error: %v", err)))
 					}
 				}(br)
 			}

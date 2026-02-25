@@ -76,6 +76,10 @@ func (a *Agent) Reload(ws *manifest.Workspace) {
 	a.services = mgr
 	a.mu.Unlock()
 
+	if err := InstallBridgeScripts(ws); err != nil {
+		slog.Warn("install bridge scripts", "err", err)
+	}
+
 	go func() {
 		if err := mgr.StartAll(context.Background()); err != nil {
 			slog.Warn("service startup on reload", "err", err)

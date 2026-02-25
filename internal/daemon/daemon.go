@@ -88,7 +88,7 @@ func Run(cfg Config) error {
 		for _, b := range cfg.Manifest.Bridges {
 			switch b.Type {
 			case "clipboard":
-				br := bridge.NewClipboardBridge("127.0.0.1")
+				br := bridge.NewClipboardBridge(tunnel.ClientIP)
 				bridges = append(bridges, br)
 				go func(br bridge.Bridge) {
 					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
@@ -101,6 +101,22 @@ func Run(cfg Config) error {
 				go func(br bridge.Bridge) {
 					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
 						log.Printf("CDP bridge error: %v", err)
+					}
+				}(br)
+			case "xdg-open":
+				br := bridge.NewXDGOpenBridge(tunnel.ClientIP)
+				bridges = append(bridges, br)
+				go func(br bridge.Bridge) {
+					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
+						log.Printf("xdg-open bridge error: %v", err)
+					}
+				}(br)
+			case "notifications":
+				br := bridge.NewNotificationBridge(tunnel.ClientIP)
+				bridges = append(bridges, br)
+				go func(br bridge.Bridge) {
+					if err := br.Start(ctx); err != nil && ctx.Err() == nil {
+						log.Printf("notification bridge error: %v", err)
 					}
 				}(br)
 			}
