@@ -151,7 +151,8 @@ func TestInstall_StaticTarGz(t *testing.T) {
 	packages.StaticBinDir = binDir
 	t.Cleanup(func() { packages.StaticBinDir = origBinDir })
 
-	archivePath, sha256hex := createTestTarGz(t, tmpDir, "tool.tar.gz", "mytool")
+	// Package name "ripgrep" but binary in archive is "rg".
+	archivePath, sha256hex := createTestTarGz(t, tmpDir, "tool.tar.gz", "rg")
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, archivePath)
@@ -159,7 +160,7 @@ func TestInstall_StaticTarGz(t *testing.T) {
 	defer ts.Close()
 
 	err := packages.Install(context.Background(), packages.Package{
-		Name:    "mytool",
+		Name:    "ripgrep",
 		Backend: "static",
 		URL:     ts.URL + "/tool.tar.gz",
 		SHA256:  sha256hex,
@@ -168,12 +169,18 @@ func TestInstall_StaticTarGz(t *testing.T) {
 		t.Fatalf("Install: %v", err)
 	}
 
-	info, err := os.Stat(filepath.Join(binDir, "mytool"))
+	// Binary should be installed under its archive name "rg", not "ripgrep".
+	info, err := os.Stat(filepath.Join(binDir, "rg"))
 	if err != nil {
 		t.Fatalf("binary not found: %v", err)
 	}
 	if info.Mode()&0111 == 0 {
 		t.Error("binary is not executable")
+	}
+
+	// Package name should NOT exist as a binary.
+	if _, err := os.Stat(filepath.Join(binDir, "ripgrep")); err == nil {
+		t.Error("binary should not be installed under package name")
 	}
 }
 
@@ -217,7 +224,7 @@ func TestInstall_StaticRawBinary(t *testing.T) {
 	defer ts.Close()
 
 	err := packages.Install(context.Background(), packages.Package{
-		Name:    "mytool",
+		Name:    "My Tool",
 		Backend: "static",
 		URL:     ts.URL + "/mytool",
 	})
@@ -225,6 +232,7 @@ func TestInstall_StaticRawBinary(t *testing.T) {
 		t.Fatalf("Install: %v", err)
 	}
 
+	// Binary name comes from URL path ("mytool"), not package name ("My Tool").
 	installed, err := os.ReadFile(filepath.Join(binDir, "mytool"))
 	if err != nil {
 		t.Fatal(err)
@@ -239,7 +247,8 @@ func TestIsInstalled_Static(t *testing.T) {
 	packages.StaticBinDir = tmpDir
 	t.Cleanup(func() { packages.StaticBinDir = "/opt/hopbox/bin" })
 
-	ok, err := packages.IsInstalled(context.Background(), packages.Package{Name: "mytool", Backend: "static"})
+	// Not installed — no metadata, no binary.
+	ok, err := packages.IsInstalled(context.Background(), packages.Package{Name: "ripgrep", Backend: "static"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,11 +256,19 @@ func TestIsInstalled_Static(t *testing.T) {
 		t.Error("expected not installed")
 	}
 
-	if err := os.WriteFile(filepath.Join(tmpDir, "mytool"), []byte("bin"), 0755); err != nil {
+	// Simulate a previous install: write metadata and binary.
+	metaDir := filepath.Join(tmpDir, ".pkg")
+	if err := os.MkdirAll(metaDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(metaDir, "ripgrep"), []byte("rg"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "rg"), []byte("bin"), 0755); err != nil {
 		t.Fatal(err)
 	}
 
-	ok, err = packages.IsInstalled(context.Background(), packages.Package{Name: "mytool", Backend: "static"})
+	ok, err = packages.IsInstalled(context.Background(), packages.Package{Name: "ripgrep", Backend: "static"})
 	if err != nil {
 		t.Fatal(err)
 	}

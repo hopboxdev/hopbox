@@ -105,7 +105,11 @@ func nixIsInstalled(ctx context.Context, name string) (bool, error) {
 }
 
 func staticIsInstalled(pkg Package) bool {
-	info, err := os.Stat(filepath.Join(StaticBinDir, pkg.Name))
+	binName, err := readStaticMeta(pkg.Name)
+	if err != nil {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(StaticBinDir, binName))
 	if err != nil {
 		return false
 	}
@@ -129,7 +133,7 @@ func staticInstall(ctx context.Context, pkg Package) error {
 		}
 	}
 
-	binPath, cleanup, err := extractBinary(tmpFile, pkg.Name)
+	binPath, cleanup, err := extractBinary(tmpFile, pkg.URL)
 	if err != nil {
 		return fmt.Errorf("extract %q: %w", pkg.Name, err)
 	}
@@ -138,9 +142,14 @@ func staticInstall(ctx context.Context, pkg Package) error {
 	if err := os.MkdirAll(StaticBinDir, 0755); err != nil {
 		return fmt.Errorf("create bin dir: %w", err)
 	}
-	dest := filepath.Join(StaticBinDir, pkg.Name)
+	binName := filepath.Base(binPath)
+	dest := filepath.Join(StaticBinDir, binName)
 	if err := copyFile(binPath, dest, 0755); err != nil {
 		return fmt.Errorf("install %q: %w", pkg.Name, err)
+	}
+
+	if err := writeStaticMeta(pkg.Name, binName); err != nil {
+		return fmt.Errorf("write metadata for %q: %w", pkg.Name, err)
 	}
 
 	return nil
@@ -188,7 +197,7 @@ func verifySHA256(path, expected string) error {
 	return nil
 }
 
-func extractBinary(archivePath, name string) (binPath string, cleanup func(), err error) {
+func extractBinary(archivePath, sourceURL string) (binPath string, cleanup func(), err error) {
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return "", nil, err
@@ -209,7 +218,8 @@ func extractBinary(archivePath, name string) (binPath string, cleanup func(), er
 	case header[0] == 'P' && header[1] == 'K': // zip magic
 		err = extractZip(archivePath, tmpDir)
 	default:
-		// Treat as raw binary.
+		// Raw binary — use the last path segment of the source URL as filename.
+		name := filepath.Base(sourceURL)
 		dest := filepath.Join(tmpDir, name)
 		if err := copyFile(archivePath, dest, 0755); err != nil {
 			cleanup()
@@ -222,7 +232,7 @@ func extractBinary(archivePath, name string) (binPath string, cleanup func(), er
 		return "", nil, err
 	}
 
-	bin, err := findExecutable(tmpDir, name)
+	bin, err := findExecutable(tmpDir)
 	if err != nil {
 		cleanup()
 		return "", nil, err
@@ -327,7 +337,7 @@ func extractZipEntry(f *zip.File, target string) error {
 	return err
 }
 
-func findExecutable(dir, name string) (string, error) {
+func findExecutable(dir string) (string, error) {
 	var executables []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
@@ -346,12 +356,6 @@ func findExecutable(dir, name string) (string, error) {
 		return "", fmt.Errorf("no executable found in archive")
 	}
 
-	for _, exe := range executables {
-		if filepath.Base(exe) == name {
-			return exe, nil
-		}
-	}
-
 	if len(executables) == 1 {
 		return executables[0], nil
 	}
@@ -360,7 +364,27 @@ func findExecutable(dir, name string) (string, error) {
 	for i, e := range executables {
 		names[i] = filepath.Base(e)
 	}
-	return "", fmt.Errorf("multiple executables found (%s), none matching %q", strings.Join(names, ", "), name)
+	return "", fmt.Errorf("multiple executables found (%s); cannot determine which to install", strings.Join(names, ", "))
+}
+
+func staticMetaDir() string {
+	return filepath.Join(StaticBinDir, ".pkg")
+}
+
+func writeStaticMeta(pkgName, binName string) error {
+	dir := staticMetaDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, pkgName), []byte(binName), 0644)
+}
+
+func readStaticMeta(pkgName string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(staticMetaDir(), pkgName))
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func copyFile(src, dst string, perm os.FileMode) error {
