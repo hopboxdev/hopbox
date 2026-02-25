@@ -15,7 +15,6 @@ type Workspace struct {
 	Services map[string]Service `yaml:"services,omitempty"`
 	Bridges  []Bridge           `yaml:"bridges,omitempty"`
 	Env      map[string]string  `yaml:"env,omitempty"`
-	Secrets  []Secret           `yaml:"secrets,omitempty"`
 	Scripts  map[string]string  `yaml:"scripts,omitempty"`
 	Backup   *BackupConfig      `yaml:"backup,omitempty"`
 	Editor   *EditorConfig      `yaml:"editor,omitempty"`
@@ -60,13 +59,6 @@ type DataMount struct {
 // Bridge declares a local↔remote resource bridge.
 type Bridge struct {
 	Type string `yaml:"type"` // "clipboard", "cdp", "xdg-open", "notifications"
-}
-
-// Secret declares a secret that should be available in the workspace.
-type Secret struct {
-	Name   string `yaml:"name"`
-	Source string `yaml:"source,omitempty"` // e.g. "1password", "env"
-	EnvVar string `yaml:"env,omitempty"`
 }
 
 // BackupConfig configures workspace snapshots.
