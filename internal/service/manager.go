@@ -77,6 +77,13 @@ func (m *Manager) Backend(name string) Backend {
 	return m.backends[name]
 }
 
+// Def returns the service definition for the given name, or nil.
+func (m *Manager) Def(name string) *Def {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.services[name]
+}
+
 // StartAll starts all registered services in dependency order.
 func (m *Manager) StartAll(ctx context.Context) error {
 	m.mu.Lock()

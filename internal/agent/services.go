@@ -16,6 +16,16 @@ import (
 func BuildServiceManager(ws *manifest.Workspace) *service.Manager {
 	mgr := service.NewManager()
 	for name, svc := range ws.Services {
+		// Merge workspace-level env into service env.
+		// Service-level values take precedence.
+		mergedEnv := make(map[string]string, len(ws.Env)+len(svc.Env))
+		for k, v := range ws.Env {
+			mergedEnv[k] = v
+		}
+		for k, v := range svc.Env {
+			mergedEnv[k] = v
+		}
+
 		var dataPaths []string
 		var volumes []string
 		for _, d := range svc.Data {
@@ -45,7 +55,7 @@ func BuildServiceManager(ws *manifest.Workspace) *service.Manager {
 			Command:   svc.Command,
 			Workdir:   svc.Workdir,
 			Ports:     svc.Ports,
-			Env:       svc.Env,
+			Env:       mergedEnv,
 			DependsOn: svc.DependsOn,
 			Health:    hc,
 			DataPaths: dataPaths,
@@ -73,7 +83,7 @@ func BuildServiceManager(ws *manifest.Workspace) *service.Manager {
 			backend = &service.DockerBackend{
 				Image:   svc.Image,
 				Cmd:     strings.Fields(svc.Command),
-				Env:     svc.Env,
+				Env:     mergedEnv,
 				Ports:   ports,
 				Volumes: volumes,
 			}
@@ -83,7 +93,7 @@ func BuildServiceManager(ws *manifest.Workspace) *service.Manager {
 			backend = &service.NativeBackend{
 				Command: svc.Command,
 				Workdir: svc.Workdir,
-				Env:     svc.Env,
+				Env:     mergedEnv,
 				LogDir:  logDir,
 			}
 		}
