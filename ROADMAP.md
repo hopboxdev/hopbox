@@ -92,7 +92,7 @@ via restic. Workspace migration across hosts via `hop to`.
 - [ ] GitHub repo public release — Apache 2.0, example configs
 - [x] xdg-open bridge — server `xdg-open` opens URLs in local browser
 - [x] Notifications bridge — remote build notifications to local desktop
-- [ ] Secrets management — sops/age integration, `hop secret set`
+- [x] Secrets management — .env file loading, workspace env merge
 - [ ] Test coverage — expand unit and integration tests across packages
 
 ---
