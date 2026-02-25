@@ -17,6 +17,7 @@ import (
 
 	"github.com/hopboxdev/hopbox/internal/bridge"
 	"github.com/hopboxdev/hopbox/internal/daemon"
+	"github.com/hopboxdev/hopbox/internal/dotenv"
 	"github.com/hopboxdev/hopbox/internal/helper"
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/manifest"
@@ -26,6 +27,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 	"github.com/hopboxdev/hopbox/internal/ui"
 	"github.com/hopboxdev/hopbox/internal/version"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -208,6 +210,11 @@ func (c *UpCmd) runForeground(globals *CLI, hostName string, cfg *hostconfig.Hos
 			return fmt.Errorf("parse manifest: %w", err)
 		}
 	}
+	if ws != nil {
+		if msg := loadDotenv(ws, wsPath); msg != "" {
+			fmt.Println(ui.StepInfo(msg))
+		}
+	}
 
 	// TUI phases.
 	agentClient := &http.Client{Timeout: agentClientTimeout}
@@ -378,6 +385,11 @@ func (c *UpCmd) runTUIPhases(hostName string, cfg *hostconfig.HostConfig) error 
 			return fmt.Errorf("parse manifest: %w", err)
 		}
 	}
+	if ws != nil {
+		if msg := loadDotenv(ws, wsPath); msg != "" {
+			fmt.Println(ui.StepInfo(msg))
+		}
+	}
 
 	phases := c.buildTUIPhases(hostName, agentURL, agentClient, ws, wsPath)
 
@@ -466,14 +478,22 @@ func (c *UpCmd) buildTUIPhases(hostName, agentURL string, agentClient *http.Clie
 	// Workspace phase (optional).
 	if ws != nil {
 		var wsSteps []tui.Step
+		if msg := loadDotenv(ws, wsPath); msg != "" {
+			wsSteps = append(wsSteps, tui.Step{
+				Title: msg,
+				Run: func(_ context.Context, _ func(tui.StepEvent)) error {
+					return nil
+				},
+			})
+		}
 		wsSteps = append(wsSteps, tui.Step{
 			Title: fmt.Sprintf("Syncing manifest: %s", ws.Name),
 			Run: func(ctx context.Context, send func(tui.StepEvent)) error {
-				rawManifest, err := os.ReadFile(wsPath)
+				yamlBytes, err := yaml.Marshal(ws)
 				if err != nil {
-					return err
+					return fmt.Errorf("marshal manifest: %w", err)
 				}
-				if _, err := rpcclient.Call(hostName, "workspace.sync", map[string]string{"yaml": string(rawManifest)}); err != nil {
+				if _, err := rpcclient.Call(hostName, "workspace.sync", map[string]string{"yaml": string(yamlBytes)}); err != nil {
 					return fmt.Errorf("manifest sync: %w", err)
 				}
 				send(tui.StepEvent{Message: "Manifest synced"})
@@ -556,4 +576,28 @@ func (c *UpCmd) launchDaemon(hostName string) error {
 	// Detach — don't wait for the child.
 	go func() { _ = cmd.Wait() }()
 	return nil
+}
+
+// loadDotenv reads .env and .env.local from the same directory as wsPath,
+// merges them into ws.Env (manifest values take precedence), and returns
+// a summary message. If no .env files exist, ws is unchanged.
+func loadDotenv(ws *manifest.Workspace, wsPath string) string {
+	dir := filepath.Dir(wsPath)
+	envVars, n, err := dotenv.LoadDir(dir)
+	if err != nil {
+		return fmt.Sprintf("Warning: %v", err)
+	}
+	if n == 0 {
+		return ""
+	}
+	// Merge: .env values are base, manifest Env wins.
+	merged := make(map[string]string, len(envVars)+len(ws.Env))
+	for k, v := range envVars {
+		merged[k] = v
+	}
+	for k, v := range ws.Env {
+		merged[k] = v
+	}
+	ws.Env = merged
+	return fmt.Sprintf("Loaded %d var(s) from .env files", n)
 }
