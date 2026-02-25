@@ -101,8 +101,14 @@ func (c *UpgradeCmd) Run(globals *CLI) error {
 	var steps []tui.Step
 	if doClient {
 		tv := targetVersion
+		clientTitle := "Upgrading client"
+		if c.Local {
+			clientTitle = fmt.Sprintf("Client: %s → local build", version.Version)
+		} else if tv != "" {
+			clientTitle = fmt.Sprintf("Client: %s → %s", version.Version, tv)
+		}
 		steps = append(steps, tui.Step{
-			Title: "Upgrading client",
+			Title: clientTitle,
 			Run: func(ctx context.Context, send func(tui.StepEvent)) error {
 				return c.upgradeClientStep(ctx, tv, func(msg string) { send(tui.StepEvent{Message: msg}) })
 			},
@@ -110,8 +116,9 @@ func (c *UpgradeCmd) Run(globals *CLI) error {
 	}
 	if doAgent && sshClient != nil {
 		tv := targetVersion
+		agentTitle := fmt.Sprintf("Upgrading agent (%s)", agentHostName)
 		steps = append(steps, tui.Step{
-			Title: "Upgrading agent",
+			Title: agentTitle,
 			Run: func(ctx context.Context, send func(tui.StepEvent)) error {
 				return c.upgradeAgentStepWithClient(ctx, sshClient, agentCfg, agentHostName, tv, func(msg string) { send(tui.StepEvent{Message: msg}) })
 			},

@@ -23,6 +23,11 @@ func renderDashboard(d dashData, width int) string {
 	// --- Tunnel section ---
 	sections = append(sections, renderTunnelSection(d, contentWidth))
 
+	// --- Packages section ---
+	if d.tunnelUp && len(d.packages) > 0 {
+		sections = append(sections, renderPackagesSection(d, contentWidth))
+	}
+
 	// --- Services section ---
 	if d.tunnelUp && len(d.services) > 0 {
 		sections = append(sections, renderServicesSection(d, contentWidth))
@@ -79,6 +84,21 @@ func renderTunnelSection(d dashData, width int) string {
 
 	content := strings.Join(lines, "\n")
 	return ui.Section("Tunnel", content, width)
+}
+
+func renderPackagesSection(d dashData, width int) string {
+	header := fmt.Sprintf("%-20s %s", "NAME", "BACKEND")
+	var lines []string
+	lines = append(lines, lipgloss.NewStyle().Foreground(ui.Subtle).Render(header))
+	for _, p := range d.packages {
+		backend := p.Backend
+		if backend == "" {
+			backend = "nix"
+		}
+		lines = append(lines, fmt.Sprintf("%-20s %s", p.Name, backend))
+	}
+	content := strings.Join(lines, "\n")
+	return ui.Section("Packages", content, width)
 }
 
 func renderServicesSection(d dashData, width int) string {

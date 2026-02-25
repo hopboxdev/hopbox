@@ -30,11 +30,19 @@ type dashData struct {
 	// Services
 	services []svcInfo
 
+	// Packages (from manifest)
+	packages []pkgInfo
+
 	// Bridges (from manifest)
 	bridges []bridgeInfo
 
 	// Forwarded ports
 	forwardedPorts []tunnel.ForwardedPort
+}
+
+type pkgInfo struct {
+	Name    string
+	Backend string
 }
 
 type svcInfo struct {
@@ -100,9 +108,12 @@ func fetchDashData(hostName string, cfg *hostconfig.HostConfig) dashData {
 		}
 	}
 
-	// 4. Bridges (from manifest — assumes active if tunnel is up).
+	// 4. Packages and bridges (from manifest).
 	ws, err := manifest.Parse("hopbox.yaml")
 	if err == nil {
+		for _, p := range ws.Packages {
+			d.packages = append(d.packages, pkgInfo{Name: p.Name, Backend: p.Backend})
+		}
 		for _, b := range ws.Bridges {
 			d.bridges = append(d.bridges, bridgeInfo{
 				Type:   b.Type,
