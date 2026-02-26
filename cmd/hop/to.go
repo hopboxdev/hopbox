@@ -88,7 +88,7 @@ func (c *ToCmd) Run(globals *CLI) error {
 			{Title: fmt.Sprintf("Creating snapshot on %s", sourceHost), Run: func(ctx context.Context, send func(tui.StepEvent)) error {
 				snapResult, err := rpcclient.Call(sourceHost, "snap.create", nil)
 				if err != nil {
-					return fmt.Errorf("create snapshot on %s: %w", sourceHost, err)
+					return fmt.Errorf("create snapshot on %s: %w\n\nNo changes were made. Re-run: hop to %s -a %s -u %s", sourceHost, err, c.Target, c.Addr, c.User)
 				}
 				var snap struct {
 					SnapshotID string `json:"snapshot_id"`
@@ -107,7 +107,7 @@ func (c *ToCmd) Run(globals *CLI) error {
 				var err error
 				targetCfg, err = setup.BootstrapWithClient(ctx, sshClient, capturedKey, bootstrapOpts, os.Stdout)
 				if err != nil {
-					return fmt.Errorf("bootstrap %s: %w", c.Target, err)
+					return fmt.Errorf("bootstrap %s: %w\n\nPartial agent install may exist on %s and will be overwritten on retry.\nRe-run: hop to %s -a %s -u %s", c.Target, err, c.Target, c.Target, c.Addr, c.User)
 				}
 				targetConfigSaved = true
 				send(tui.StepEvent{Message: fmt.Sprintf("%s bootstrapped", c.Target)})
@@ -148,9 +148,7 @@ func (c *ToCmd) Run(globals *CLI) error {
 
 				send(tui.StepEvent{Message: fmt.Sprintf("Restoring snapshot %s", snapID)})
 				if _, err := rpcclient.CallWithClient(agentClient, targetCfg.AgentIP, "snap.restore", map[string]string{"id": snapID}); err != nil {
-					fmt.Fprintf(os.Stderr, "\nRestore failed. To retry manually:\n")
-					fmt.Fprintf(os.Stderr, "  hop snap restore %s --host %s\n", snapID, c.Target)
-					return fmt.Errorf("restore on %s: %w", c.Target, err)
+					return fmt.Errorf("restore on %s: %w\n\nSnapshot %s exists and %s is bootstrapped.\nRe-run: hop to %s -a %s -u %s", c.Target, err, snapID, c.Target, c.Target, c.Addr, c.User)
 				}
 				send(tui.StepEvent{Message: fmt.Sprintf("Snapshot restored on %s", c.Target)})
 				return nil
