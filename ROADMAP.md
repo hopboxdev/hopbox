@@ -84,7 +84,7 @@ loading with workspace env merge into all services.
 - [ ] Package management abstraction — backend interface, lock file (`hopbox.lock`)
 - [x] Static package backend — download binary from URL
 - [x] Packages in `hop status` — show installed packages from manifest in dashboard
-- [ ] Package reconciliation — remove stale binaries/packages not in current manifest
+- [x] Package reconciliation — remove stale binaries/packages not in current manifest
 - [x] Native service backend — run processes directly without Docker
 - [ ] devcontainer.json compatibility (read-only import)
 - [ ] Network fallbacks for restricted environments — SSH tunneling (`hop up --ssh`), Wireguard-over-WebSocket
