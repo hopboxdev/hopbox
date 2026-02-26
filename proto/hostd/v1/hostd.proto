@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+package hostd.v1;
+
+option go_package = "github.com/hopboxdev/hopbox/gen/hostd/v1;hostdv1";
+
+service HostService {
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (CreateWorkspaceResponse);
+  rpc DestroyWorkspace(DestroyWorkspaceRequest) returns (DestroyWorkspaceResponse);
+  rpc SuspendWorkspace(SuspendWorkspaceRequest) returns (SuspendWorkspaceResponse);
+  rpc ResumeWorkspace(ResumeWorkspaceRequest) returns (ResumeWorkspaceResponse);
+  rpc GetWorkspace(GetWorkspaceRequest) returns (GetWorkspaceResponse);
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse);
+  rpc HostStatus(HostStatusRequest) returns (HostStatusResponse);
+}
+
+// --- CreateWorkspace ---
+
+message CreateWorkspaceRequest {
+  string name = 1;
+  string image = 2;       // base image name (e.g. "ubuntu-dev")
+  int32 vcpus = 3;        // default: 2
+  int32 memory_mb = 4;    // default: 2048
+  int32 disk_gb = 5;      // default: 10
+}
+
+message CreateWorkspaceResponse {
+  WorkspaceInfo workspace = 1;
+  ClientConfig client_config = 2;
+}
+
+// Client config for hop CLI to connect
+message ClientConfig {
+  string name = 1;
+  string endpoint = 2;          // "host:port"
+  string private_key = 3;       // base64 client WireGuard private key
+  string peer_public_key = 4;   // base64 server WireGuard public key
+  string tunnel_ip = 5;         // "10.10.0.1/24"
+  string agent_ip = 6;          // "10.10.0.2"
+}
+
+// --- DestroyWorkspace ---
+
+message DestroyWorkspaceRequest {
+  string name = 1;
+}
+
+message DestroyWorkspaceResponse {}
+
+// --- SuspendWorkspace ---
+
+message SuspendWorkspaceRequest {
+  string name = 1;
+}
+
+message SuspendWorkspaceResponse {}
+
+// --- ResumeWorkspace ---
+
+message ResumeWorkspaceRequest {
+  string name = 1;
+}
+
+message ResumeWorkspaceResponse {
+  WorkspaceInfo workspace = 1;
+}
+
+// --- GetWorkspace ---
+
+message GetWorkspaceRequest {
+  string name = 1;
+}
+
+message GetWorkspaceResponse {
+  WorkspaceInfo workspace = 1;
+}
+
+// --- ListWorkspaces ---
+
+message ListWorkspacesRequest {}
+
+message ListWorkspacesResponse {
+  repeated WorkspaceInfo workspaces = 1;
+}
+
+// --- HostStatus ---
+
+message HostStatusRequest {}
+
+message HostStatusResponse {
+  int32 total_vcpus = 1;
+  int32 available_vcpus = 2;
+  int64 total_memory_mb = 3;
+  int64 available_memory_mb = 4;
+  int64 total_disk_gb = 5;
+  int64 available_disk_gb = 6;
+  int32 running_workspaces = 7;
+  int32 suspended_workspaces = 8;
+}
+
+// --- Shared ---
+
+message WorkspaceInfo {
+  string name = 1;
+  string state = 2;        // "created", "running", "stopped", "suspended"
+  int32 vcpus = 3;
+  int32 memory_mb = 4;
+  int32 disk_gb = 5;
+  int32 host_port = 6;     // UDP port on host for WireGuard
+  string vm_ip = 7;        // TAP IP of VM (internal)
+}
