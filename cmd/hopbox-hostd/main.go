@@ -73,6 +73,7 @@ func run(ctx context.Context, listenAddr, zfsPool, agentBin, hostIP string, port
 	prov := hostd.NewProvisioner(agentBin, hostIP)
 
 	srv := hostd.NewServer(hostd.ServerConfig{
+		LifecycleCtx:  ctx,
 		Runtime:       rt,
 		Provisioner:   prov,
 		PortAllocator: ports,

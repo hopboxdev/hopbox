@@ -16,11 +16,12 @@ import (
 // Server implements the HostService gRPC server.
 type Server struct {
 	pb.UnimplementedHostServiceServer
-	rt          *silo.Runtime
-	provisioner *Provisioner
-	ports       *PortAllocator
-	hostIP      string
-	defaults    WorkspaceDefaults
+	lifecycleCtx context.Context // cancelled when daemon shuts down
+	rt           *silo.Runtime
+	provisioner  *Provisioner
+	ports        *PortAllocator
+	hostIP       string
+	defaults     WorkspaceDefaults
 }
 
 // WorkspaceDefaults holds default values for workspace creation.
@@ -33,6 +34,7 @@ type WorkspaceDefaults struct {
 
 // ServerConfig holds configuration for the gRPC server.
 type ServerConfig struct {
+	LifecycleCtx  context.Context
 	Runtime       *silo.Runtime
 	Provisioner   *Provisioner
 	PortAllocator *PortAllocator
@@ -43,11 +45,12 @@ type ServerConfig struct {
 // NewServer creates a new gRPC server.
 func NewServer(cfg ServerConfig) *Server {
 	return &Server{
-		rt:          cfg.Runtime,
-		provisioner: cfg.Provisioner,
-		ports:       cfg.PortAllocator,
-		hostIP:      cfg.HostIP,
-		defaults:    cfg.Defaults,
+		lifecycleCtx: cfg.LifecycleCtx,
+		rt:           cfg.Runtime,
+		provisioner:  cfg.Provisioner,
+		ports:        cfg.PortAllocator,
+		hostIP:       cfg.HostIP,
+		defaults:     cfg.Defaults,
 	}
 }
 
@@ -81,12 +84,9 @@ func (s *Server) CreateWorkspace(ctx context.Context, req *pb.CreateWorkspaceReq
 		return nil, fmt.Errorf("allocate port: %w", err)
 	}
 
-	// Use a background context for VM lifecycle operations so the VM
-	// survives after the gRPC request context is done.
-	vmCtx := context.Background()
-
-	// Create and start VM.
-	vm, err := s.rt.Create(vmCtx, silo.VMConfig{
+	// Create and start VM using the daemon lifecycle context (not the
+	// gRPC request context, which is cancelled when the response is sent).
+	vm, err := s.rt.Create(s.lifecycleCtx, silo.VMConfig{
 		Name:      req.Name,
 		Image:     image,
 		VCPUs:     vcpus,
@@ -99,16 +99,16 @@ func (s *Server) CreateWorkspace(ctx context.Context, req *pb.CreateWorkspaceReq
 		return nil, fmt.Errorf("create VM: %w", err)
 	}
 
-	if err := vm.Start(vmCtx); err != nil {
-		_ = vm.Destroy(vmCtx)
+	if err := vm.Start(s.lifecycleCtx); err != nil {
+		_ = vm.Destroy(s.lifecycleCtx)
 		_ = s.ports.Release(req.Name)
 		return nil, fmt.Errorf("start VM: %w", err)
 	}
 
 	// Provision: inject agent, exchange keys, start agent, port forward.
-	result, err := s.provisioner.Provision(vmCtx, vm, hostPort)
+	result, err := s.provisioner.Provision(s.lifecycleCtx, vm, hostPort)
 	if err != nil {
-		_ = vm.Destroy(vmCtx)
+		_ = vm.Destroy(s.lifecycleCtx)
 		_ = s.ports.Release(req.Name)
 		return nil, fmt.Errorf("provision: %w", err)
 	}
@@ -129,8 +129,7 @@ func (s *Server) CreateWorkspace(ctx context.Context, req *pb.CreateWorkspaceReq
 }
 
 func (s *Server) DestroyWorkspace(_ context.Context, req *pb.DestroyWorkspaceRequest) (*pb.DestroyWorkspaceResponse, error) {
-	vmCtx := context.Background()
-	vm, err := s.rt.Get(vmCtx, req.Name)
+	vm, err := s.rt.Get(s.lifecycleCtx, req.Name)
 	if err != nil {
 		return nil, fmt.Errorf("get VM: %w", err)
 	}
@@ -140,7 +139,7 @@ func (s *Server) DestroyWorkspace(_ context.Context, req *pb.DestroyWorkspaceReq
 		s.provisioner.Deprovision(vm.IP(), port)
 	}
 
-	if err := vm.Destroy(vmCtx); err != nil {
+	if err := vm.Destroy(s.lifecycleCtx); err != nil {
 		return nil, fmt.Errorf("destroy: %w", err)
 	}
 
@@ -151,8 +150,7 @@ func (s *Server) DestroyWorkspace(_ context.Context, req *pb.DestroyWorkspaceReq
 }
 
 func (s *Server) SuspendWorkspace(_ context.Context, req *pb.SuspendWorkspaceRequest) (*pb.SuspendWorkspaceResponse, error) {
-	vmCtx := context.Background()
-	vm, err := s.rt.Get(vmCtx, req.Name)
+	vm, err := s.rt.Get(s.lifecycleCtx, req.Name)
 	if err != nil {
 		return nil, fmt.Errorf("get VM: %w", err)
 	}
@@ -162,7 +160,7 @@ func (s *Server) SuspendWorkspace(_ context.Context, req *pb.SuspendWorkspaceReq
 		s.provisioner.Deprovision(vm.IP(), port)
 	}
 
-	if err := vm.Suspend(vmCtx); err != nil {
+	if err := vm.Suspend(s.lifecycleCtx); err != nil {
 		return nil, fmt.Errorf("suspend: %w", err)
 	}
 
@@ -171,13 +169,12 @@ func (s *Server) SuspendWorkspace(_ context.Context, req *pb.SuspendWorkspaceReq
 }
 
 func (s *Server) ResumeWorkspace(_ context.Context, req *pb.ResumeWorkspaceRequest) (*pb.ResumeWorkspaceResponse, error) {
-	vmCtx := context.Background()
-	vm, err := s.rt.Get(vmCtx, req.Name)
+	vm, err := s.rt.Get(s.lifecycleCtx, req.Name)
 	if err != nil {
 		return nil, fmt.Errorf("get VM: %w", err)
 	}
 
-	if err := vm.Resume(vmCtx); err != nil {
+	if err := vm.Resume(s.lifecycleCtx); err != nil {
 		return nil, fmt.Errorf("resume: %w", err)
 	}
 
