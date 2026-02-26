@@ -284,6 +284,82 @@ func TestInstall_UnknownBackend(t *testing.T) {
 	}
 }
 
+func TestRemove_Apt(t *testing.T) {
+	dir := t.TempDir()
+	af := fakeBin(t, dir, "apt-get", "", 0)
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	if err := packages.Remove(context.Background(), packages.Package{Name: "curl", Backend: "apt"}); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if got := readArgs(t, af); got != "remove -y curl" {
+		t.Errorf("apt-get args = %q, want %q", got, "remove -y curl")
+	}
+}
+
+func TestRemove_AptDefault(t *testing.T) {
+	dir := t.TempDir()
+	af := fakeBin(t, dir, "apt-get", "", 0)
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	if err := packages.Remove(context.Background(), packages.Package{Name: "curl"}); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if got := readArgs(t, af); got != "remove -y curl" {
+		t.Errorf("apt-get args = %q, want %q", got, "remove -y curl")
+	}
+}
+
+func TestRemove_Nix(t *testing.T) {
+	dir := t.TempDir()
+	af := fakeBin(t, dir, "nix", "", 0)
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+
+	if err := packages.Remove(context.Background(), packages.Package{Name: "ripgrep", Backend: "nix"}); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if got := readArgs(t, af); got != "profile remove nixpkgs#ripgrep" {
+		t.Errorf("nix args = %q, want %q", got, "profile remove nixpkgs#ripgrep")
+	}
+}
+
+func TestRemove_Static(t *testing.T) {
+	tmpDir := t.TempDir()
+	packages.StaticBinDir = tmpDir
+	t.Cleanup(func() { packages.StaticBinDir = "/opt/hopbox/bin" })
+
+	// Simulate a previously installed static package.
+	metaDir := filepath.Join(tmpDir, ".pkg")
+	if err := os.MkdirAll(metaDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(metaDir, "ripgrep"), []byte("rg"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "rg"), []byte("bin"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := packages.Remove(context.Background(), packages.Package{Name: "ripgrep", Backend: "static"}); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	// Binary and metadata should be gone.
+	if _, err := os.Stat(filepath.Join(tmpDir, "rg")); !os.IsNotExist(err) {
+		t.Error("binary should be removed")
+	}
+	if _, err := os.Stat(filepath.Join(metaDir, "ripgrep")); !os.IsNotExist(err) {
+		t.Error("metadata should be removed")
+	}
+}
+
+func TestRemove_UnknownBackend(t *testing.T) {
+	err := packages.Remove(context.Background(), packages.Package{Name: "tool", Backend: "brew"})
+	if err == nil {
+		t.Error("expected error for unknown backend")
+	}
+}
+
 func TestInstall_AptError(t *testing.T) {
 	dir := t.TempDir()
 	fakeBin(t, dir, "apt-get", "", 1)

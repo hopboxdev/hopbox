@@ -367,6 +367,49 @@ func findExecutable(dir string) (string, error) {
 	return "", fmt.Errorf("multiple executables found (%s); cannot determine which to install", strings.Join(names, ", "))
 }
 
+// Remove removes pkg using the appropriate backend.
+func Remove(ctx context.Context, pkg Package) error {
+	switch pkg.Backend {
+	case "apt", "":
+		return aptRemove(ctx, pkg)
+	case "nix":
+		return nixRemove(ctx, pkg)
+	case "static":
+		return staticRemove(pkg)
+	default:
+		return fmt.Errorf("unknown package backend %q", pkg.Backend)
+	}
+}
+
+func aptRemove(ctx context.Context, pkg Package) error {
+	cmd := exec.CommandContext(ctx, "apt-get", "remove", "-y", pkg.Name)
+	cmd.Env = append(cmd.Environ(), "DEBIAN_FRONTEND=noninteractive")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("apt-get remove %q: %w\n%s", pkg.Name, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func nixRemove(ctx context.Context, pkg Package) error {
+	cmd := exec.CommandContext(ctx, "nix", "profile", "remove", "nixpkgs#"+pkg.Name)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("nix profile remove %q: %w\n%s", pkg.Name, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func staticRemove(pkg Package) error {
+	binName, err := readStaticMeta(pkg.Name)
+	if err != nil {
+		return nil // no metadata = nothing to remove
+	}
+	_ = os.Remove(filepath.Join(StaticBinDir, binName))
+	_ = os.Remove(filepath.Join(staticMetaDir(), pkg.Name))
+	return nil
+}
+
 func staticMetaDir() string {
 	return filepath.Join(StaticBinDir, ".pkg")
 }
