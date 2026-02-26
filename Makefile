@@ -88,6 +88,12 @@ snapshot:
 release:
 	goreleaser release --clean
 
+# ── Codegen ───────────────────────────────────────────────────────────────────
+
+.PHONY: proto
+proto:
+	buf generate
+
 # ── Dev helpers ───────────────────────────────────────────────────────────────
 
 .PHONY: clean
