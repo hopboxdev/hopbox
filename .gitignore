@@ -35,3 +35,5 @@ dist/
 
 # Worktrees
 .worktrees/
+.env
+.env.local
