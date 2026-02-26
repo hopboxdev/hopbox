@@ -79,7 +79,7 @@ loading with workspace env merge into all services.
 ## Phase 2 — Open Source Release (Planned)
 
 - [ ] Linux client support — helper daemon or direct TUN setup for Linux laptops
-- [ ] `hop to` error recovery — rollback or resume on mid-migration failure
+- [x] `hop to` error recovery — client-side cleanup and idempotent retry on failure
 - [x] CI/CD pipeline — GitHub Actions for tests, linting, cross-compilation, goreleaser for releases
 - [ ] Package management abstraction — backend interface, lock file (`hopbox.lock`)
 - [x] Static package backend — download binary from URL
