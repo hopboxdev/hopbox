@@ -72,6 +72,16 @@ func (c *ToCmd) Run(globals *CLI) error {
 	// Shared state across steps.
 	var snapID string
 	var targetCfg *hostconfig.HostConfig
+	var targetConfigSaved bool
+	var migrationDone bool
+
+	defer func() {
+		if !migrationDone && targetConfigSaved {
+			if err := hostconfig.Delete(c.Target); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: failed to clean up host config for %q: %v\n", c.Target, err)
+			}
+		}
+	}()
 
 	phases := []tui.Phase{
 		{Title: "Snapshot", Steps: []tui.Step{
@@ -99,6 +109,7 @@ func (c *ToCmd) Run(globals *CLI) error {
 				if err != nil {
 					return fmt.Errorf("bootstrap %s: %w", c.Target, err)
 				}
+				targetConfigSaved = true
 				send(tui.StepEvent{Message: fmt.Sprintf("%s bootstrapped", c.Target)})
 				return nil
 			}},
@@ -158,6 +169,7 @@ func (c *ToCmd) Run(globals *CLI) error {
 		return err
 	}
 
+	migrationDone = true
 	fmt.Println("\n" + ui.StepOK(fmt.Sprintf("Migration complete. Default host set to %q", c.Target)))
 	fmt.Printf("Run 'hop up' to connect to %s.\n", c.Target)
 	return nil
