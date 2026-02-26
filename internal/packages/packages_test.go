@@ -425,3 +425,157 @@ func TestIsInstalled_NixFalse(t *testing.T) {
 		t.Error("IsInstalled = true, want false")
 	}
 }
+
+func TestReconcile_FirstRun(t *testing.T) {
+	dir := t.TempDir()
+	binDir := filepath.Join(dir, "bin")
+	packages.StaticBinDir = binDir
+	t.Cleanup(func() { packages.StaticBinDir = "/opt/hopbox/bin" })
+
+	fakeDir := filepath.Join(dir, "fakes")
+	if err := os.MkdirAll(fakeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	fakeBin(t, fakeDir, "apt-get", "", 0)
+	t.Setenv("PATH", fakeDir+":"+os.Getenv("PATH"))
+
+	statePath := filepath.Join(dir, "state.json")
+	desired := []packages.Package{
+		{Name: "curl", Backend: "apt"},
+	}
+
+	if err := packages.Reconcile(context.Background(), statePath, desired); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	// State file should now list curl.
+	got, _ := packages.LoadState(statePath)
+	if len(got) != 1 || got[0].Name != "curl" {
+		t.Errorf("state = %+v, want [curl]", got)
+	}
+}
+
+func TestReconcile_RemoveStale(t *testing.T) {
+	dir := t.TempDir()
+	binDir := filepath.Join(dir, "bin")
+	packages.StaticBinDir = binDir
+	t.Cleanup(func() { packages.StaticBinDir = "/opt/hopbox/bin" })
+
+	fakeDir := filepath.Join(dir, "fakes")
+	if err := os.MkdirAll(fakeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	fakeBin(t, fakeDir, "apt-get", "", 0)
+	t.Setenv("PATH", fakeDir+":"+os.Getenv("PATH"))
+
+	statePath := filepath.Join(dir, "state.json")
+
+	// Pretend curl and htop were previously installed.
+	prev := []packages.Package{
+		{Name: "curl", Backend: "apt"},
+		{Name: "htop", Backend: "apt"},
+	}
+	if err := packages.SaveState(statePath, prev); err != nil {
+		t.Fatal(err)
+	}
+
+	// New manifest only has curl.
+	desired := []packages.Package{
+		{Name: "curl", Backend: "apt"},
+	}
+	if err := packages.Reconcile(context.Background(), statePath, desired); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	got, _ := packages.LoadState(statePath)
+	if len(got) != 1 || got[0].Name != "curl" {
+		t.Errorf("state = %+v, want [curl]", got)
+	}
+}
+
+func TestReconcile_EmptyManifest(t *testing.T) {
+	dir := t.TempDir()
+	fakeDir := filepath.Join(dir, "fakes")
+	if err := os.MkdirAll(fakeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	fakeBin(t, fakeDir, "apt-get", "", 0)
+	t.Setenv("PATH", fakeDir+":"+os.Getenv("PATH"))
+
+	statePath := filepath.Join(dir, "state.json")
+	prev := []packages.Package{{Name: "curl", Backend: "apt"}}
+	if err := packages.SaveState(statePath, prev); err != nil {
+		t.Fatal(err)
+	}
+
+	// Empty manifest = remove everything.
+	if err := packages.Reconcile(context.Background(), statePath, nil); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	got, _ := packages.LoadState(statePath)
+	if len(got) != 0 {
+		t.Errorf("state = %+v, want empty", got)
+	}
+}
+
+func TestReconcile_SkipUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	fakeDir := filepath.Join(dir, "fakes")
+	if err := os.MkdirAll(fakeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// apt-get should NOT be called if packages are unchanged.
+	// Use exit code 1 so the test fails if it's called.
+	fakeBin(t, fakeDir, "apt-get", "", 1)
+	t.Setenv("PATH", fakeDir+":"+os.Getenv("PATH"))
+
+	statePath := filepath.Join(dir, "state.json")
+	pkgs := []packages.Package{{Name: "curl", Backend: "apt"}}
+	if err := packages.SaveState(statePath, pkgs); err != nil {
+		t.Fatal(err)
+	}
+
+	// Same list — nothing to install or remove.
+	if err := packages.Reconcile(context.Background(), statePath, pkgs); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+}
+
+func TestReconcile_StaticRemove(t *testing.T) {
+	dir := t.TempDir()
+	binDir := filepath.Join(dir, "bin")
+	packages.StaticBinDir = binDir
+	t.Cleanup(func() { packages.StaticBinDir = "/opt/hopbox/bin" })
+
+	// Simulate previously installed static package.
+	metaDir := filepath.Join(binDir, ".pkg")
+	if err := os.MkdirAll(metaDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(metaDir, "ripgrep"), []byte("rg"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "rg"), []byte("bin"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	statePath := filepath.Join(dir, "state.json")
+	prev := []packages.Package{{Name: "ripgrep", Backend: "static", URL: "https://example.com/rg.tar.gz"}}
+	if err := packages.SaveState(statePath, prev); err != nil {
+		t.Fatal(err)
+	}
+
+	// Empty manifest — ripgrep should be removed.
+	if err := packages.Reconcile(context.Background(), statePath, nil); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(binDir, "rg")); !os.IsNotExist(err) {
+		t.Error("binary should be removed")
+	}
+	got, _ := packages.LoadState(statePath)
+	if len(got) != 0 {
+		t.Errorf("state = %+v, want empty", got)
+	}
+}
