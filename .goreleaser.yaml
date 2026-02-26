@@ -67,3 +67,19 @@ changelog:
       - "^docs:"
       - "^test:"
       - "^chore:"
+
+brews:
+  - ids: [hop-archive]
+    repository:
+      owner: hopboxdev
+      name: homebrew-tap
+    directory: Formula
+    homepage: "https://github.com/hopboxdev/hopbox"
+    description: "Self-hostable workspace runtime for remote development"
+    license: "Apache-2.0"
+    install: |
+      bin.install "hop"
+    test: |
+      system "#{bin}/hop", "version"
+    extra_install: ""
+    goamd64: v1
