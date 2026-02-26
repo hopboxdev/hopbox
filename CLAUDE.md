@@ -111,7 +111,9 @@ Do **not** use Tailscale's magicsock/DERP, tsnet, or libp2p — these are explic
 
 ## Workspace Manifest (hopbox.yaml)
 
-The user-facing config file placed in a project directory. Declares everything for a workspace: `packages` (backend: nix/apt/static), `services` (type: docker/native), `bridges` (clipboard, chrome CDP, xdg-open), `env`, `secrets`, `scripts`, `backup`, `editor`, `session`.
+The user-facing config file placed in a project directory. Declares everything for a workspace: `packages` (backend: nix/apt/static), `services` (type: docker/native), `bridges` (clipboard, chrome CDP, xdg-open), `env`, `scripts`, `backup`, `editor`, `session`.
+
+**Environment variables:** `.env` and `.env.local` files next to `hopbox.yaml` are loaded automatically on `hop up` by the client (`internal/dotenv` package). Values are merged into `ws.Env` before `workspace.sync`. Precedence: `.env` < `.env.local` < manifest `env:` < service-level `env:`. On sync, the agent stops old services and starts fresh ones so env changes always take effect.
 
 The `host:` field in `hopbox.yaml` pins which registered host to use for this workspace.
 

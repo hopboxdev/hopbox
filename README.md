@@ -116,6 +116,24 @@ are only reachable through the tunnel. To expose a port publicly, use the
 
 Generate a scaffold with `hop init`.
 
+### Environment variables
+
+Place `.env` and `.env.local` files next to your `hopbox.yaml`. They are loaded
+automatically on `hop up` and merged into every service's environment:
+
+```bash
+# .env — shared, committed to git
+DATABASE_URL=postgres://localhost/mydb
+
+# .env.local — personal overrides, gitignored
+API_KEY=my-secret-key
+```
+
+**Precedence** (last wins): `.env` → `.env.local` → `hopbox.yaml` `env:` →
+service-level `env:`.
+
+Services are always recreated on `hop up` so env changes take effect immediately.
+
 ---
 
 ## Commands
@@ -152,19 +170,20 @@ command.
 
 ## Architecture
 
-Two Go binaries live in this repo:
+Three Go binaries live in this repo:
 
 ```text
 cmd/hop/         Client CLI (macOS / Linux)
 cmd/hop-agent/   Server daemon (Linux VPS, systemd service)
+cmd/hop-helper/  Privileged helper (macOS LaunchDaemon, TUN + /etc/hosts)
 ```
 
 **Transport:** WireGuard L3 tunnel (UDP). SSH is used only during `hop setup`.
 
-**Client WireGuard mode:** Userspace netstack (wireguard-go + gVisor) — no root
-required on the developer machine.
+**Client WireGuard mode:** Kernel TUN (utun on macOS) via the hop-helper daemon.
+Netstack is used only for `hop to` migration tunnels.
 
-**Server WireGuard mode:** Kernel TUN (`wg0`, requires `CAP_NET_ADMIN`) with a
+**Server WireGuard mode:** Kernel TUN (requires `CAP_NET_ADMIN`) with a
 userspace fallback.
 
 **Agent control API:** HTTP/JSON-RPC on `10.10.0.2:4200`, reachable only over

@@ -22,7 +22,8 @@ Phases 0 and 1 are complete. Phase 2 is next.
 helper daemon) and server (Linux). Bubbletea TUI step runner for multi-phase commands.
 Reconnection monitoring with 5-second heartbeat. Clipboard and Chrome CDP bridges.
 Docker service orchestration with dependency ordering and health checks. Snapshot/restore
-via restic. Workspace migration across hosts via `hop to`.
+via restic. Workspace migration across hosts via `hop to`. `.env` / `.env.local` file
+loading with workspace env merge into all services.
 
 ---
 
