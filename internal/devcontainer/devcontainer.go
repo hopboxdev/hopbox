@@ -2,10 +2,12 @@ package devcontainer
 
 import (
 	"encoding/json"
+	"os"
 	"regexp"
 	"strings"
 
 	"github.com/hopboxdev/hopbox/internal/manifest"
+	"gopkg.in/yaml.v3"
 )
 
 // StripJSONC removes // comments, /* */ comments, and trailing commas from JSONC.
@@ -173,4 +175,99 @@ func isOSTag(tag string) bool {
 		}
 	}
 	return false
+}
+
+// composeFile is the subset of docker-compose.yml we parse.
+type composeFile struct {
+	Services map[string]composeService `yaml:"services"`
+}
+
+type composeService struct {
+	Image       string           `yaml:"image"`
+	Ports       []string         `yaml:"ports"`
+	Environment composeEnv       `yaml:"environment"`
+	Volumes     []string         `yaml:"volumes"`
+	DependsOn   composeDependsOn `yaml:"depends_on"`
+}
+
+// composeEnv handles both map and list formats for environment.
+type composeEnv map[string]string
+
+func (e *composeEnv) UnmarshalYAML(value *yaml.Node) error {
+	m := make(map[string]string)
+	if err := value.Decode(&m); err == nil {
+		*e = m
+		return nil
+	}
+	var list []string
+	if err := value.Decode(&list); err != nil {
+		return err
+	}
+	*e = make(map[string]string, len(list))
+	for _, item := range list {
+		k, v, _ := strings.Cut(item, "=")
+		(*e)[k] = v
+	}
+	return nil
+}
+
+// composeDependsOn handles both list and map formats.
+type composeDependsOn []string
+
+func (d *composeDependsOn) UnmarshalYAML(value *yaml.Node) error {
+	var list []string
+	if err := value.Decode(&list); err == nil {
+		*d = list
+		return nil
+	}
+	var m map[string]any
+	if err := value.Decode(&m); err != nil {
+		return err
+	}
+	for k := range m {
+		*d = append(*d, k)
+	}
+	return nil
+}
+
+// ParseComposeFile reads a docker-compose YAML and maps services to hopbox service definitions.
+func ParseComposeFile(path string) (map[string]manifest.Service, []string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, []string{"compose file not found: " + path}
+	}
+
+	var cf composeFile
+	if err := yaml.Unmarshal(data, &cf); err != nil {
+		return nil, []string{"parse compose file: " + err.Error()}
+	}
+
+	services := make(map[string]manifest.Service, len(cf.Services))
+	var warnings []string
+
+	for name, svc := range cf.Services {
+		s := manifest.Service{
+			Type:      "docker",
+			Image:     svc.Image,
+			Ports:     svc.Ports,
+			Env:       map[string]string(svc.Environment),
+			DependsOn: []string(svc.DependsOn),
+		}
+
+		for _, vol := range svc.Volumes {
+			parts := strings.SplitN(vol, ":", 2)
+			if len(parts) == 2 {
+				s.Data = append(s.Data, manifest.DataMount{
+					Host:      parts[0],
+					Container: parts[1],
+				})
+			} else {
+				warnings = append(warnings, "service "+name+": cannot map volume "+vol)
+			}
+		}
+
+		services[name] = s
+	}
+
+	return services, warnings
 }

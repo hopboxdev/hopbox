@@ -2,6 +2,8 @@ package devcontainer_test
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/hopboxdev/hopbox/internal/devcontainer"
@@ -121,5 +123,66 @@ func TestImageToPackages(t *testing.T) {
 		if tt.wantVer != "" && pkgs[0].Version != tt.wantVer {
 			t.Errorf("image %q: version = %q, want %q", tt.image, pkgs[0].Version, tt.wantVer)
 		}
+	}
+}
+
+func TestParseComposeFile(t *testing.T) {
+	dir := t.TempDir()
+	compose := `
+services:
+  postgres:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  redis:
+    image: redis:7
+    ports:
+      - "6379"
+    depends_on:
+      - postgres
+`
+	path := filepath.Join(dir, "docker-compose.yml")
+	if err := os.WriteFile(path, []byte(compose), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	services, warnings := devcontainer.ParseComposeFile(path)
+	if len(services) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(services))
+	}
+
+	pg := services["postgres"]
+	if pg.Image != "postgres:16" {
+		t.Errorf("postgres image = %q", pg.Image)
+	}
+	if len(pg.Ports) != 1 || pg.Ports[0] != "5432:5432" {
+		t.Errorf("postgres ports = %v", pg.Ports)
+	}
+	if pg.Env["POSTGRES_PASSWORD"] != "secret" {
+		t.Errorf("postgres env = %v", pg.Env)
+	}
+
+	redis := services["redis"]
+	if redis.Image != "redis:7" {
+		t.Errorf("redis image = %q", redis.Image)
+	}
+	if len(redis.DependsOn) != 1 || redis.DependsOn[0] != "postgres" {
+		t.Errorf("redis depends_on = %v", redis.DependsOn)
+	}
+
+	_ = warnings // no warnings expected for this input
+}
+
+func TestParseComposeFile_Missing(t *testing.T) {
+	services, warnings := devcontainer.ParseComposeFile("/nonexistent/docker-compose.yml")
+	if len(services) != 0 {
+		t.Errorf("expected no services, got %d", len(services))
+	}
+	if len(warnings) != 1 {
+		t.Errorf("expected 1 warning, got %d", len(warnings))
 	}
 }
