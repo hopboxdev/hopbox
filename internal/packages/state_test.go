@@ -21,9 +21,9 @@ func TestStateLoad_Missing(t *testing.T) {
 func TestStateSaveAndLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	want := []packages.Package{
-		{Name: "htop", Backend: "apt"},
-		{Name: "ripgrep", Backend: "static", URL: "https://example.com/rg.tar.gz"},
-		{Name: "nodejs", Backend: "nix", Version: "20"},
+		{Name: "htop", Backend: packages.Apt},
+		{Name: "ripgrep", Backend: packages.Static, URL: "https://example.com/rg.tar.gz"},
+		{Name: "nodejs", Backend: packages.Nix, Version: "20"},
 	}
 	if err := packages.SaveState(path, want); err != nil {
 		t.Fatalf("SaveState: %v", err)

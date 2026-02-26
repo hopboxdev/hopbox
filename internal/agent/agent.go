@@ -85,15 +85,20 @@ func (a *Agent) Reload(ws *manifest.Workspace) {
 
 	go func() {
 		// Reconcile packages before starting services (services may depend on packages).
-		pkgs := make([]packages.Package, len(ws.Packages))
-		for i, p := range ws.Packages {
-			pkgs[i] = packages.Package{
+		pkgs := make([]packages.Package, 0, len(ws.Packages))
+		for _, p := range ws.Packages {
+			bt, err := packages.ParseBackendType(p.Backend)
+			if err != nil {
+				slog.Warn("unknown package backend", "name", p.Name, "backend", p.Backend, "err", err)
+				continue
+			}
+			pkgs = append(pkgs, packages.Package{
 				Name:    p.Name,
-				Backend: p.Backend,
+				Backend: bt,
 				Version: p.Version,
 				URL:     p.URL,
 				SHA256:  p.SHA256,
-			}
+			})
 		}
 		if err := packages.Reconcile(context.Background(), packages.StatePath, pkgs); err != nil {
 			slog.Warn("package reconciliation", "err", err)

@@ -69,7 +69,7 @@ func TestInstall_AptWithVersion(t *testing.T) {
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
 	err := packages.Install(context.Background(), packages.Package{
-		Name: "curl", Backend: "apt", Version: "7.81.0",
+		Name: "curl", Backend: packages.Apt, Version: "7.81.0",
 	})
 	if err != nil {
 		t.Fatalf("Install: %v", err)
@@ -84,7 +84,7 @@ func TestInstall_Nix(t *testing.T) {
 	af := fakeBin(t, dir, "nix", "", 0)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
-	if err := packages.Install(context.Background(), packages.Package{Name: "ripgrep", Backend: "nix"}); err != nil {
+	if err := packages.Install(context.Background(), packages.Package{Name: "ripgrep", Backend: packages.Nix}); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	if got := readArgs(t, af); got != "profile install nixpkgs#ripgrep" {
@@ -98,7 +98,7 @@ func TestInstall_NixWithVersion(t *testing.T) {
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
 	err := packages.Install(context.Background(), packages.Package{
-		Name: "ripgrep", Backend: "nix", Version: "13.0.0",
+		Name: "ripgrep", Backend: packages.Nix, Version: "13.0.0",
 	})
 	if err != nil {
 		t.Fatalf("Install: %v", err)
@@ -161,7 +161,7 @@ func TestInstall_StaticTarGz(t *testing.T) {
 
 	err := packages.Install(context.Background(), packages.Package{
 		Name:    "ripgrep",
-		Backend: "static",
+		Backend: packages.Static,
 		URL:     ts.URL + "/tool.tar.gz",
 		SHA256:  sha256hex,
 	})
@@ -198,7 +198,7 @@ func TestInstall_StaticSHA256Mismatch(t *testing.T) {
 
 	err := packages.Install(context.Background(), packages.Package{
 		Name:    "mytool",
-		Backend: "static",
+		Backend: packages.Static,
 		URL:     ts.URL + "/tool.tar.gz",
 		SHA256:  "0000000000000000000000000000000000000000000000000000000000000000",
 	})
@@ -225,7 +225,7 @@ func TestInstall_StaticRawBinary(t *testing.T) {
 
 	err := packages.Install(context.Background(), packages.Package{
 		Name:    "My Tool",
-		Backend: "static",
+		Backend: packages.Static,
 		URL:     ts.URL + "/mytool",
 	})
 	if err != nil {
@@ -248,7 +248,7 @@ func TestIsInstalled_Static(t *testing.T) {
 	t.Cleanup(func() { packages.StaticBinDir = "/opt/hopbox/bin" })
 
 	// Not installed — no metadata, no binary.
-	ok, err := packages.IsInstalled(context.Background(), packages.Package{Name: "ripgrep", Backend: "static"})
+	ok, err := packages.IsInstalled(context.Background(), packages.Package{Name: "ripgrep", Backend: packages.Static})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestIsInstalled_Static(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ok, err = packages.IsInstalled(context.Background(), packages.Package{Name: "ripgrep", Backend: "static"})
+	ok, err = packages.IsInstalled(context.Background(), packages.Package{Name: "ripgrep", Backend: packages.Static})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestIsInstalled_Static(t *testing.T) {
 }
 
 func TestInstall_UnknownBackend(t *testing.T) {
-	err := packages.Install(context.Background(), packages.Package{Name: "tool", Backend: "brew"})
+	err := packages.Install(context.Background(), packages.Package{Name: "tool", Backend: packages.BackendType(99)})
 	if err == nil {
 		t.Error("expected error for unknown backend")
 	}
@@ -289,7 +289,7 @@ func TestRemove_Apt(t *testing.T) {
 	af := fakeBin(t, dir, "apt-get", "", 0)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
-	if err := packages.Remove(context.Background(), packages.Package{Name: "curl", Backend: "apt"}); err != nil {
+	if err := packages.Remove(context.Background(), packages.Package{Name: "curl", Backend: packages.Apt}); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 	if got := readArgs(t, af); got != "remove -y curl" {
@@ -315,7 +315,7 @@ func TestRemove_Nix(t *testing.T) {
 	af := fakeBin(t, dir, "nix", "", 0)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
-	if err := packages.Remove(context.Background(), packages.Package{Name: "ripgrep", Backend: "nix"}); err != nil {
+	if err := packages.Remove(context.Background(), packages.Package{Name: "ripgrep", Backend: packages.Nix}); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 	if got := readArgs(t, af); got != "profile remove nixpkgs#ripgrep" {
@@ -340,7 +340,7 @@ func TestRemove_Static(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := packages.Remove(context.Background(), packages.Package{Name: "ripgrep", Backend: "static"}); err != nil {
+	if err := packages.Remove(context.Background(), packages.Package{Name: "ripgrep", Backend: packages.Static}); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 
@@ -354,7 +354,7 @@ func TestRemove_Static(t *testing.T) {
 }
 
 func TestRemove_UnknownBackend(t *testing.T) {
-	err := packages.Remove(context.Background(), packages.Package{Name: "tool", Backend: "brew"})
+	err := packages.Remove(context.Background(), packages.Package{Name: "tool", Backend: packages.BackendType(99)})
 	if err == nil {
 		t.Error("expected error for unknown backend")
 	}
@@ -403,7 +403,7 @@ func TestIsInstalled_NixTrue(t *testing.T) {
 	fakeBin(t, dir, "nix", "nixpkgs#ripgrep 13.0.0\n", 0)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
-	ok, err := packages.IsInstalled(context.Background(), packages.Package{Name: "ripgrep", Backend: "nix"})
+	ok, err := packages.IsInstalled(context.Background(), packages.Package{Name: "ripgrep", Backend: packages.Nix})
 	if err != nil {
 		t.Fatalf("IsInstalled: %v", err)
 	}
@@ -417,7 +417,7 @@ func TestIsInstalled_NixFalse(t *testing.T) {
 	fakeBin(t, dir, "nix", "nixpkgs#other-package\n", 0)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
-	ok, err := packages.IsInstalled(context.Background(), packages.Package{Name: "ripgrep", Backend: "nix"})
+	ok, err := packages.IsInstalled(context.Background(), packages.Package{Name: "ripgrep", Backend: packages.Nix})
 	if err != nil {
 		t.Fatalf("IsInstalled: %v", err)
 	}
@@ -441,7 +441,7 @@ func TestReconcile_FirstRun(t *testing.T) {
 
 	statePath := filepath.Join(dir, "state.json")
 	desired := []packages.Package{
-		{Name: "curl", Backend: "apt"},
+		{Name: "curl", Backend: packages.Apt},
 	}
 
 	if err := packages.Reconcile(context.Background(), statePath, desired); err != nil {
@@ -472,8 +472,8 @@ func TestReconcile_RemoveStale(t *testing.T) {
 
 	// Pretend curl and htop were previously installed.
 	prev := []packages.Package{
-		{Name: "curl", Backend: "apt"},
-		{Name: "htop", Backend: "apt"},
+		{Name: "curl", Backend: packages.Apt},
+		{Name: "htop", Backend: packages.Apt},
 	}
 	if err := packages.SaveState(statePath, prev); err != nil {
 		t.Fatal(err)
@@ -481,7 +481,7 @@ func TestReconcile_RemoveStale(t *testing.T) {
 
 	// New manifest only has curl.
 	desired := []packages.Package{
-		{Name: "curl", Backend: "apt"},
+		{Name: "curl", Backend: packages.Apt},
 	}
 	if err := packages.Reconcile(context.Background(), statePath, desired); err != nil {
 		t.Fatalf("Reconcile: %v", err)
@@ -503,7 +503,7 @@ func TestReconcile_EmptyManifest(t *testing.T) {
 	t.Setenv("PATH", fakeDir+":"+os.Getenv("PATH"))
 
 	statePath := filepath.Join(dir, "state.json")
-	prev := []packages.Package{{Name: "curl", Backend: "apt"}}
+	prev := []packages.Package{{Name: "curl", Backend: packages.Apt}}
 	if err := packages.SaveState(statePath, prev); err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +531,7 @@ func TestReconcile_SkipUnchanged(t *testing.T) {
 	t.Setenv("PATH", fakeDir+":"+os.Getenv("PATH"))
 
 	statePath := filepath.Join(dir, "state.json")
-	pkgs := []packages.Package{{Name: "curl", Backend: "apt"}}
+	pkgs := []packages.Package{{Name: "curl", Backend: packages.Apt}}
 	if err := packages.SaveState(statePath, pkgs); err != nil {
 		t.Fatal(err)
 	}
@@ -561,7 +561,7 @@ func TestReconcile_StaticRemove(t *testing.T) {
 	}
 
 	statePath := filepath.Join(dir, "state.json")
-	prev := []packages.Package{{Name: "ripgrep", Backend: "static", URL: "https://example.com/rg.tar.gz"}}
+	prev := []packages.Package{{Name: "ripgrep", Backend: packages.Static, URL: "https://example.com/rg.tar.gz"}}
 	if err := packages.SaveState(statePath, prev); err != nil {
 		t.Fatal(err)
 	}
