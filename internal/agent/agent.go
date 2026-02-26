@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hopboxdev/hopbox/internal/manifest"
+	"github.com/hopboxdev/hopbox/internal/packages"
 	"github.com/hopboxdev/hopbox/internal/service"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 )
@@ -83,6 +84,21 @@ func (a *Agent) Reload(ws *manifest.Workspace) {
 	}
 
 	go func() {
+		// Reconcile packages before starting services (services may depend on packages).
+		pkgs := make([]packages.Package, len(ws.Packages))
+		for i, p := range ws.Packages {
+			pkgs[i] = packages.Package{
+				Name:    p.Name,
+				Backend: p.Backend,
+				Version: p.Version,
+				URL:     p.URL,
+				SHA256:  p.SHA256,
+			}
+		}
+		if err := packages.Reconcile(context.Background(), packages.StatePath, pkgs); err != nil {
+			slog.Warn("package reconciliation", "err", err)
+		}
+
 		if old != nil {
 			if err := old.StopAll(); err != nil {
 				slog.Warn("stop old services on reload", "err", err)
