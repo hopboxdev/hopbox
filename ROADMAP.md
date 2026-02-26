@@ -86,7 +86,7 @@ loading with workspace env merge into all services.
 - [x] Packages in `hop status` — show installed packages from manifest in dashboard
 - [x] Package reconciliation — remove stale binaries/packages not in current manifest
 - [x] Native service backend — run processes directly without Docker
-- [ ] devcontainer.json compatibility (read-only import)
+- [x] devcontainer.json compatibility (read-only import)
 - [ ] Network fallbacks for restricted environments — SSH tunneling (`hop up --ssh`), Wireguard-over-WebSocket
 - [ ] Installation script (`curl | sh`) + Homebrew tap + AUR
 - [ ] Documentation site (hopbox.dev) — quickstart, manifest reference, migration guides
