@@ -88,7 +88,7 @@ loading with workspace env merge into all services.
 - [x] Native service backend — run processes directly without Docker
 - [x] devcontainer.json compatibility (read-only import)
 - [ ] Network fallbacks for restricted environments — SSH tunneling (`hop up --ssh`), Wireguard-over-WebSocket
-- [ ] Installation script (`curl | sh`) + Homebrew tap + AUR
+- [x] Installation script (`curl | sh`) + Homebrew tap
 - [ ] Documentation site (hopbox.dev) — quickstart, manifest reference, migration guides
 - [ ] GitHub repo public release — Apache 2.0, example configs
 - [x] xdg-open bridge — server `xdg-open` opens URLs in local browser
