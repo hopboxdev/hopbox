@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 
 	"github.com/hopboxdev/silo"
 
@@ -86,6 +87,7 @@ func run(ctx context.Context, listenAddr, zfsPool, agentBin, hostIP string, port
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterHostServiceServer(grpcServer, srv)
+	reflection.Register(grpcServer)
 
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {

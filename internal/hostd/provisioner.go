@@ -4,9 +4,6 @@ package hostd
 
 import (
 	"context"
-	"crypto/ecdh"
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"net"
@@ -15,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hopboxdev/hopbox/internal/wgkey"
 	"github.com/hopboxdev/silo"
 )
 
@@ -156,13 +154,13 @@ func (p *Provisioner) exchangeKeys(ctx context.Context, vm *silo.VM) (clientPriv
 	}
 	serverPubB64 = strings.TrimSpace(result.Stdout)
 
-	// Generate client keypair
-	priv, err := ecdh.X25519().GenerateKey(rand.Reader)
+	// Generate client keypair using WireGuard-compatible keys
+	kp, err := wgkey.Generate()
 	if err != nil {
 		return "", "", fmt.Errorf("generate client keys: %w", err)
 	}
-	clientPrivB64 = base64.StdEncoding.EncodeToString(priv.Bytes())
-	clientPubB64 := base64.StdEncoding.EncodeToString(priv.PublicKey().Bytes())
+	clientPrivB64 = kp.PrivateKeyBase64()
+	clientPubB64 := kp.PublicKeyBase64()
 
 	// Phase 2: send client public key
 	result, err = vm.Exec(ctx, fmt.Sprintf(

@@ -81,8 +81,12 @@ func (s *Server) CreateWorkspace(ctx context.Context, req *pb.CreateWorkspaceReq
 		return nil, fmt.Errorf("allocate port: %w", err)
 	}
 
+	// Use a background context for VM lifecycle operations so the VM
+	// survives after the gRPC request context is done.
+	vmCtx := context.Background()
+
 	// Create and start VM.
-	vm, err := s.rt.Create(ctx, silo.VMConfig{
+	vm, err := s.rt.Create(vmCtx, silo.VMConfig{
 		Name:      req.Name,
 		Image:     image,
 		VCPUs:     vcpus,
@@ -95,16 +99,16 @@ func (s *Server) CreateWorkspace(ctx context.Context, req *pb.CreateWorkspaceReq
 		return nil, fmt.Errorf("create VM: %w", err)
 	}
 
-	if err := vm.Start(ctx); err != nil {
-		_ = vm.Destroy(ctx)
+	if err := vm.Start(vmCtx); err != nil {
+		_ = vm.Destroy(vmCtx)
 		_ = s.ports.Release(req.Name)
 		return nil, fmt.Errorf("start VM: %w", err)
 	}
 
 	// Provision: inject agent, exchange keys, start agent, port forward.
-	result, err := s.provisioner.Provision(ctx, vm, hostPort)
+	result, err := s.provisioner.Provision(vmCtx, vm, hostPort)
 	if err != nil {
-		_ = vm.Destroy(ctx)
+		_ = vm.Destroy(vmCtx)
 		_ = s.ports.Release(req.Name)
 		return nil, fmt.Errorf("provision: %w", err)
 	}
@@ -124,8 +128,9 @@ func (s *Server) CreateWorkspace(ctx context.Context, req *pb.CreateWorkspaceReq
 	}, nil
 }
 
-func (s *Server) DestroyWorkspace(ctx context.Context, req *pb.DestroyWorkspaceRequest) (*pb.DestroyWorkspaceResponse, error) {
-	vm, err := s.rt.Get(ctx, req.Name)
+func (s *Server) DestroyWorkspace(_ context.Context, req *pb.DestroyWorkspaceRequest) (*pb.DestroyWorkspaceResponse, error) {
+	vmCtx := context.Background()
+	vm, err := s.rt.Get(vmCtx, req.Name)
 	if err != nil {
 		return nil, fmt.Errorf("get VM: %w", err)
 	}
@@ -135,7 +140,7 @@ func (s *Server) DestroyWorkspace(ctx context.Context, req *pb.DestroyWorkspaceR
 		s.provisioner.Deprovision(vm.IP(), port)
 	}
 
-	if err := vm.Destroy(ctx); err != nil {
+	if err := vm.Destroy(vmCtx); err != nil {
 		return nil, fmt.Errorf("destroy: %w", err)
 	}
 
@@ -145,8 +150,9 @@ func (s *Server) DestroyWorkspace(ctx context.Context, req *pb.DestroyWorkspaceR
 	return &pb.DestroyWorkspaceResponse{}, nil
 }
 
-func (s *Server) SuspendWorkspace(ctx context.Context, req *pb.SuspendWorkspaceRequest) (*pb.SuspendWorkspaceResponse, error) {
-	vm, err := s.rt.Get(ctx, req.Name)
+func (s *Server) SuspendWorkspace(_ context.Context, req *pb.SuspendWorkspaceRequest) (*pb.SuspendWorkspaceResponse, error) {
+	vmCtx := context.Background()
+	vm, err := s.rt.Get(vmCtx, req.Name)
 	if err != nil {
 		return nil, fmt.Errorf("get VM: %w", err)
 	}
@@ -156,7 +162,7 @@ func (s *Server) SuspendWorkspace(ctx context.Context, req *pb.SuspendWorkspaceR
 		s.provisioner.Deprovision(vm.IP(), port)
 	}
 
-	if err := vm.Suspend(ctx); err != nil {
+	if err := vm.Suspend(vmCtx); err != nil {
 		return nil, fmt.Errorf("suspend: %w", err)
 	}
 
@@ -164,13 +170,14 @@ func (s *Server) SuspendWorkspace(ctx context.Context, req *pb.SuspendWorkspaceR
 	return &pb.SuspendWorkspaceResponse{}, nil
 }
 
-func (s *Server) ResumeWorkspace(ctx context.Context, req *pb.ResumeWorkspaceRequest) (*pb.ResumeWorkspaceResponse, error) {
-	vm, err := s.rt.Get(ctx, req.Name)
+func (s *Server) ResumeWorkspace(_ context.Context, req *pb.ResumeWorkspaceRequest) (*pb.ResumeWorkspaceResponse, error) {
+	vmCtx := context.Background()
+	vm, err := s.rt.Get(vmCtx, req.Name)
 	if err != nil {
 		return nil, fmt.Errorf("get VM: %w", err)
 	}
 
-	if err := vm.Resume(ctx); err != nil {
+	if err := vm.Resume(vmCtx); err != nil {
 		return nil, fmt.Errorf("resume: %w", err)
 	}
 
