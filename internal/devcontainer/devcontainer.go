@@ -2,13 +2,58 @@ package devcontainer
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/hopboxdev/hopbox/internal/manifest"
 	"gopkg.in/yaml.v3"
 )
+
+// devcontainerJSON represents the relevant fields of a devcontainer.json file.
+type devcontainerJSON struct {
+	Name              string                     `json:"name"`
+	Image             string                     `json:"image"`
+	Features          map[string]json.RawMessage `json:"features"`
+	ForwardPorts      []int                      `json:"forwardPorts"`
+	ContainerEnv      map[string]string          `json:"containerEnv"`
+	PostCreateCommand stringOrSlice              `json:"postCreateCommand"`
+	PostStartCommand  stringOrSlice              `json:"postStartCommand"`
+	Customizations    map[string]json.RawMessage `json:"customizations"`
+	Mounts            []any                      `json:"mounts"`
+	DockerComposeFile stringOrSlice              `json:"dockerComposeFile"`
+	RemoteUser        string                     `json:"remoteUser"`
+	Build             json.RawMessage            `json:"build"`
+	RunArgs           []string                   `json:"runArgs"`
+}
+
+// stringOrSlice handles devcontainer fields that can be either a string or []string.
+type stringOrSlice []string
+
+func (s *stringOrSlice) UnmarshalJSON(data []byte) error {
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		*s = []string{str}
+		return nil
+	}
+	var slice []string
+	if err := json.Unmarshal(data, &slice); err != nil {
+		return err
+	}
+	*s = slice
+	return nil
+}
+
+func (s stringOrSlice) String() string {
+	return strings.Join(s, " && ")
+}
+
+// vscodeCustomization extracts VS Code extensions from customizations.
+type vscodeCustomization struct {
+	Extensions []string `json:"extensions"`
+}
 
 // StripJSONC removes // comments, /* */ comments, and trailing commas from JSONC.
 // Preserves strings containing comment-like sequences.
@@ -270,4 +315,98 @@ func ParseComposeFile(path string) (map[string]manifest.Service, []string) {
 	}
 
 	return services, warnings
+}
+
+// Convert reads a devcontainer.json file and returns a hopbox Workspace.
+// Warnings list unmapped or partially-mapped fields.
+func Convert(path string) (*manifest.Workspace, []string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	clean, err := StripJSONC(data)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var dc devcontainerJSON
+	if err := json.Unmarshal(clean, &dc); err != nil {
+		return nil, nil, fmt.Errorf("parse devcontainer.json: %w", err)
+	}
+
+	var warnings []string
+	ws := &manifest.Workspace{
+		Name: dc.Name,
+	}
+
+	// Image → inferred packages.
+	if dc.Image != "" {
+		pkgs, warn := ImageToPackages(dc.Image)
+		ws.Packages = append(ws.Packages, pkgs...)
+		if warn != "" {
+			warnings = append(warnings, warn)
+		}
+	}
+
+	// Features → packages.
+	if len(dc.Features) > 0 {
+		pkgs, warns := FeatureToPackages(dc.Features)
+		ws.Packages = append(ws.Packages, pkgs...)
+		warnings = append(warnings, warns...)
+	}
+
+	// containerEnv → env.
+	if len(dc.ContainerEnv) > 0 {
+		ws.Env = dc.ContainerEnv
+	}
+
+	// postCreateCommand → scripts.setup, postStartCommand → scripts.start.
+	if len(dc.PostCreateCommand) > 0 || len(dc.PostStartCommand) > 0 {
+		ws.Scripts = make(map[string]string)
+		if s := dc.PostCreateCommand.String(); s != "" {
+			ws.Scripts["setup"] = s
+		}
+		if s := dc.PostStartCommand.String(); s != "" {
+			ws.Scripts["start"] = s
+		}
+	}
+
+	// customizations.vscode.extensions → editor.extensions.
+	if raw, ok := dc.Customizations["vscode"]; ok {
+		var vsc vscodeCustomization
+		if err := json.Unmarshal(raw, &vsc); err == nil && len(vsc.Extensions) > 0 {
+			ws.Editor = &manifest.EditorConfig{
+				Type:       "vscode-remote",
+				Extensions: vsc.Extensions,
+			}
+		}
+	}
+
+	// dockerComposeFile → services.
+	if len(dc.DockerComposeFile) > 0 {
+		dcDir := filepath.Dir(path)
+		composePath := filepath.Join(dcDir, dc.DockerComposeFile[0])
+		services, warns := ParseComposeFile(composePath)
+		if len(services) > 0 {
+			ws.Services = services
+		}
+		warnings = append(warnings, warns...)
+	}
+
+	// Warn about unmapped fields.
+	if dc.RemoteUser != "" {
+		warnings = append(warnings, "remoteUser not mapped (hopbox runs as root on VPS)")
+	}
+	if len(dc.Mounts) > 0 {
+		warnings = append(warnings, "mounts not mapped — configure manually in hopbox.yaml")
+	}
+	if dc.Build != nil {
+		warnings = append(warnings, "build/Dockerfile not supported — use packages instead")
+	}
+	if len(dc.RunArgs) > 0 {
+		warnings = append(warnings, "runArgs not mapped")
+	}
+
+	return ws, warnings, nil
 }

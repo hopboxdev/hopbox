@@ -186,3 +186,181 @@ func TestParseComposeFile_Missing(t *testing.T) {
 		t.Errorf("expected 1 warning, got %d", len(warnings))
 	}
 }
+
+func TestConvert_Simple(t *testing.T) {
+	dir := t.TempDir()
+	dc := `{
+		"name": "myapp",
+		"image": "mcr.microsoft.com/devcontainers/go:1.22",
+		"containerEnv": {"DEBUG": "1"},
+		"forwardPorts": [8080],
+		"postCreateCommand": "go mod download",
+		"customizations": {
+			"vscode": {
+				"extensions": ["golang.go"]
+			}
+		}
+	}`
+	path := filepath.Join(dir, "devcontainer.json")
+	if err := os.WriteFile(path, []byte(dc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, warnings, err := devcontainer.Convert(path)
+	if err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+
+	if ws.Name != "myapp" {
+		t.Errorf("name = %q", ws.Name)
+	}
+
+	// Image inference should add go package.
+	pkgNames := make(map[string]bool)
+	for _, p := range ws.Packages {
+		pkgNames[p.Name] = true
+	}
+	if !pkgNames["go"] {
+		t.Error("expected go package from image inference")
+	}
+
+	if ws.Env["DEBUG"] != "1" {
+		t.Errorf("env = %v", ws.Env)
+	}
+
+	if ws.Scripts["setup"] != "go mod download" {
+		t.Errorf("scripts = %v", ws.Scripts)
+	}
+
+	if ws.Editor == nil || len(ws.Editor.Extensions) != 1 || ws.Editor.Extensions[0] != "golang.go" {
+		t.Errorf("editor = %+v", ws.Editor)
+	}
+
+	_ = warnings
+}
+
+func TestConvert_WithFeatures(t *testing.T) {
+	dir := t.TempDir()
+	dc := `{
+		"name": "fullstack",
+		"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+		"features": {
+			"ghcr.io/devcontainers/features/node:1": {"version": "20"},
+			"ghcr.io/devcontainers/features/python:1": {}
+		}
+	}`
+	path := filepath.Join(dir, "devcontainer.json")
+	if err := os.WriteFile(path, []byte(dc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, _, err := devcontainer.Convert(path)
+	if err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+
+	pkgs := make(map[string]string)
+	for _, p := range ws.Packages {
+		pkgs[p.Name] = p.Version
+	}
+	if _, ok := pkgs["nodejs"]; !ok {
+		t.Error("expected nodejs package")
+	}
+	if pkgs["nodejs"] != "20" {
+		t.Errorf("nodejs version = %q, want 20", pkgs["nodejs"])
+	}
+	if _, ok := pkgs["python3"]; !ok {
+		t.Error("expected python3 package")
+	}
+}
+
+func TestConvert_WithCompose(t *testing.T) {
+	dir := t.TempDir()
+	compose := `
+services:
+  db:
+    image: postgres:16
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_PASSWORD: secret
+`
+	dcDir := filepath.Join(dir, ".devcontainer")
+	if err := os.MkdirAll(dcDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dcDir, "docker-compose.yml"), []byte(compose), 0644); err != nil {
+		t.Fatal(err)
+	}
+	dc := `{
+		"name": "withdb",
+		"dockerComposeFile": "docker-compose.yml",
+		"containerEnv": {"DB_HOST": "localhost"}
+	}`
+	path := filepath.Join(dcDir, "devcontainer.json")
+	if err := os.WriteFile(path, []byte(dc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, _, err := devcontainer.Convert(path)
+	if err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+
+	if len(ws.Services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(ws.Services))
+	}
+	db, ok := ws.Services["db"]
+	if !ok {
+		t.Fatal("expected db service")
+	}
+	if db.Image != "postgres:16" {
+		t.Errorf("db image = %q", db.Image)
+	}
+}
+
+func TestConvert_JSONC(t *testing.T) {
+	dir := t.TempDir()
+	dc := `{
+		// Dev container for testing
+		"name": "jsonc-test",
+		"image": "ubuntu:22.04",
+		"forwardPorts": [3000,], // trailing comma
+	}`
+	path := filepath.Join(dir, "devcontainer.json")
+	if err := os.WriteFile(path, []byte(dc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, _, err := devcontainer.Convert(path)
+	if err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+	if ws.Name != "jsonc-test" {
+		t.Errorf("name = %q", ws.Name)
+	}
+}
+
+func TestConvert_Warnings(t *testing.T) {
+	dir := t.TempDir()
+	dc := `{
+		"name": "warns",
+		"image": "custom:latest",
+		"remoteUser": "vscode",
+		"mounts": ["source=data,target=/data,type=volume"],
+		"build": {"dockerfile": "Dockerfile"}
+	}`
+	path := filepath.Join(dir, "devcontainer.json")
+	if err := os.WriteFile(path, []byte(dc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, warnings, err := devcontainer.Convert(path)
+	if err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+
+	// Should have warnings for: unknown image, remoteUser, mounts, build.
+	if len(warnings) < 3 {
+		t.Errorf("expected at least 3 warnings, got %d: %v", len(warnings), warnings)
+	}
+}
