@@ -487,43 +487,20 @@ func (c *UpCmd) buildTUIPhases(hostName, agentURL string, agentClient *http.Clie
 			})
 		}
 		wsSteps = append(wsSteps, tui.Step{
-			Title: fmt.Sprintf("Syncing manifest: %s", ws.Name),
+			Title: fmt.Sprintf("Syncing workspace: %s", ws.Name),
 			Run: func(ctx context.Context, send func(tui.StepEvent)) error {
 				yamlBytes, err := yaml.Marshal(ws)
 				if err != nil {
 					return fmt.Errorf("marshal manifest: %w", err)
 				}
 				if _, err := rpcclient.Call(hostName, "workspace.sync", map[string]string{"yaml": string(yamlBytes)}); err != nil {
-					return fmt.Errorf("manifest sync: %w", err)
+					return fmt.Errorf("workspace sync: %w", err)
 				}
-				send(tui.StepEvent{Message: "Manifest synced"})
+				send(tui.StepEvent{Message: "Workspace synced"})
 				return nil
 			},
 			NonFatal: true,
 		})
-		if len(ws.Packages) > 0 {
-			wsSteps = append(wsSteps, tui.Step{
-				Title: fmt.Sprintf("Installing %d package(s)", len(ws.Packages)),
-				Run: func(ctx context.Context, send func(tui.StepEvent)) error {
-					pkgs := make([]map[string]string, 0, len(ws.Packages))
-					for _, p := range ws.Packages {
-						pkgs = append(pkgs, map[string]string{
-							"name":    p.Name,
-							"backend": p.Backend,
-							"version": p.Version,
-							"url":     p.URL,
-							"sha256":  p.SHA256,
-						})
-					}
-					if _, err := rpcclient.Call(hostName, "packages.install", map[string]any{"packages": pkgs}); err != nil {
-						return fmt.Errorf("package install: %w", err)
-					}
-					send(tui.StepEvent{Message: "Packages installed"})
-					return nil
-				},
-				NonFatal: true,
-			})
-		}
 		phases = append(phases, tui.Phase{Title: "Workspace", Steps: wsSteps})
 	}
 
