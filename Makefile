@@ -4,6 +4,7 @@ BINARY_HELPER      := $(DIST)/hop-helper
 BINARY_AGENT       := $(DIST)/hop-agent
 BINARY_AGENT_L     := $(DIST)/hop-agent-linux
 BINARY_AGENT_L_ARM := $(DIST)/hop-agent-linux-arm64
+BINARY_HOSTD       := $(DIST)/hopbox-hostd
 
 VERSION         := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT          := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -18,7 +19,7 @@ LDFLAGS         := -s -w \
 # ── Build ─────────────────────────────────────────────────────────────────────
 
 .PHONY: build
-build: $(BINARY_HOP) $(BINARY_HELPER) $(BINARY_AGENT_L)
+build: $(BINARY_HOP) $(BINARY_HELPER) $(BINARY_AGENT_L) $(BINARY_HOSTD)
 
 $(DIST):
 	mkdir -p $(DIST)
@@ -34,6 +35,9 @@ $(BINARY_AGENT_L): $(DIST)
 
 $(BINARY_AGENT_L_ARM): $(DIST)
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hop-agent
+
+$(BINARY_HOSTD): $(DIST)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/hopbox-hostd/
 
 .PHONY: build-agent-arm64
 build-agent-arm64: $(BINARY_AGENT_L_ARM)
@@ -83,6 +87,12 @@ snapshot:
 .PHONY: release
 release:
 	goreleaser release --clean
+
+# ── Codegen ───────────────────────────────────────────────────────────────────
+
+.PHONY: proto
+proto:
+	buf generate
 
 # ── Dev helpers ───────────────────────────────────────────────────────────────
 

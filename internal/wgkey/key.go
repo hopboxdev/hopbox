@@ -1,3 +1,8 @@
+// Package wgkey is the canonical WireGuard key generation and serialization
+// package for hopbox. All code that needs WireGuard keys (hostd provisioner,
+// hop-agent setup, client tunnel) should use this package rather than calling
+// wgtypes or crypto/ecdh directly, so that key format (clamped Curve25519)
+// and encoding (base64 for config, hex for WireGuard IPC) stay consistent.
 package wgkey
 
 import (
