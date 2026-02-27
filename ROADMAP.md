@@ -89,7 +89,7 @@ loading with workspace env merge into all services.
 - [x] devcontainer.json compatibility (read-only import)
 - [ ] Network fallbacks for restricted environments — SSH tunneling (`hop up --ssh`), Wireguard-over-WebSocket
 - [x] Installation script (`curl | sh`) + Homebrew tap
-- [ ] Documentation site (hopbox.dev) — quickstart, manifest reference, migration guides
+- [x] Documentation site (hopbox.dev) — Docusaurus, landing page, 15 docs pages
 - [ ] GitHub repo public release — Apache 2.0, example configs
 - [x] xdg-open bridge — server `xdg-open` opens URLs in local browser
 - [x] Notifications bridge — remote build notifications to local desktop

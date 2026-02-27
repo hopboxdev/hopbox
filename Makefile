@@ -111,3 +111,17 @@ tidy:
 .PHONY: version
 version:
 	@echo $(VERSION)
+
+# ── Documentation ────────────────────────────────────────────────────────────
+
+.PHONY: docs
+docs:
+	cd website && bun run build
+
+.PHONY: docs-dev
+docs-dev:
+	cd website && bun start
+
+.PHONY: docs-deploy
+docs-deploy:
+	cd website && bun run build && rsync -avz build/ hopbox.dev:/var/www/hopbox.dev/
