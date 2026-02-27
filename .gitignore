@@ -37,3 +37,8 @@ dist/
 .worktrees/
 .env
 .env.local
+
+# Documentation site
+website/node_modules/
+website/build/
+website/.docusaurus/
