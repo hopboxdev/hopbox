@@ -23,6 +23,14 @@
 
 /* Center footer columns */
 .footer .footer__links {
-  max-width: 500px;
-  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4rem;
+}
+
+.footer .footer__col {
+  flex: 0 0 auto;
+  max-width: none;
+  width: auto;
 }
