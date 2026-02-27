@@ -42,6 +42,10 @@ const config: Config = {
   themeConfig: {
     navbar: {
       title: 'Hopbox',
+      logo: {
+        alt: 'Hopbox Logo',
+        src: 'img/logo.svg',
+      },
       items: [
         {
           type: 'docSidebar',
