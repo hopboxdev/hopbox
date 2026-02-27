@@ -81,7 +81,7 @@ loading with workspace env merge into all services.
 - [ ] Linux client support — helper daemon or direct TUN setup for Linux laptops
 - [x] `hop to` error recovery — client-side cleanup and idempotent retry on failure
 - [x] CI/CD pipeline — GitHub Actions for tests, linting, cross-compilation, goreleaser for releases
-- [ ] Package management abstraction — backend interface, lock file (`hopbox.lock`)
+- [x] Package management abstraction — backend interface (lock file is a separate future item)
 - [x] Static package backend — download binary from URL
 - [x] Packages in `hop status` — show installed packages from manifest in dashboard
 - [x] Package reconciliation — remove stale binaries/packages not in current manifest
