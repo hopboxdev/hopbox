@@ -1,6 +1,21 @@
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+
 .hero {
-  padding: 3rem 2rem 2rem;
+  padding: 4rem 2rem 3rem;
   text-align: center;
+  background: radial-gradient(
+    ellipse 80% 60% at 50% 0%,
+    rgba(37, 99, 235, 0.08) 0%,
+    transparent 70%
+  );
+}
+
+[data-theme='dark'] .hero {
+  background: radial-gradient(
+    ellipse 80% 60% at 50% 0%,
+    rgba(59, 130, 246, 0.12) 0%,
+    transparent 70%
+  );
 }
 
 .heroTitle {
@@ -11,48 +26,104 @@
 }
 
 .heroAccent {
-  color: var(--ifm-color-primary);
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .heroSubtitle {
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   color: var(--ifm-color-emphasis-600);
-  max-width: 500px;
+  max-width: 480px;
   margin: 0.75rem auto 0;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .buttons {
   display: flex;
   gap: 0.75rem;
   justify-content: center;
-  margin-top: 1.5rem;
+  margin-top: 1.75rem;
 }
 
 /* ── Terminal hero ──────────────────────────────────────────────────────── */
 
 .terminalHero {
   max-width: 680px;
-  margin: 2rem auto 0;
+  margin: 2.5rem auto 0;
+  position: relative;
+}
+
+/* Glow behind the terminal */
+.terminalHero::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 12px;
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.25),
+    rgba(99, 102, 241, 0.15),
+    rgba(59, 130, 246, 0.25)
+  );
+  z-index: -1;
+  filter: blur(1px);
+}
+
+[data-theme='dark'] .terminalHero::before {
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.4),
+    rgba(99, 102, 241, 0.25),
+    rgba(59, 130, 246, 0.4)
+  );
+  filter: blur(2px);
+}
+
+/* Ambient glow (dark mode only) */
+.terminalHero::after {
+  content: '';
+  position: absolute;
+  inset: -40px;
+  border-radius: 30px;
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    rgba(59, 130, 246, 0.06) 0%,
+    transparent 70%
+  );
+  z-index: -2;
+  pointer-events: none;
+}
+
+[data-theme='dark'] .terminalHero::after {
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    rgba(59, 130, 246, 0.15) 0%,
+    transparent 70%
+  );
 }
 
 .terminalWindow {
-  background: #1a1a2e;
+  background: #0f1219;
   border-radius: 10px;
   overflow: hidden;
   box-shadow:
     0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 20px 40px -4px rgba(0, 0, 0, 0.15);
+    0 20px 40px -4px rgba(0, 0, 0, 0.18);
+  position: relative;
+  z-index: 1;
 }
 
 [data-theme='dark'] .terminalWindow {
+  background: #0c0e14;
   box-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.3),
-    0 20px 40px -4px rgba(0, 0, 0, 0.4);
+    0 4px 6px -1px rgba(0, 0, 0, 0.4),
+    0 25px 50px -8px rgba(0, 0, 0, 0.6);
 }
 
 .terminalBar {
-  background: #16162a;
+  background: rgba(0, 0, 0, 0.3);
   padding: 10px 14px;
   display: flex;
   gap: 8px;
@@ -98,11 +169,13 @@
   background: var(--ifm-color-emphasis-100);
   border-top: 1px solid var(--ifm-color-emphasis-200);
   border-bottom: 1px solid var(--ifm-color-emphasis-200);
-  padding: 2rem 2rem;
+  padding: 2.5rem 2rem;
 }
 
 [data-theme='dark'] .features {
-  background: var(--ifm-color-emphasis-100);
+  background: rgba(0, 0, 0, 0.2);
+  border-top-color: rgba(255, 255, 255, 0.06);
+  border-bottom-color: rgba(255, 255, 255, 0.06);
 }
 
 .featuresInner {
@@ -129,6 +202,8 @@
   margin: 0;
   line-height: 1.5;
 }
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
   .heroTitle {

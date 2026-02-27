@@ -9,10 +9,12 @@ function Hero() {
   return (
     <header className={styles.hero}>
       <h1 className={styles.heroTitle}>
-        Your VPS, your <span className={styles.heroAccent}>dev environment</span>
+        Remote development that feels like{' '}
+        <span className={styles.heroAccent}>home</span>
       </h1>
       <p className={styles.heroSubtitle}>
-        One command to set up. One command to connect. No cloud accounts, no seat fees.
+        Your VPS, your rules. One command to set up, one to connect. No cloud
+        accounts, no seat fees.
       </p>
       <div className={styles.buttons}>
         <Link className="button button--primary button--lg" to="/docs/getting-started/installation">
