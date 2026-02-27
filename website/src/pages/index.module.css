@@ -1,99 +1,147 @@
 .hero {
-  padding: 4rem 2rem;
+  padding: 3rem 2rem 2rem;
   text-align: center;
 }
 
 .heroTitle {
-  font-size: 3rem;
+  font-size: 3.2rem;
   font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.heroAccent {
+  color: var(--ifm-color-primary);
 }
 
 .heroSubtitle {
-  font-size: 1.25rem;
-  color: var(--ifm-color-emphasis-700);
-  max-width: 600px;
-  margin: 1rem auto;
+  font-size: 1.2rem;
+  color: var(--ifm-color-emphasis-600);
+  max-width: 500px;
+  margin: 0.75rem auto 0;
+  line-height: 1.5;
 }
 
 .buttons {
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
   justify-content: center;
-  margin-top: 2rem;
+  margin-top: 1.5rem;
 }
 
-.features {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 2rem;
-  padding: 4rem 2rem;
-  max-width: 1100px;
-  margin: 0 auto;
-}
+/* ── Terminal hero ──────────────────────────────────────────────────────── */
 
-.feature {
-  padding: 1.5rem;
-}
-
-.featureTitle {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-}
-
-.featureDescription {
-  color: var(--ifm-color-emphasis-700);
-}
-
-.terminal {
-  max-width: 700px;
-  margin: 0 auto;
-  padding: 2rem;
+.terminalHero {
+  max-width: 680px;
+  margin: 2rem auto 0;
 }
 
 .terminalWindow {
-  background: #1e1e1e;
-  border-radius: 8px;
+  background: #1a1a2e;
+  border-radius: 10px;
   overflow: hidden;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 20px 40px -4px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme='dark'] .terminalWindow {
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.3),
+    0 20px 40px -4px rgba(0, 0, 0, 0.4);
 }
 
 .terminalBar {
-  background: #333;
-  padding: 8px 12px;
+  background: #16162a;
+  padding: 10px 14px;
   display: flex;
-  gap: 6px;
+  gap: 8px;
+  align-items: center;
 }
 
 .terminalDot {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #555;
 }
 
 .terminalBody {
-  padding: 1rem 1.5rem;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.875rem;
-  line-height: 1.6;
-  color: #d4d4d4;
+  padding: 1.25rem 1.5rem;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: #e2e8f0;
   overflow-x: auto;
+  text-align: left;
 }
 
-.terminalBody code {
-  background: none;
-  padding: 0;
-  color: inherit;
+.terminalSpacer {
+  height: 0.5rem;
 }
 
 .terminalComment {
-  color: #6a9955;
+  color: #6b7280;
 }
 
 .terminalCommand {
-  color: #dcdcaa;
+  color: #f8fafc;
+  font-weight: 500;
 }
 
 .terminalOutput {
-  color: #9cdcfe;
+  color: #60a5fa;
+}
+
+/* ── Feature ribbon ─────────────────────────────────────────────────────── */
+
+.features {
+  background: var(--ifm-color-emphasis-100);
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  padding: 2rem 2rem;
+}
+
+[data-theme='dark'] .features {
+  background: var(--ifm-color-emphasis-100);
+}
+
+.featuresInner {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.feature {
+  padding: 0.5rem 0;
+}
+
+.featureTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.featureDescription {
+  font-size: 0.9rem;
+  color: var(--ifm-color-emphasis-600);
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .heroTitle {
+    font-size: 2.2rem;
+  }
+
+  .featuresInner {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .terminalHero {
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+  }
 }
