@@ -78,7 +78,7 @@ loading with workspace env merge into all services.
 
 ## Phase 2 — Open Source Release (Planned)
 
-- [ ] Linux client support — helper daemon or direct TUN setup for Linux laptops
+- [x] Linux client support — helper daemon with systemd, kernel TUN via wireguard-go
 - [x] `hop to` error recovery — client-side cleanup and idempotent retry on failure
 - [x] CI/CD pipeline — GitHub Actions for tests, linting, cross-compilation, goreleaser for releases
 - [x] Package management abstraction — backend interface (lock file is a separate future item)
