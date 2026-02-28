@@ -58,6 +58,12 @@ const config: Config = {
           label: 'GitHub',
           position: 'right',
         },
+        {
+          to: '/docs/getting-started/quickstart',
+          label: 'Get Started',
+          position: 'right',
+          className: 'navbar-get-started',
+        },
       ],
     },
     footer: {

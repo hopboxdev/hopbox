@@ -1,8 +1,9 @@
-import React from 'react';
-import Link from '@docusaurus/Link';
+import React, {useState} from 'react';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import styles from './index.module.css';
+
+const INSTALL_CMD = 'curl -fsSL https://get.hopbox.dev | sh';
 
 function Hero() {
   const {siteConfig} = useDocusaurusContext();
@@ -16,14 +17,7 @@ function Hero() {
         Your VPS, your rules. One command to set up, one to connect. No cloud
         accounts, no seat fees.
       </p>
-      <div className={styles.buttons}>
-        <Link className="button button--primary button--lg" to="/docs/getting-started/installation">
-          Get Started
-        </Link>
-        <Link className="button button--secondary button--lg" href="https://github.com/hopboxdev/hopbox">
-          GitHub
-        </Link>
-      </div>
+      <Install />
       <div className={styles.terminalHero}>
         <div className={styles.terminalWindow}>
           <div className={styles.terminalBar}>
@@ -73,16 +67,33 @@ const features = [
 ];
 
 function Install() {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(INSTALL_CMD);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
   return (
-    <section className={styles.install}>
-      <h2 className={styles.installTitle}>Get started in seconds</h2>
+    <div className={styles.install}>
       <div className={styles.installCode}>
-        <code>curl -fsSL https://get.hopbox.dev | sh</code>
+        <code>{INSTALL_CMD}</code>
+        <button
+          className={styles.copyButton}
+          onClick={handleCopy}
+          aria-label="Copy to clipboard"
+          type="button"
+        >
+          {copied ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+          )}
+        </button>
       </div>
       <p className={styles.installAlt}>
-        or via <code>brew install hopboxdev/tap/hop</code>
+        or <code>brew install hopboxdev/tap/hop</code>
       </p>
-    </section>
+    </div>
   );
 }
 
@@ -108,7 +119,6 @@ export default function Home(): React.JSX.Element {
     <Layout title={siteConfig.title} description={siteConfig.tagline}>
       <Hero />
       <main>
-        <Install />
         <Features />
       </main>
     </Layout>

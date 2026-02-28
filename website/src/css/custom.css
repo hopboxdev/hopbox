@@ -21,6 +21,23 @@
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
 
+/* Navbar "Get Started" button */
+.navbar-get-started {
+  background: var(--ifm-color-primary);
+  color: #fff !important;
+  border-radius: 6px;
+  padding: 0.35rem 1rem !important;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.navbar-get-started:hover {
+  background: var(--ifm-color-primary-dark);
+  color: #fff !important;
+  text-decoration: none;
+}
+
 /* Minimal footer — just a copyright line, always at viewport bottom */
 .footer {
   background: none !important;
