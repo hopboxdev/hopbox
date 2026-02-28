@@ -21,12 +21,7 @@
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
 
-/* Don't force page to fill viewport — kills whitespace gap above footer */
-.main-wrapper {
-  flex-grow: 0 !important;
-}
-
-/* Minimal footer — just a copyright line */
+/* Minimal footer — just a copyright line, always at viewport bottom */
 .footer {
   background: none !important;
   padding: 1.5rem 0 !important;

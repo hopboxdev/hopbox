@@ -191,41 +191,66 @@
   color: #c4b5fd;
 }
 
-/* ── Feature ribbon ─────────────────────────────────────────────────────── */
+/* ── Feature cards (Atuin-inspired) ────────────────────────────────────── */
 
 .features {
-  background: var(--ifm-color-emphasis-100);
-  border-top: 1px solid var(--ifm-color-emphasis-200);
-  border-bottom: 1px solid var(--ifm-color-emphasis-200);
-  padding: 2.5rem 2rem;
-}
-
-[data-theme='dark'] .features {
-  background: rgba(0, 0, 0, 0.2);
-  border-top-color: rgba(255, 255, 255, 0.06);
-  border-bottom-color: rgba(255, 255, 255, 0.06);
+  padding: 3rem 2rem 2rem;
 }
 
 .featuresInner {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 2rem;
+  gap: 1.25rem;
   max-width: 1000px;
   margin: 0 auto;
 }
 
 .feature {
-  padding: 0.5rem 0;
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--ifm-color-emphasis-200);
+}
+
+[data-theme='dark'] .feature {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Color variants */
+.feature--violet {
+  background: rgba(139, 92, 246, 0.06);
+}
+[data-theme='dark'] .feature--violet {
+  background: rgba(139, 92, 246, 0.08);
+}
+
+.feature--pink {
+  background: rgba(236, 72, 153, 0.05);
+}
+[data-theme='dark'] .feature--pink {
+  background: rgba(236, 72, 153, 0.07);
+}
+
+.feature--indigo {
+  background: rgba(99, 102, 241, 0.06);
+}
+[data-theme='dark'] .feature--indigo {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.featureIcon {
+  display: block;
+  font-size: 1.5rem;
+  margin-bottom: 0.75rem;
 }
 
 .featureTitle {
   font-size: 1rem;
   font-weight: 700;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.4rem;
 }
 
 .featureDescription {
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: var(--ifm-color-emphasis-600);
   margin: 0;
   line-height: 1.5;

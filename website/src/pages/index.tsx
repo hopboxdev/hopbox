@@ -54,15 +54,21 @@ function Hero() {
 const features = [
   {
     title: 'WireGuard Tunnel',
+    icon: '\u{1F510}',
     description: 'Private L3 network to your VPS. Every port reachable — no SSH forwarding.',
+    color: 'violet',
   },
   {
     title: 'Workspace Manifest',
+    icon: '\u{1F4E6}',
     description: 'One hopbox.yaml for packages, services, bridges, env, scripts, and backups.',
+    color: 'pink',
   },
   {
     title: 'Workspace Mobility',
+    icon: '\u{1F680}',
     description: 'Snapshot and migrate to a new host with one command.',
+    color: 'indigo',
   },
 ];
 
@@ -71,7 +77,8 @@ function Features() {
     <section className={styles.features}>
       <div className={styles.featuresInner}>
         {features.map((feature) => (
-          <div key={feature.title} className={styles.feature}>
+          <div key={feature.title} className={`${styles.feature} ${styles[`feature--${feature.color}`]}`}>
+            <span className={styles.featureIcon}>{feature.icon}</span>
             <h3 className={styles.featureTitle}>{feature.title}</h3>
             <p className={styles.featureDescription}>{feature.description}</p>
           </div>
