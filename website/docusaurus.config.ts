@@ -61,23 +61,6 @@ const config: Config = {
       ],
     },
     footer: {
-      style: 'dark',
-      links: [
-        {
-          title: 'Docs',
-          items: [
-            {label: 'Getting Started', to: '/docs/getting-started/installation'},
-            {label: 'Guides', to: '/docs/guides/setup'},
-            {label: 'Reference', to: '/docs/reference/cli'},
-          ],
-        },
-        {
-          title: 'More',
-          items: [
-            {label: 'GitHub', href: 'https://github.com/hopboxdev/hopbox'},
-          ],
-        },
-      ],
       copyright: `Copyright © ${new Date().getFullYear()} Hopbox. AGPL-3.0 License.`,
     },
     prism: {
