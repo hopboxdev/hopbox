@@ -323,6 +323,12 @@
   color: var(--ifm-color-emphasis-700);
 }
 
+[data-theme='dark'] .installAlt code {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ifm-color-emphasis-400);
+  border: none;
+}
+
 /* ── Responsive ────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
