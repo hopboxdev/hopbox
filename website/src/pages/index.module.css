@@ -82,33 +82,33 @@
   border-radius: 12px;
   background: linear-gradient(
     135deg,
-    rgba(139, 92, 246, 0.35),
-    rgba(236, 72, 153, 0.2),
-    rgba(139, 92, 246, 0.35)
+    rgba(139, 92, 246, 0.5),
+    rgba(236, 72, 153, 0.3),
+    rgba(139, 92, 246, 0.5)
   );
   z-index: 0;
-  filter: blur(1px);
+  filter: blur(3px);
 }
 
 [data-theme='dark'] .terminalHero::before {
   background: linear-gradient(
     135deg,
-    rgba(139, 92, 246, 0.5),
-    rgba(236, 72, 153, 0.3),
-    rgba(139, 92, 246, 0.5)
+    rgba(139, 92, 246, 0.7),
+    rgba(236, 72, 153, 0.45),
+    rgba(139, 92, 246, 0.7)
   );
-  filter: blur(2px);
+  filter: blur(4px);
 }
 
 /* Ambient glow — big soft halo */
 .terminalHero::after {
   content: '';
   position: absolute;
-  inset: -60px;
-  border-radius: 40px;
+  inset: -80px;
+  border-radius: 50px;
   background: radial-gradient(
     ellipse at 50% 50%,
-    rgba(139, 92, 246, 0.08) 0%,
+    rgba(139, 92, 246, 0.12) 0%,
     transparent 70%
   );
   z-index: -1;
@@ -116,9 +116,10 @@
 }
 
 [data-theme='dark'] .terminalHero::after {
+  inset: -100px;
   background: radial-gradient(
     ellipse at 50% 50%,
-    rgba(139, 92, 246, 0.2) 0%,
+    rgba(139, 92, 246, 0.35) 0%,
     transparent 70%
   );
 }
