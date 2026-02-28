@@ -72,6 +72,20 @@ const features = [
   },
 ];
 
+function Install() {
+  return (
+    <section className={styles.install}>
+      <h2 className={styles.installTitle}>Get started in seconds</h2>
+      <div className={styles.installCode}>
+        <code>curl -fsSL https://get.hopbox.dev | sh</code>
+      </div>
+      <p className={styles.installAlt}>
+        or via <code>brew install hopboxdev/tap/hop</code>
+      </p>
+    </section>
+  );
+}
+
 function Features() {
   return (
     <section className={styles.features}>
@@ -95,6 +109,7 @@ export default function Home(): React.JSX.Element {
       <Hero />
       <main>
         <Features />
+        <Install />
       </main>
     </Layout>
   );

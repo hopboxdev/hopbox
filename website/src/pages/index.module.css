@@ -256,6 +256,48 @@
   line-height: 1.5;
 }
 
+/* ── Install CTA ──────────────────────────────────────────────────────── */
+
+.install {
+  text-align: center;
+  padding: 3rem 2rem 4rem;
+}
+
+.installTitle {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.installCode {
+  display: inline-block;
+  background: #0f1219;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.9rem;
+  color: #e2e8f0;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+[data-theme='dark'] .installCode {
+  background: #0c0e14;
+  border-color: rgba(139, 92, 246, 0.35);
+}
+
+.installAlt {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--ifm-color-emphasis-500);
+}
+
+.installAlt code {
+  background: var(--ifm-color-emphasis-100);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.82rem;
+}
+
 /* ── Responsive ────────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
