@@ -21,16 +21,35 @@
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
 
-/* Center footer columns */
+/* Compact footer — spread columns, reduce vertical space */
+.footer {
+  padding-top: 1.5rem !important;
+  padding-bottom: 1rem !important;
+}
+
 .footer .footer__links {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 4rem;
+  justify-content: space-evenly;
+  max-width: 700px;
+  margin: 0 auto;
+  margin-bottom: 0.5rem;
 }
 
 .footer .footer__col {
   flex: 0 0 auto;
   max-width: none;
   width: auto;
+}
+
+.footer .footer__title {
+  margin-bottom: 0.4rem;
+}
+
+.footer .footer__item {
+  margin-top: 0.2rem;
+}
+
+.footer .footer__bottom {
+  margin-top: 0.75rem;
 }
