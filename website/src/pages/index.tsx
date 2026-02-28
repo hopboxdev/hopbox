@@ -108,8 +108,8 @@ export default function Home(): React.JSX.Element {
     <Layout title={siteConfig.title} description={siteConfig.tagline}>
       <Hero />
       <main>
-        <Features />
         <Install />
+        <Features />
       </main>
     </Layout>
   );

@@ -260,14 +260,7 @@
 
 .install {
   text-align: center;
-  padding: 2.5rem 2rem 3.5rem;
-  border-top: 1px solid var(--ifm-color-emphasis-200);
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-[data-theme='dark'] .install {
-  border-color: rgba(255, 255, 255, 0.08);
+  padding: 1rem 2rem 2.5rem;
 }
 
 .installTitle {
