@@ -90,9 +90,10 @@ function Install() {
           )}
         </button>
       </div>
-      <p className={styles.installAlt}>
-        or <code>brew install hopboxdev/tap/hop</code>
-      </p>
+      <div className={styles.installAlt}>
+        <span className={styles.installOr}>or</span>
+        <code>brew install hopboxdev/tap/hop</code>
+      </div>
     </div>
   );
 }

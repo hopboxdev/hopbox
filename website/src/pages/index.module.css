@@ -304,9 +304,18 @@
   margin-top: 0.5rem;
   font-size: 0.8rem;
   color: var(--ifm-color-emphasis-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.installOr {
+  user-select: none;
 }
 
 .installAlt code {
+  display: block;
   background: var(--ifm-color-emphasis-200);
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
