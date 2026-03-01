@@ -219,7 +219,7 @@ func (c *UpCmd) runForeground(globals *CLI, hostName string, cfg *hostconfig.Hos
 	}
 	if ws != nil {
 		if msg := loadDotenv(ws, wsPath); msg != "" {
-			fmt.Println(ui.StepInfo(msg))
+			fmt.Println(ui.StepOK(msg))
 		}
 	}
 
@@ -227,7 +227,7 @@ func (c *UpCmd) runForeground(globals *CLI, hostName string, cfg *hostconfig.Hos
 	agentClient := &http.Client{Timeout: agentClientTimeout}
 	agentURL := fmt.Sprintf("http://%s:%d/health", hostname, tunnel.AgentAPIPort)
 
-	phases := c.buildTUIPhases(hostName, agentURL, agentClient, ws, wsPath)
+	phases := c.buildTUIPhases(hostName, agentURL, agentClient, ws)
 
 	if len(phases) > 0 {
 		err := tui.RunPhases(ctx, "hop up", phases)
@@ -239,7 +239,7 @@ func (c *UpCmd) runForeground(globals *CLI, hostName string, cfg *hostconfig.Hos
 					return err
 				}
 				if upgraded {
-					phases = c.buildTUIPhases(hostName, agentURL, agentClient, ws, wsPath)
+					phases = c.buildTUIPhases(hostName, agentURL, agentClient, ws)
 					if err := tui.RunPhases(ctx, "hop up", phases); err != nil {
 						return err
 					}
@@ -396,16 +396,22 @@ func (c *UpCmd) runTUIPhases(hostName string, cfg *hostconfig.HostConfig) error 
 	}
 	if ws != nil {
 		if msg := loadDotenv(ws, wsPath); msg != "" {
-			fmt.Println(ui.StepInfo(msg))
+			fmt.Println(ui.StepOK(msg))
 		}
 	}
 
-	phases := c.buildTUIPhases(hostName, agentURL, agentClient, ws, wsPath)
+	phases := c.buildTUIPhases(hostName, agentURL, agentClient, ws)
 
 	for _, phase := range phases {
 		for _, step := range phase.Steps {
 			msg := step.Title
-			send := func(evt tui.StepEvent) { msg = evt.Message }
+			skipped := false
+			send := func(evt tui.StepEvent) {
+				msg = evt.Message
+				if evt.Skipped {
+					skipped = true
+				}
+			}
 			err := step.Run(ctx, send)
 			if err != nil {
 				var mismatch *versionMismatchError
@@ -416,7 +422,7 @@ func (c *UpCmd) runTUIPhases(hostName string, cfg *hostconfig.HostConfig) error 
 					}
 					if upgraded {
 						// Re-run all phases from scratch.
-						phases = c.buildTUIPhases(hostName, agentURL, agentClient, ws, wsPath)
+						phases = c.buildTUIPhases(hostName, agentURL, agentClient, ws)
 						return c.runTUIPhasesInner(ctx, phases)
 					}
 				}
@@ -427,7 +433,11 @@ func (c *UpCmd) runTUIPhases(hostName string, cfg *hostconfig.HostConfig) error 
 				fmt.Println(ui.StepFail(msg))
 				return err
 			}
-			fmt.Println(ui.StepOK(msg))
+			if skipped {
+				fmt.Println(ui.StepInfo(msg))
+			} else {
+				fmt.Println(ui.StepOK(msg))
+			}
 		}
 	}
 
@@ -441,7 +451,13 @@ func (c *UpCmd) runTUIPhasesInner(ctx context.Context, phases []tui.Phase) error
 	for _, phase := range phases {
 		for _, step := range phase.Steps {
 			msg := step.Title
-			send := func(evt tui.StepEvent) { msg = evt.Message }
+			skipped := false
+			send := func(evt tui.StepEvent) {
+				msg = evt.Message
+				if evt.Skipped {
+					skipped = true
+				}
+			}
 			err := step.Run(ctx, send)
 			if err != nil {
 				if step.NonFatal {
@@ -451,7 +467,11 @@ func (c *UpCmd) runTUIPhasesInner(ctx context.Context, phases []tui.Phase) error
 				fmt.Println(ui.StepFail(msg))
 				return err
 			}
-			fmt.Println(ui.StepOK(msg))
+			if skipped {
+				fmt.Println(ui.StepInfo(msg))
+			} else {
+				fmt.Println(ui.StepOK(msg))
+			}
 		}
 	}
 	fmt.Println(ui.StepOK("Tunnel ready"))
@@ -459,7 +479,7 @@ func (c *UpCmd) runTUIPhasesInner(ctx context.Context, phases []tui.Phase) error
 }
 
 // buildTUIPhases constructs the TUI phases for agent probe and workspace sync.
-func (c *UpCmd) buildTUIPhases(hostName, agentURL string, agentClient *http.Client, ws *manifest.Workspace, wsPath string) []tui.Phase {
+func (c *UpCmd) buildTUIPhases(hostName, agentURL string, agentClient *http.Client, ws *manifest.Workspace) []tui.Phase {
 	var phases []tui.Phase
 
 	// Agent phase.
@@ -487,14 +507,6 @@ func (c *UpCmd) buildTUIPhases(hostName, agentURL string, agentClient *http.Clie
 	// Workspace phase (optional).
 	if ws != nil {
 		var wsSteps []tui.Step
-		if msg := loadDotenv(ws, wsPath); msg != "" {
-			wsSteps = append(wsSteps, tui.Step{
-				Title: msg,
-				Run: func(_ context.Context, _ func(tui.StepEvent)) error {
-					return nil
-				},
-			})
-		}
 		wsSteps = append(wsSteps, tui.Step{
 			Title: fmt.Sprintf("Syncing workspace: %s", ws.Name),
 			Run: func(ctx context.Context, send func(tui.StepEvent)) error {
@@ -515,8 +527,23 @@ func (c *UpCmd) buildTUIPhases(hostName, agentURL string, agentClient *http.Clie
 				Title:    "Running setup hook",
 				NonFatal: true,
 				Run: func(ctx context.Context, send func(tui.StepEvent)) error {
-					_, err := rpcclient.Call(hostName, "hooks.run", map[string]string{"hook": "setup"})
-					return err
+					raw, err := rpcclient.Call(hostName, "hooks.run", map[string]string{"hook": "setup"})
+					if err != nil {
+						return err
+					}
+					var res struct {
+						Status string `json:"status"`
+						Output string `json:"output"`
+					}
+					if err := json.Unmarshal(raw, &res); err != nil {
+						return nil
+					}
+					if res.Status == "skipped" {
+						send(tui.StepEvent{Message: "Setup hook (skipped — already initialized)", Skipped: true})
+					} else if res.Output != "" {
+						send(tui.StepEvent{Message: strings.TrimSpace(res.Output)})
+					}
+					return nil
 				},
 			})
 		}
@@ -525,8 +552,21 @@ func (c *UpCmd) buildTUIPhases(hostName, agentURL string, agentClient *http.Clie
 				Title:    "Running start hook",
 				NonFatal: true,
 				Run: func(ctx context.Context, send func(tui.StepEvent)) error {
-					_, err := rpcclient.Call(hostName, "hooks.run", map[string]string{"hook": "start"})
-					return err
+					raw, err := rpcclient.Call(hostName, "hooks.run", map[string]string{"hook": "start"})
+					if err != nil {
+						return err
+					}
+					var res struct {
+						Status string `json:"status"`
+						Output string `json:"output"`
+					}
+					if err := json.Unmarshal(raw, &res); err != nil {
+						return nil
+					}
+					if res.Output != "" {
+						send(tui.StepEvent{Message: strings.TrimSpace(res.Output)})
+					}
+					return nil
 				},
 			})
 		}

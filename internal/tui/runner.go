@@ -31,6 +31,7 @@ type Step struct {
 // StepEvent lets a running step report progress updates.
 type StepEvent struct {
 	Message string
+	Skipped bool // if true, step renders as dimmed skip instead of green checkmark
 }
 
 type status int
@@ -41,6 +42,7 @@ const (
 	statusDone
 	statusFailed
 	statusWarned
+	statusSkipped
 )
 
 type flatStep struct {
@@ -50,10 +52,14 @@ type flatStep struct {
 	message  string // last StepEvent message (shown while running)
 	errMsg   string // error or warning detail
 	nonFatal bool
+	skipped  bool // marked by StepEvent.Skipped; causes statusSkipped on completion
 }
 
 // Internal Bubble Tea messages.
-type stepEventMsg struct{ message string }
+type stepEventMsg struct {
+	message string
+	skipped bool
+}
 type stepDoneMsg struct{}
 type stepFailMsg struct{ err error }
 
@@ -108,7 +114,7 @@ func (m *runner) runCurrentStep() tea.Cmd {
 			}
 		}()
 		send := func(evt StepEvent) {
-			m.program.Send(stepEventMsg{message: evt.Message})
+			m.program.Send(stepEventMsg{message: evt.Message, skipped: evt.Skipped})
 		}
 		err := originalStep.Run(m.ctx, send)
 		if err != nil {
@@ -130,11 +136,18 @@ func (m *runner) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stepEventMsg:
 		if m.current < len(m.steps) {
 			m.steps[m.current].message = msg.message
+			if msg.skipped {
+				m.steps[m.current].skipped = true
+			}
 		}
 		return m, nil
 
 	case stepDoneMsg:
-		m.steps[m.current].status = statusDone
+		if m.steps[m.current].skipped {
+			m.steps[m.current].status = statusSkipped
+		} else {
+			m.steps[m.current].status = statusDone
+		}
 		m.current++
 		if m.current >= len(m.steps) {
 			m.done = true
@@ -185,7 +198,7 @@ func (m *runner) View() string {
 	// Title with step counter.
 	completedCount := 0
 	for _, s := range m.steps {
-		if s.status == statusDone || s.status == statusWarned {
+		if s.status == statusDone || s.status == statusWarned || s.status == statusSkipped {
 			completedCount++
 		}
 	}
@@ -227,6 +240,12 @@ func (m *runner) View() string {
 			if step.errMsg != "" {
 				b.WriteString("    " + errorStyle.Render("Error: "+step.errMsg) + "\n")
 			}
+		case statusSkipped:
+			msg := step.title
+			if step.message != "" {
+				msg = step.message
+			}
+			b.WriteString("  " + pendingStyle.Render("○ "+msg) + "\n")
 		case statusPending:
 			b.WriteString("  " + pendingStyle.Render("○ "+step.title) + "\n")
 		}
@@ -310,7 +329,13 @@ func runPhasesPlain(ctx context.Context, title string, phases []Phase) error {
 	for _, phase := range phases {
 		for _, step := range phase.Steps {
 			msg := step.Title
-			send := func(evt StepEvent) { msg = evt.Message }
+			skipped := false
+			send := func(evt StepEvent) {
+				msg = evt.Message
+				if evt.Skipped {
+					skipped = true
+				}
+			}
 			err := step.Run(ctx, send)
 			if err != nil {
 				if step.NonFatal {
@@ -320,7 +345,11 @@ func runPhasesPlain(ctx context.Context, title string, phases []Phase) error {
 				fmt.Println("  " + ui.StepFail(msg))
 				return err
 			}
-			fmt.Println("  " + ui.StepOK(msg))
+			if skipped {
+				fmt.Println("  " + ui.StepInfo(msg))
+			} else {
+				fmt.Println("  " + ui.StepOK(msg))
+			}
 		}
 	}
 	return nil
