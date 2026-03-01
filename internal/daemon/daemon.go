@@ -40,7 +40,11 @@ func Run(cfg Config) error {
 
 	helperClient := helper.NewClient()
 	if !helperClient.IsReachable() {
-		return fmt.Errorf("hopbox helper is not running; install with 'sudo hop-helper --install'")
+		log.Printf("To install: sudo hop-helper --install")
+		log.Printf("Or re-run:  hop setup %s", cfg.HostName)
+		log.Printf("The helper manages TUN devices and /etc/hosts entries.")
+		log.Printf("It runs as a system service and requires one-time sudo access.")
+		return fmt.Errorf("hopbox helper is not running")
 	}
 
 	// Create TUN device via helper.

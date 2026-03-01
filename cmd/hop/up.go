@@ -153,7 +153,13 @@ func (c *UpCmd) runForeground(globals *CLI, hostName string, cfg *hostconfig.Hos
 
 	helperClient := helper.NewClient()
 	if !helperClient.IsReachable() {
-		return fmt.Errorf("hopbox helper is not running; install with 'sudo hop-helper --install' or re-run 'hop setup'")
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "  To install: sudo hop-helper --install")
+		fmt.Fprintf(os.Stderr, "  Or re-run:  hop setup %s\n", hostName)
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "  The helper manages TUN devices and /etc/hosts entries.")
+		fmt.Fprintln(os.Stderr, "  It runs as a system service and requires one-time sudo access.")
+		return fmt.Errorf("hopbox helper is not running")
 	}
 
 	tunFile, ifName, err := helperClient.CreateTUN(tunCfg.MTU)
