@@ -38,8 +38,12 @@ func BuildServiceManager(ws *manifest.Workspace) *service.Manager {
 		}
 
 		var hc *service.HealthCheck
-		if svc.Health != nil && svc.Health.HTTP != "" {
-			hc = &service.HealthCheck{HTTP: svc.Health.HTTP}
+		if svc.Health != nil && (svc.Health.HTTP != "" || svc.Health.TCP != "" || svc.Health.Exec != "") {
+			hc = &service.HealthCheck{
+				HTTP: svc.Health.HTTP,
+				TCP:  svc.Health.TCP,
+				Exec: svc.Health.Exec,
+			}
 			if svc.Health.Interval != "" {
 				hc.Interval, _ = time.ParseDuration(svc.Health.Interval)
 			}

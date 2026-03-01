@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os/exec"
 	"sort"
@@ -21,6 +22,8 @@ type Status struct {
 // HealthCheck configures readiness polling after a service starts.
 type HealthCheck struct {
 	HTTP     string        // URL to poll
+	TCP      string        // host:port to dial
+	Exec     string        // command to run (exit 0 = healthy)
 	Interval time.Duration // polling interval (default 2s)
 	Timeout  time.Duration // overall timeout (default 60s)
 }
@@ -122,7 +125,7 @@ func (m *Manager) Start(ctx context.Context, name string) error {
 	if err := backend.Start(ctx, name); err != nil {
 		return err
 	}
-	if def.Health != nil && def.Health.HTTP != "" {
+	if def.Health != nil && (def.Health.HTTP != "" || def.Health.TCP != "" || def.Health.Exec != "") {
 		if err := waitHealthy(ctx, def.Health); err != nil {
 			return fmt.Errorf("service %q health check: %w", name, err)
 		}
@@ -267,7 +270,7 @@ func topoSort(defs map[string]*Def) ([]string, error) {
 	return order, nil
 }
 
-// waitHealthy polls hc.HTTP until it returns HTTP 200 or the timeout expires.
+// waitHealthy polls the configured health check until it passes or the timeout expires.
 func waitHealthy(ctx context.Context, hc *HealthCheck) error {
 	interval := hc.Interval
 	if interval == 0 {
@@ -281,23 +284,53 @@ func waitHealthy(ctx context.Context, hc *HealthCheck) error {
 	deadline, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	client := &http.Client{Timeout: 5 * time.Second}
 	var lastErr error
 	for {
-		resp, err := client.Get(hc.HTTP)
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				return nil
-			}
-			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
-		} else {
-			lastErr = err
+		var err error
+		switch {
+		case hc.HTTP != "":
+			err = checkHTTP(hc.HTTP)
+		case hc.TCP != "":
+			err = checkTCP(hc.TCP)
+		case hc.Exec != "":
+			err = checkExec(ctx, hc.Exec)
+		default:
+			return nil
 		}
+		if err == nil {
+			return nil
+		}
+		lastErr = err
 		select {
 		case <-deadline.Done():
 			return fmt.Errorf("not healthy within %s: %w", timeout, lastErr)
 		case <-time.After(interval):
 		}
 	}
+}
+
+func checkHTTP(url string) error {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func checkTCP(addr string) error {
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		return err
+	}
+	return conn.Close()
+}
+
+func checkExec(ctx context.Context, command string) error {
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	return cmd.Run()
 }

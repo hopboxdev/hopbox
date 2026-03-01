@@ -100,6 +100,7 @@ func writeSSHConfig(hostname, user, keyPath string) error {
 	if keyPath != "" {
 		fmt.Fprintf(&entry, "  IdentityFile %s\n", keyPath)
 	}
+	fmt.Fprintf(&entry, "  ForwardAgent yes\n")
 
 	// Remove existing managed section.
 	startIdx := strings.Index(content, sshMarkerStart)

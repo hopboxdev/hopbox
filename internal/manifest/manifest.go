@@ -46,6 +46,8 @@ type Service struct {
 // HealthCheck configures how the agent verifies a service is ready.
 type HealthCheck struct {
 	HTTP     string `yaml:"http,omitempty"`     // URL to poll
+	TCP      string `yaml:"tcp,omitempty"`      // host:port to dial
+	Exec     string `yaml:"exec,omitempty"`     // command to run (exit 0 = healthy)
 	Interval string `yaml:"interval,omitempty"` // e.g. "5s"
 	Timeout  string `yaml:"timeout,omitempty"`  // e.g. "30s"
 }
