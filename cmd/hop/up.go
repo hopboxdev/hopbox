@@ -510,6 +510,26 @@ func (c *UpCmd) buildTUIPhases(hostName, agentURL string, agentClient *http.Clie
 			},
 			NonFatal: true,
 		})
+		if ws.Hooks != nil && ws.Hooks.Setup != "" {
+			wsSteps = append(wsSteps, tui.Step{
+				Title:    "Running setup hook",
+				NonFatal: true,
+				Run: func(ctx context.Context, send func(tui.StepEvent)) error {
+					_, err := rpcclient.Call(hostName, "hooks.run", map[string]string{"hook": "setup"})
+					return err
+				},
+			})
+		}
+		if ws.Hooks != nil && ws.Hooks.Start != "" {
+			wsSteps = append(wsSteps, tui.Step{
+				Title:    "Running start hook",
+				NonFatal: true,
+				Run: func(ctx context.Context, send func(tui.StepEvent)) error {
+					_, err := rpcclient.Call(hostName, "hooks.run", map[string]string{"hook": "start"})
+					return err
+				},
+			})
+		}
 		phases = append(phases, tui.Phase{Title: "Workspace", Steps: wsSteps})
 	}
 

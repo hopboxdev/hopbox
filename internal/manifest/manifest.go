@@ -17,6 +17,7 @@ type Workspace struct {
 	Env      map[string]string  `yaml:"env,omitempty"`
 	Scripts  map[string]string  `yaml:"scripts,omitempty"`
 	Backup   *BackupConfig      `yaml:"backup,omitempty"`
+	Hooks    *Hooks             `yaml:"hooks,omitempty"`
 	Editor   *EditorConfig      `yaml:"editor,omitempty"`
 	Session  *SessionConfig     `yaml:"session,omitempty"`
 }
@@ -74,6 +75,12 @@ type BackupConfig struct {
 type SessionConfig struct {
 	Manager string `yaml:"manager"` // "zellij", "tmux"
 	Name    string `yaml:"name,omitempty"`
+}
+
+// Hooks defines lifecycle commands that run at specific workspace events.
+type Hooks struct {
+	Setup string `yaml:"setup,omitempty"` // runs once after first sync (e.g. npm install)
+	Start string `yaml:"start,omitempty"` // runs after every workspace sync
 }
 
 // EditorConfig configures the remote editor.

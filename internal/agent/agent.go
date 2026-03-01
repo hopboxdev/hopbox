@@ -22,10 +22,12 @@ type Agent struct {
 	tunnel   tunnel.Tunnel
 	services *service.Manager
 
-	// mu guards scripts, backupTarget, backupPaths, and manifestPath, which are
-	// written by Reload (called from workspace.sync RPC) and read by concurrent handlers.
+	// mu guards scripts, hooks, backupTarget, backupPaths, and manifestPath,
+	// which are written by Reload (called from workspace.sync RPC) and read by
+	// concurrent handlers.
 	mu           sync.RWMutex
 	scripts      map[string]string
+	hooks        *manifest.Hooks
 	backupTarget string
 	backupPaths  []string
 	manifestPath string
@@ -69,6 +71,7 @@ func (a *Agent) Reload(ws *manifest.Workspace) {
 	a.mu.Lock()
 	old := a.services
 	a.scripts = ws.Scripts
+	a.hooks = ws.Hooks
 	if ws.Backup != nil {
 		a.backupTarget = ws.Backup.Target
 		a.backupPaths = mgr.DataPaths()

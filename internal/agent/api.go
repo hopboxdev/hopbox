@@ -98,6 +98,10 @@ func (a *Agent) handleRPC(w http.ResponseWriter, r *http.Request) {
 		a.rpcSnapList(w, r)
 	case "workspace.sync":
 		a.rpcWorkspaceSync(w, req)
+	case "workspace.writeExtensions":
+		a.rpcWriteExtensions(w, req)
+	case "hooks.run":
+		a.rpcHooksRun(w, r, req)
 	default:
 		writeRPCError(w, http.StatusNotFound, fmt.Sprintf("unknown method: %s", req.Method))
 	}
@@ -308,6 +312,101 @@ func (a *Agent) rpcWorkspaceSync(w http.ResponseWriter, req rpcRequest) {
 
 	a.Reload(ws)
 	writeRPCResult(w, map[string]string{"status": "synced", "name": ws.Name})
+}
+
+const workspaceInitializedFile = "/var/lib/hopbox/workspace-initialized"
+
+func (a *Agent) rpcHooksRun(w http.ResponseWriter, r *http.Request, req rpcRequest) {
+	var params struct {
+		Hook string `json:"hook"`
+	}
+	if err := json.Unmarshal(req.Params, &params); err != nil || params.Hook == "" {
+		writeRPCError(w, http.StatusBadRequest, "params.hook required (setup or start)")
+		return
+	}
+
+	a.mu.RLock()
+	hooks := a.hooks
+	a.mu.RUnlock()
+
+	if hooks == nil {
+		writeRPCResult(w, map[string]string{"status": "skipped", "reason": "no hooks configured"})
+		return
+	}
+
+	var command string
+	switch params.Hook {
+	case "setup":
+		if hooks.Setup == "" {
+			writeRPCResult(w, map[string]string{"status": "skipped", "reason": "no setup hook"})
+			return
+		}
+		// Only run setup hook once (first sync).
+		if _, err := os.Stat(workspaceInitializedFile); err == nil {
+			writeRPCResult(w, map[string]string{"status": "skipped", "reason": "already initialized"})
+			return
+		}
+		command = hooks.Setup
+	case "start":
+		if hooks.Start == "" {
+			writeRPCResult(w, map[string]string{"status": "skipped", "reason": "no start hook"})
+			return
+		}
+		command = hooks.Start
+	default:
+		writeRPCError(w, http.StatusBadRequest, fmt.Sprintf("unknown hook %q (use setup or start)", params.Hook))
+		return
+	}
+
+	out, err := exec.CommandContext(r.Context(), "sh", "-c", command).CombinedOutput()
+	if err != nil {
+		writeRPCError(w, http.StatusInternalServerError, fmt.Sprintf("hook %q failed: %v\n%s", params.Hook, err, string(out)))
+		return
+	}
+
+	// Mark workspace as initialized after successful setup hook.
+	if params.Hook == "setup" {
+		_ = os.MkdirAll("/var/lib/hopbox", 0755)
+		_ = os.WriteFile(workspaceInitializedFile, []byte("initialized\n"), 0644)
+	}
+
+	writeRPCResult(w, map[string]string{"status": "ok", "output": string(out)})
+}
+
+func (a *Agent) rpcWriteExtensions(w http.ResponseWriter, req rpcRequest) {
+	var params struct {
+		Path       string   `json:"path"`
+		Extensions []string `json:"extensions"`
+	}
+	if err := json.Unmarshal(req.Params, &params); err != nil || params.Path == "" {
+		writeRPCError(w, http.StatusBadRequest, "params.path required")
+		return
+	}
+	if len(params.Extensions) == 0 {
+		writeRPCResult(w, map[string]string{"status": "skipped"})
+		return
+	}
+
+	vscodeDir := params.Path + "/.vscode"
+	if err := os.MkdirAll(vscodeDir, 0755); err != nil {
+		writeRPCError(w, http.StatusInternalServerError, fmt.Sprintf("create .vscode dir: %v", err))
+		return
+	}
+
+	rec := map[string][]string{"recommendations": params.Extensions}
+	data, err := json.MarshalIndent(rec, "", "  ")
+	if err != nil {
+		writeRPCError(w, http.StatusInternalServerError, fmt.Sprintf("marshal extensions: %v", err))
+		return
+	}
+
+	extPath := vscodeDir + "/extensions.json"
+	if err := os.WriteFile(extPath, append(data, '\n'), 0644); err != nil {
+		writeRPCError(w, http.StatusInternalServerError, fmt.Sprintf("write extensions.json: %v", err))
+		return
+	}
+
+	writeRPCResult(w, map[string]string{"wrote": extPath})
 }
 
 // flushWriter wraps http.ResponseWriter and flushes after every Write call.

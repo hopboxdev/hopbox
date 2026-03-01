@@ -9,6 +9,7 @@ import (
 
 	"github.com/hopboxdev/hopbox/internal/hostconfig"
 	"github.com/hopboxdev/hopbox/internal/manifest"
+	"github.com/hopboxdev/hopbox/internal/rpcclient"
 	"github.com/hopboxdev/hopbox/internal/tunnel"
 )
 
@@ -48,17 +49,30 @@ func (c *CodeCmd) Run(globals *CLI) error {
 		_, _ = fmt.Fprintf(os.Stderr, "Warning: could not update SSH config: %v\n", err)
 	}
 
-	// Resolve workspace path.
+	// Resolve workspace path and editor config.
 	wsPath := c.Path
-	if wsPath == "" {
-		if ws, err := manifest.Parse("hopbox.yaml"); err == nil && ws.Editor != nil {
-			wsPath = ws.Editor.Path
-		}
+	var ws *manifest.Workspace
+	if parsed, err := manifest.Parse("hopbox.yaml"); err == nil {
+		ws = parsed
+	}
+	if wsPath == "" && ws != nil && ws.Editor != nil {
+		wsPath = ws.Editor.Path
 	}
 	if wsPath == "" {
 		wsPath = "/root"
 		if user != "root" {
 			wsPath = "/home/" + user
+		}
+	}
+
+	// Write VS Code extension recommendations on the remote host.
+	if ws != nil && ws.Editor != nil && len(ws.Editor.Extensions) > 0 {
+		_, err := rpcclient.Call(hostName, "workspace.writeExtensions", map[string]any{
+			"path":       wsPath,
+			"extensions": ws.Editor.Extensions,
+		})
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Warning: could not write extension recommendations: %v\n", err)
 		}
 	}
 
