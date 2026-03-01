@@ -62,23 +62,54 @@ func (c *InitCmd) importDevcontainer(outPath string) error {
 }
 
 func (c *InitCmd) scaffold(outPath string) error {
-	scaffold := `name: myapp
-host: ""
+	scaffold := `# Workspace name (required)
+name: myapp
 
+# Host to use (run 'hop host ls' to see available hosts)
+# host: mybox
+
+# System packages installed on the remote host
+# packages:
+#   - name: nodejs
+#     backend: nix
+#   - name: ripgrep
+#     backend: apt
+
+# Background services
 services:
   app:
     type: docker
     image: myapp:latest
-    ports: [8080]
+    ports: ["8080"]
+    # health:
+    #   http: http://10.10.0.2:8080/health
+    #   timeout: 30s
 
+# Lifecycle hooks (run once after first sync or migration)
+# hooks:
+#   setup: "npm install && npm run db:migrate"
+#   start: "npm run dev"
+
+# Local-remote bridges
 bridges:
   - type: clipboard
   # - type: xdg-open
   # - type: notifications
 
-session:
-  manager: zellij
-  name: myapp
+# Editor configuration
+# editor:
+#   type: vscode-remote
+#   path: /home/debian/myapp
+#   extensions: [dbaeumer.vscode-eslint]
+
+# Terminal session manager
+# session:
+#   manager: zellij
+#   name: myapp
 `
-	return os.WriteFile(outPath, []byte(scaffold), 0644)
+	if err := os.WriteFile(outPath, []byte(scaffold), 0644); err != nil {
+		return err
+	}
+	fmt.Println("Created hopbox.yaml — edit it, then run 'hop up'")
+	return nil
 }
