@@ -31,6 +31,7 @@ type CLI struct {
 	To        ToCmd       `cmd:"" help:"Migrate workspace to a new host."`
 	Bridge    BridgeCmd   `cmd:"" help:"Manage local-remote bridges."`
 	Hosts     HostCmd     `cmd:"" name:"host" help:"Manage host registry."`
+	List      ListCmd     `cmd:"" help:"List all hosts and their tunnel status."`
 	Init      InitCmd     `cmd:"" help:"Generate hopbox.yaml scaffold."`
 	Rotate    RotateCmd   `cmd:"" help:"Rotate WireGuard keys for a host."`
 	Upgrade   UpgradeCmd  `cmd:"" help:"Upgrade hop binaries (client, helper, agent)."`
