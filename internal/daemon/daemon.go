@@ -23,9 +23,10 @@ const (
 
 // Config holds everything the daemon needs to start.
 type Config struct {
-	HostName string
-	TunCfg   tunnel.Config
-	Manifest *manifest.Workspace // nil if no workspace
+	HostName      string
+	TunCfg        tunnel.Config
+	Manifest      *manifest.Workspace // nil if no workspace
+	WorkspacePath string              // absolute path to hopbox.yaml
 }
 
 // Run starts the daemon and blocks until shutdown.
@@ -138,13 +139,14 @@ func Run(cfg Config) error {
 
 	// Write state file.
 	state := &tunnel.TunnelState{
-		PID:         os.Getpid(),
-		Host:        cfg.HostName,
-		Hostname:    hostname,
-		Interface:   tun.InterfaceName(),
-		StartedAt:   time.Now(),
-		Connected:   true,
-		LastHealthy: time.Now(),
+		PID:           os.Getpid(),
+		Host:          cfg.HostName,
+		Hostname:      hostname,
+		Interface:     tun.InterfaceName(),
+		StartedAt:     time.Now(),
+		Connected:     true,
+		LastHealthy:   time.Now(),
+		WorkspacePath: cfg.WorkspacePath,
 	}
 	if err := tunnel.WriteState(state); err != nil {
 		log.Printf("write tunnel state: %v", err)

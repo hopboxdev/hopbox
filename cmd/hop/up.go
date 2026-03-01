@@ -122,7 +122,8 @@ func (c *UpCmd) Run(globals *CLI) error {
 		}
 		fmt.Println(ui.StepInfo("Starting tunnel daemon..."))
 		if err := daemonClient.WaitForReady(15 * time.Second); err != nil {
-			return fmt.Errorf("daemon failed to start: %w", err)
+			logPath, _ := daemon.LogPath(hostName)
+			return fmt.Errorf("daemon failed to start (logs: %s): %w", logPath, err)
 		}
 	} else {
 		fmt.Println(ui.StepOK("Tunnel daemon already running"))
@@ -298,14 +299,16 @@ func (c *UpCmd) runForeground(globals *CLI, hostName string, cfg *hostconfig.Hos
 	defer pf.Stop()
 
 	// Write tunnel state.
+	absWS, _ := filepath.Abs(wsPath)
 	state := &tunnel.TunnelState{
-		PID:         os.Getpid(),
-		Host:        hostName,
-		Hostname:    hostname,
-		Interface:   tun.InterfaceName(),
-		StartedAt:   time.Now(),
-		Connected:   true,
-		LastHealthy: time.Now(),
+		PID:           os.Getpid(),
+		Host:          hostName,
+		Hostname:      hostname,
+		Interface:     tun.InterfaceName(),
+		StartedAt:     time.Now(),
+		Connected:     true,
+		LastHealthy:   time.Now(),
+		WorkspacePath: absWS,
 	}
 	if err := tunnel.WriteState(state); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, ui.Warn(fmt.Sprintf("write tunnel state: %v", err)))

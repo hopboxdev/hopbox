@@ -27,6 +27,7 @@ type TunnelState struct {
 	Connected      bool            `json:"connected"`
 	LastHealthy    time.Time       `json:"last_healthy,omitempty"`
 	ForwardedPorts []ForwardedPort `json:"forwarded_ports,omitempty"`
+	WorkspacePath  string          `json:"workspace_path,omitempty"`
 }
 
 // stateDir returns ~/.config/hopbox/run.

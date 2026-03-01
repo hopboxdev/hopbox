@@ -109,7 +109,11 @@ func fetchDashData(hostName string, cfg *hostconfig.HostConfig) dashData {
 	}
 
 	// 4. Packages and bridges (from manifest).
-	ws, err := manifest.Parse("hopbox.yaml")
+	wsPath := "hopbox.yaml"
+	if state.WorkspacePath != "" {
+		wsPath = state.WorkspacePath
+	}
+	ws, err := manifest.Parse(wsPath)
 	if err == nil {
 		for _, p := range ws.Packages {
 			d.packages = append(d.packages, pkgInfo{Name: p.Name, Backend: p.Backend})

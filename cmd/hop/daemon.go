@@ -55,9 +55,10 @@ func (c *DaemonStartCmd) Run() error {
 	}
 
 	return daemon.Run(daemon.Config{
-		HostName: c.Host,
-		TunCfg:   tunCfg,
-		Manifest: ws,
+		HostName:      c.Host,
+		TunCfg:        tunCfg,
+		Manifest:      ws,
+		WorkspacePath: c.Workspace,
 	})
 }
 
