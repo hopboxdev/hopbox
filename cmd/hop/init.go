@@ -5,13 +5,15 @@ import (
 	"os"
 	"strings"
 
+	"github.com/hopboxdev/hopbox/internal/compose"
 	"github.com/hopboxdev/hopbox/internal/devcontainer"
 	"gopkg.in/yaml.v3"
 )
 
 // InitCmd generates a hopbox.yaml scaffold.
 type InitCmd struct {
-	From string `short:"f" help:"Import from devcontainer.json."`
+	From        string `short:"f" help:"Import from devcontainer.json."`
+	FromCompose string `help:"Import from docker-compose.yml."`
 }
 
 func (c *InitCmd) Run() error {
@@ -22,6 +24,9 @@ func (c *InitCmd) Run() error {
 
 	if c.From != "" {
 		return c.importDevcontainer(path)
+	}
+	if c.FromCompose != "" {
+		return c.importCompose(path)
 	}
 	return c.scaffold(path)
 }
@@ -55,6 +60,45 @@ func (c *InitCmd) importDevcontainer(outPath string) error {
 	}
 
 	fmt.Printf("Created hopbox.yaml from %s\n", c.From)
+	for _, w := range warnings {
+		fmt.Fprintf(os.Stderr, "  warning: %s\n", w)
+	}
+	return nil
+}
+
+func (c *InitCmd) importCompose(outPath string) error {
+	data, err := os.ReadFile(c.FromCompose)
+	if err != nil {
+		return fmt.Errorf("read compose file: %w", err)
+	}
+
+	ws, warnings, err := compose.Convert(data)
+	if err != nil {
+		return fmt.Errorf("import compose: %w", err)
+	}
+
+	yamlData, err := yaml.Marshal(ws)
+	if err != nil {
+		return fmt.Errorf("marshal yaml: %w", err)
+	}
+
+	var header strings.Builder
+	header.WriteString("# Generated from " + c.FromCompose + "\n")
+	if len(warnings) > 0 {
+		header.WriteString("#\n# Warnings (may need manual attention):\n")
+		for _, w := range warnings {
+			header.WriteString("#   - " + w + "\n")
+		}
+	}
+	header.WriteString("\n")
+
+	output := header.String() + string(yamlData)
+
+	if err := os.WriteFile(outPath, []byte(output), 0644); err != nil {
+		return err
+	}
+
+	fmt.Printf("Created hopbox.yaml from %s\n", c.FromCompose)
 	for _, w := range warnings {
 		fmt.Fprintf(os.Stderr, "  warning: %s\n", w)
 	}
