@@ -1,0 +1,30 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    sudo curl wget git build-essential openssh-client \
+    unzip xz-utils ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create dev user
+RUN useradd -m -s /bin/bash -u 1000 dev \
+    && echo "dev ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/dev
+
+COPY stacks/tools.sh /tmp/stacks/tools.sh
+COPY stacks/runtimes.sh /tmp/stacks/runtimes.sh
+
+RUN bash /tmp/stacks/tools.sh
+RUN bash /tmp/stacks/runtimes.sh
+
+# Clean up
+RUN rm -rf /tmp/stacks
+
+USER dev
+WORKDIR /home/dev
+
+# Install mise runtimes as dev user
+RUN mise install node@lts && mise use --global node@lts \
+    && mise install python@3.12 && mise use --global python@3.12
+
+CMD ["sleep", "infinity"]
