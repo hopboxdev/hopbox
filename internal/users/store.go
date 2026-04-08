@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
@@ -17,6 +18,7 @@ type User struct {
 }
 
 type Store struct {
+	mu    sync.RWMutex
 	dir   string
 	users map[string]User // fingerprint -> User
 }
@@ -54,11 +56,28 @@ func (s *Store) load() {
 }
 
 func (s *Store) LookupByFingerprint(fp string) (User, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	u, ok := s.users[fp]
 	return u, ok
 }
 
+// IsUsernameTaken checks if a username is already registered by any user.
+func (s *Store) IsUsernameTaken(name string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.users {
+		if u.Username == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Store) Save(fp string, u User) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Check username uniqueness
 	for existingFP, existing := range s.users {
 		if existing.Username == u.Username && existingFP != fp {

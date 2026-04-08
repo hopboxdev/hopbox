@@ -49,11 +49,8 @@ func RunRegistration(store *Store, in io.Reader, out io.Writer) (string, error) 
 					if err := ValidateUsername(s); err != nil {
 						return err
 					}
-					// Check uniqueness
-					for _, u := range store.users {
-						if u.Username == s {
-							return fmt.Errorf("username %q is already taken", s)
-						}
+					if store.IsUsernameTaken(s) {
+						return fmt.Errorf("username %q is already taken", s)
 					}
 					return nil
 				}),

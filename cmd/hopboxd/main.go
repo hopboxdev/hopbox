@@ -26,6 +26,12 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
+	// Resolve data dir to absolute path (Docker bind mounts require absolute paths)
+	cfg.DataDir, err = filepath.Abs(cfg.DataDir)
+	if err != nil {
+		log.Fatalf("resolve data dir: %v", err)
+	}
+
 	// Ensure data directory exists
 	usersDir := filepath.Join(cfg.DataDir, "users")
 	if err := os.MkdirAll(usersDir, 0755); err != nil {
@@ -71,11 +77,11 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
 		log.Println("shutting down...")
-		os.Exit(0)
+		srv.Close()
 	}()
 
 	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("server: %v", err)
+		log.Printf("server stopped: %v", err)
 	}
 }
 

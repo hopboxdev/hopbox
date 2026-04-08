@@ -62,6 +62,10 @@ func (s *Server) ListenAndServe() error {
 	return s.sshSrv.ListenAndServe()
 }
 
+func (s *Server) Close() error {
+	return s.sshSrv.Close()
+}
+
 func (s *Server) authHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 	fp := users.FormatFingerprint(gossh.FingerprintSHA256(key))
 	ctx.SetValue("fingerprint", fp)

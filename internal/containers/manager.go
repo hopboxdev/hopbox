@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
 )
 
 func ContainerName(username, boxname string) string {
@@ -99,23 +99,34 @@ func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, st
 		}
 	}()
 
-	errCh := make(chan error, 2)
+	var wg sync.WaitGroup
+	var firstErr error
+	var errOnce sync.Once
 
-	go func() {
-		_, err := io.Copy(attachResp.Conn, stdin)
-		errCh <- err
-	}()
-
-	go func() {
-		_, err := io.Copy(stdout, attachResp.Reader)
+	setErr := func(err error) {
 		if err != nil {
-			_, err = stdcopy.StdCopy(stdout, stdout, attachResp.Reader)
+			errOnce.Do(func() { firstErr = err })
 		}
-		errCh <- err
+	}
+
+	wg.Add(2)
+
+	// stdin -> container
+	go func() {
+		defer wg.Done()
+		_, err := io.Copy(attachResp.Conn, stdin)
+		setErr(err)
 	}()
 
-	<-errCh
-	return nil
+	// container -> stdout
+	go func() {
+		defer wg.Done()
+		_, err := io.Copy(stdout, attachResp.Reader)
+		setErr(err)
+	}()
+
+	wg.Wait()
+	return firstErr
 }
 
 func (m *Manager) ContainerIP(ctx context.Context, containerID string) (string, error) {
