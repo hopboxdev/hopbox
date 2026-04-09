@@ -183,30 +183,32 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 	log.Printf("[session] connect user=%s box=%s", user.Username, boxname)
 
-	// Ensure per-user image exists (with loading indicator)
-	fmt.Fprintf(sess, "Building environment...")
+	// Ensure per-user image exists (with spinner)
+	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	buildDone := make(chan struct{})
 	go func() {
-		ticker := time.NewTicker(2 * time.Second)
+		i := 0
+		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-buildDone:
 				return
 			case <-ticker.C:
-				fmt.Fprintf(sess, ".")
+				fmt.Fprintf(sess, "\r%s Building environment...", spinner[i%len(spinner)])
+				i++
 			}
 		}
 	}()
 	imageTag, err := containers.EnsureUserImage(ctx, s.dockerCli, user.Username, *profile, s.baseTag)
 	close(buildDone)
 	if err != nil {
-		fmt.Fprintf(sess, "\r\n")
+		fmt.Fprintf(sess, "\r✗ Building environment failed\r\n")
 		log.Printf("[session] build image failed: %v", err)
-		fmt.Fprintf(sess, "Failed to build environment: %v\r\n", err)
+		fmt.Fprintf(sess, "  %v\r\n", err)
 		return
 	}
-	fmt.Fprintf(sess, " done!\r\n")
+	fmt.Fprintf(sess, "\r✓ Environment ready!\r\n")
 
 	// Container lifecycle
 	homePath := s.store.HomePath(fp, boxname)
