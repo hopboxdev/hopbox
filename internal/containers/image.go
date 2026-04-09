@@ -1,11 +1,12 @@
 package containers
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -97,8 +98,24 @@ func EnsureBaseImage(ctx context.Context, cli *client.Client, templatesDir strin
 	}
 	defer resp.Body.Close()
 
-	// Drain build output (required for build to complete)
-	if _, err := io.Copy(os.Stderr, resp.Body); err != nil {
+	// Parse build output, check for errors
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		var msg struct {
+			Stream string `json:"stream"`
+			Error  string `json:"error"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
+			continue
+		}
+		if msg.Stream != "" {
+			fmt.Fprint(os.Stderr, msg.Stream)
+		}
+		if msg.Error != "" {
+			return "", fmt.Errorf("build failed: %s", msg.Error)
+		}
+	}
+	if err := scanner.Err(); err != nil {
 		return "", fmt.Errorf("read build output: %w", err)
 	}
 
