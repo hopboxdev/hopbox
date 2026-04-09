@@ -6,36 +6,32 @@ import (
 	"net"
 	"os"
 
+	"github.com/alecthomas/kong"
 	"github.com/hopboxdev/hopbox/internal/control"
 )
 
 const socketPath = "/var/run/hopbox.sock"
 
-func main() {
-	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
-	}
-
-	switch os.Args[1] {
-	case "status":
-		jsonOutput := len(os.Args) > 2 && os.Args[2] == "--json"
-		doStatus(jsonOutput)
-	case "destroy":
-		doDestroy()
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
-		printUsage()
-		os.Exit(1)
-	}
+type CLI struct {
+	Status  StatusCmd  `cmd:"" help:"Show box info."`
+	Destroy DestroyCmd `cmd:"" help:"Destroy this box."`
 }
 
-func printUsage() {
-	fmt.Fprintln(os.Stderr, "Usage: hopbox <command>")
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Commands:")
-	fmt.Fprintln(os.Stderr, "  status [--json]  Show box info")
-	fmt.Fprintln(os.Stderr, "  destroy          Destroy this box")
+type StatusCmd struct {
+	JSON bool `help:"Output as JSON." default:"false"`
+}
+
+type DestroyCmd struct{}
+
+func main() {
+	var cli CLI
+	ctx := kong.Parse(&cli, kong.Name("hopbox"), kong.Description("Hopbox dev environment CLI"))
+	switch ctx.Command() {
+	case "status":
+		doStatus(cli.Status.JSON)
+	case "destroy":
+		doDestroy()
+	}
 }
 
 func sendRequest(req control.Request) (control.Response, error) {
@@ -82,7 +78,6 @@ func doStatus(jsonOutput bool) {
 }
 
 func doDestroy() {
-	// First get status to know the box name
 	statusResp, err := sendRequest(control.Request{Command: "status"})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
