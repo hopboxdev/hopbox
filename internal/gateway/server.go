@@ -133,6 +133,8 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			}
 			boxname = chosen
 			log.Printf("[session] user=%s picked box=%s", user.Username, boxname)
+			// Brief pause for bubbletea cancel reader cleanup
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
