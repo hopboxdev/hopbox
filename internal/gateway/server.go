@@ -159,7 +159,12 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	if term == "" {
 		term = "xterm-256color"
 	}
-	cmd := []string{"bash", "-c", fmt.Sprintf("export TERM=%s; exec zellij attach --create default", term)}
+	// Fall back to xterm-256color if the container lacks the requested terminfo
+	shellCmd := fmt.Sprintf(
+		`if ! infocmp %s >/dev/null 2>&1; then export TERM=xterm-256color; else export TERM=%s; fi; exec zellij attach --create default`,
+		term, term,
+	)
+	cmd := []string{"bash", "-c", shellCmd}
 	env := []string{fmt.Sprintf("TERM=%s", term)}
 	if err := s.manager.Exec(ctx, containerID, cmd, env, sess, sess, resizeCh); err != nil {
 		log.Printf("[session] exec error user=%s: %v", user.Username, err)
