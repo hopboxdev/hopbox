@@ -9,8 +9,39 @@ import (
 	"github.com/charmbracelet/wish/bubbletea"
 )
 
+type pickerModel struct {
+	form     *huh.Form
+	selected *string
+	aborted  bool
+}
+
+func (m pickerModel) Init() tea.Cmd {
+	return m.form.Init()
+}
+
+func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	form, cmd := m.form.Update(msg)
+	if f, ok := form.(*huh.Form); ok {
+		m.form = f
+	}
+
+	if m.form.State == huh.StateAborted {
+		m.aborted = true
+		return m, tea.Quit
+	}
+
+	if m.form.State == huh.StateCompleted {
+		return m, tea.Quit
+	}
+
+	return m, cmd
+}
+
+func (m pickerModel) View() string {
+	return m.form.View()
+}
+
 // RunPicker shows a box selection TUI and returns the chosen box name.
-// Uses the same single-tea.Program pattern as the wizard.
 func RunPicker(boxes []string, sess ssh.Session) (string, error) {
 	if len(boxes) == 0 {
 		return "", fmt.Errorf("no boxes found")
@@ -38,7 +69,8 @@ func RunPicker(boxes []string, sess ssh.Session) (string, error) {
 			Value(&selected),
 	))
 
-	p := tea.NewProgram(form, bubbletea.MakeOptions(sess)...)
+	m := pickerModel{form: form, selected: &selected}
+	p := tea.NewProgram(m, bubbletea.MakeOptions(sess)...)
 
 	go func() {
 		p.Send(tea.WindowSizeMsg{
@@ -71,8 +103,8 @@ func RunPicker(boxes []string, sess ssh.Session) (string, error) {
 		return "", fmt.Errorf("picker: %w", err)
 	}
 
-	f := result.(*huh.Form)
-	if f.State == huh.StateAborted {
+	pm := result.(pickerModel)
+	if pm.aborted {
 		return "", fmt.Errorf("picker cancelled")
 	}
 
