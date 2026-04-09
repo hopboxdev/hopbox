@@ -11,7 +11,7 @@ import (
 
 // RunWizard presents the tool selection form over the SSH session.
 // Takes a Profile as defaults (pre-filled). Returns the updated Profile.
-func RunWizard(defaults users.Profile, in io.Reader, out io.Writer) (users.Profile, error) {
+func RunWizard(defaults users.Profile, in io.Reader, out io.Writer, width, height int) (users.Profile, error) {
 	p := defaults
 
 	toolOptions := []huh.Option[string]{
@@ -91,7 +91,7 @@ func RunWizard(defaults users.Profile, in io.Reader, out io.Writer) (users.Profi
 				Options(toolOptions...).
 				Value(&p.Tools.Extras),
 		),
-	).WithInput(in).WithOutput(out)
+	).WithInput(in).WithOutput(out).WithWidth(width).WithHeight(height)
 
 	if err := form.Run(); err != nil {
 		return defaults, fmt.Errorf("wizard: %w", err)

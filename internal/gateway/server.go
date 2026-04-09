@@ -132,6 +132,14 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 	log.Printf("[session] connect user=%s box=%s", user.Username, boxname)
 
+	// Get PTY info early (needed for wizard dimensions)
+	ptyReq, winCh, isPty := sess.Pty()
+	if !isPty {
+		log.Printf("[session] no PTY user=%s", user.Username)
+		fmt.Fprintf(sess, "PTY required. Use: ssh -t ...\r\n")
+		return
+	}
+
 	// Resolve profile
 	userDir := filepath.Join(s.store.Dir(), fp)
 	profile, err := users.ResolveProfile(userDir, boxname)
@@ -149,7 +157,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			defaults = *userDefault
 		}
 
-		chosen, err := wizard.RunWizard(defaults, sess, sess)
+		chosen, err := wizard.RunWizard(defaults, sess, sess, ptyReq.Window.Width, ptyReq.Window.Height)
 		if err != nil {
 			log.Printf("[session] wizard failed: %v", err)
 			fmt.Fprintf(sess, "Setup cancelled, using defaults.\r\n")
@@ -214,14 +222,6 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	ctx.SetValue("container_id", containerID)
 
 	log.Printf("[session] attached user=%s box=%s container=%s", user.Username, boxname, containerID[:12])
-
-	// PTY setup
-	ptyReq, winCh, isPty := sess.Pty()
-	if !isPty {
-		log.Printf("[session] no PTY user=%s", user.Username)
-		fmt.Fprintf(sess, "PTY required. Use: ssh -t ...\r\n")
-		return
-	}
 
 	resizeCh := make(chan [2]uint, 1)
 	resizeCh <- [2]uint{uint(ptyReq.Window.Width), uint(ptyReq.Window.Height)}
