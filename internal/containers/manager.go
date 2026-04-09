@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 
+	"github.com/hopboxdev/hopbox/internal/config"
 	"github.com/hopboxdev/hopbox/internal/control"
 )
 
@@ -29,17 +30,102 @@ func ShouldRecreate(containerLabel, wantHash string) bool {
 	return containerLabel != wantHash
 }
 
-type Manager struct {
-	cli     *client.Client
-	sockets map[string]*control.SocketServer // containerID -> socket server
-	mu      sync.Mutex
+type containerState struct {
+	sessions  int
+	idleTimer *time.Timer
 }
 
-func NewManager(cli *client.Client) *Manager {
-	return &Manager{
-		cli:     cli,
-		sockets: make(map[string]*control.SocketServer),
+type Manager struct {
+	cli         *client.Client
+	sockets     map[string]*control.SocketServer // containerID -> socket server
+	states      map[string]*containerState
+	mu          sync.Mutex
+	idleTimeout time.Duration
+	resources   config.ResourcesConfig
+}
+
+func NewManager(cli *client.Client, cfg config.Config) *Manager {
+	var timeout time.Duration
+	if cfg.IdleTimeoutHours > 0 {
+		timeout = time.Duration(cfg.IdleTimeoutHours) * time.Hour
 	}
+	return &Manager{
+		cli:         cli,
+		sockets:     make(map[string]*control.SocketServer),
+		states:      make(map[string]*containerState),
+		idleTimeout: timeout,
+		resources:   cfg.Resources,
+	}
+}
+
+func (m *Manager) SessionConnect(containerID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	s, ok := m.states[containerID]
+	if !ok {
+		s = &containerState{}
+		m.states[containerID] = s
+	}
+	s.sessions++
+
+	if s.idleTimer != nil {
+		s.idleTimer.Stop()
+		s.idleTimer = nil
+		log.Printf("[idle] cancelled idle timer for container %s (session reconnected)", containerID[:12])
+	}
+}
+
+func (m *Manager) SessionDisconnect(containerID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	s, ok := m.states[containerID]
+	if !ok {
+		return
+	}
+	s.sessions--
+	if s.sessions < 0 {
+		s.sessions = 0
+	}
+
+	if s.sessions == 0 && m.idleTimeout > 0 {
+		log.Printf("[idle] starting %v idle timer for container %s", m.idleTimeout, containerID[:12])
+		s.idleTimer = time.AfterFunc(m.idleTimeout, func() {
+			m.stopIdleContainer(containerID)
+		})
+	}
+}
+
+func (m *Manager) stopIdleContainer(containerID string) {
+	log.Printf("[idle] stopping idle container %s", containerID[:12])
+	ctx := context.Background()
+	if err := m.cli.ContainerStop(ctx, containerID, container.StopOptions{}); err != nil {
+		log.Printf("[idle] failed to stop container %s: %v", containerID[:12], err)
+	}
+
+	m.mu.Lock()
+	delete(m.states, containerID)
+	m.mu.Unlock()
+}
+
+func (m *Manager) resourceLimits() container.Resources {
+	var pidsLimit *int64
+	if m.resources.PidsLimit > 0 {
+		pl := m.resources.PidsLimit
+		pidsLimit = &pl
+	}
+
+	r := container.Resources{
+		PidsLimit: pidsLimit,
+	}
+	if m.resources.CPUCores > 0 {
+		r.NanoCPUs = int64(m.resources.CPUCores) * 1_000_000_000
+	}
+	if m.resources.MemoryGB > 0 {
+		r.Memory = int64(m.resources.MemoryGB) * 1024 * 1024 * 1024
+	}
+	return r
 }
 
 func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag, profileHash, homePath string, info control.BoxInfo) (string, error) {
@@ -110,6 +196,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 			fmt.Sprintf("%s:/home/dev", homePath),
 			fmt.Sprintf("%s:/var/run/hopbox", socketDir),
 		},
+		Resources: m.resourceLimits(),
 	}
 
 	log.Printf("[container] creating %s with bind mount %s -> /home/dev", name, homePath)
