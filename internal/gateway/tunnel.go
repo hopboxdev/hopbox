@@ -6,12 +6,14 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"sync"
 
 	"github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/hopboxdev/hopbox/internal/containers"
+	"github.com/hopboxdev/hopbox/internal/users"
 )
 
 func RewriteDestination(host, containerIP string) string {
@@ -30,7 +32,40 @@ type directTCPIPData struct {
 	SrcPort  uint32
 }
 
-func DirectTCPIPHandler(mgr *containers.Manager) ssh.ChannelHandler {
+// resolveContainerID returns the container ID for the current SSH connection.
+// If the session handler already set it, use that. Otherwise (e.g. ssh -N -L),
+// look up the user by fingerprint and ensure their container is running.
+func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *users.Store, imageTag string) (string, error) {
+	if id, ok := sshCtx.Value("container_id").(string); ok && id != "" {
+		return id, nil
+	}
+
+	fp, ok := sshCtx.Value("fingerprint").(string)
+	if !ok {
+		return "", fmt.Errorf("no fingerprint in session")
+	}
+
+	user, ok := store.LookupByFingerprint(fp)
+	if !ok {
+		return "", fmt.Errorf("unknown user")
+	}
+
+	_, boxname := ParseUsername(sshCtx.User())
+	homePath := store.HomePath(fp, boxname)
+	if err := os.MkdirAll(homePath, 0755); err != nil {
+		return "", fmt.Errorf("create home dir: %w", err)
+	}
+
+	containerID, err := mgr.EnsureRunning(context.Background(), user.Username, boxname, imageTag, homePath)
+	if err != nil {
+		return "", err
+	}
+
+	sshCtx.SetValue("container_id", containerID)
+	return containerID, nil
+}
+
+func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, imageTag string) ssh.ChannelHandler {
 	return func(srv *ssh.Server, conn *gossh.ServerConn, newChan gossh.NewChannel, sshCtx ssh.Context) {
 		var d directTCPIPData
 		if err := gossh.Unmarshal(newChan.ExtraData(), &d); err != nil {
@@ -38,9 +73,10 @@ func DirectTCPIPHandler(mgr *containers.Manager) ssh.ChannelHandler {
 			return
 		}
 
-		containerID, ok := sshCtx.Value("container_id").(string)
-		if !ok {
-			newChan.Reject(gossh.ConnectionFailed, "no container for session")
+		containerID, err := resolveContainerID(sshCtx, mgr, store, imageTag)
+		if err != nil {
+			log.Printf("[tunnel] resolve container failed: %v", err)
+			newChan.Reject(gossh.ConnectionFailed, fmt.Sprintf("resolve container: %v", err))
 			return
 		}
 

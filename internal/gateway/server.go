@@ -48,7 +48,7 @@ func NewServer(cfg config.Config, store *users.Store, manager *containers.Manage
 		},
 		ChannelHandlers: map[string]ssh.ChannelHandler{
 			"session":      ssh.DefaultSessionHandler,
-			"direct-tcpip": DirectTCPIPHandler(s.manager),
+			"direct-tcpip": DirectTCPIPHandler(s.manager, s.store, s.imageTag),
 		},
 	}
 
