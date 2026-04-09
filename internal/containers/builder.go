@@ -106,11 +106,15 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 				runtime.GOARCH,
 			))
 		case "lazygit":
-			b.WriteString(fmt.Sprintf(
+			lgArch := runtime.GOARCH // "amd64" or "arm64" — matches lazygit naming
+			if lgArch == "amd64" {
+				lgArch = "x86_64"
+			}
+			fmt.Fprintf(&b,
 				"RUN LAZYGIT_VERSION=$(curl -s https://api.github.com/repos/jesseduffield/lazygit/releases/latest | grep tag_name | cut -d '\"' -f4 | tr -d 'v') && "+
-					"curl -fsSL https://github.com/jesseduffield/lazygit/releases/download/v${LAZYGIT_VERSION}/lazygit_${LAZYGIT_VERSION}_Linux_%s.tar.gz | tar -xz -C /usr/local/bin/ lazygit\n",
-				linuxArch,
-			))
+					"curl -fsSL \"https://github.com/jesseduffield/lazygit/releases/download/v${LAZYGIT_VERSION}/lazygit_${LAZYGIT_VERSION}_linux_%s.tar.gz\" | tar -xz -C /usr/local/bin/ lazygit\n",
+				lgArch,
+			)
 		case "direnv":
 			b.WriteString("RUN curl -sfL https://direnv.net/install.sh | bash\n")
 		}
