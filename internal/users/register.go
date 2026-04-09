@@ -2,10 +2,11 @@ package users
 
 import (
 	"fmt"
-	"io"
 	"regexp"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/ssh"
+	"github.com/charmbracelet/wish/bubbletea"
 )
 
 var usernamePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
@@ -35,7 +36,7 @@ func containsDoubleHyphen(s string) bool {
 }
 
 // RunRegistration presents a TUI form over the SSH session to collect a username.
-func RunRegistration(store *Store, in io.Reader, out io.Writer) (string, error) {
+func RunRegistration(store *Store, sess ssh.Session) (string, error) {
 	var username string
 
 	form := huh.NewForm(
@@ -55,7 +56,7 @@ func RunRegistration(store *Store, in io.Reader, out io.Writer) (string, error) 
 					return nil
 				}),
 		),
-	).WithInput(in).WithOutput(out)
+	).WithProgramOptions(bubbletea.MakeOptions(sess)...)
 
 	if err := form.Run(); err != nil {
 		return "", fmt.Errorf("registration form: %w", err)

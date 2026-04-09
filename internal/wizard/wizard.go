@@ -2,16 +2,17 @@ package wizard
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/ssh"
+	"github.com/charmbracelet/wish/bubbletea"
 
 	"github.com/hopboxdev/hopbox/internal/users"
 )
 
 // RunWizard presents the tool selection form over the SSH session.
 // Takes a Profile as defaults (pre-filled). Returns the updated Profile.
-func RunWizard(defaults users.Profile, in io.Reader, out io.Writer, width, height int) (users.Profile, error) {
+func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) {
 	p := defaults
 
 	toolOptions := []huh.Option[string]{
@@ -91,7 +92,7 @@ func RunWizard(defaults users.Profile, in io.Reader, out io.Writer, width, heigh
 				Options(toolOptions...).
 				Value(&p.Tools.Extras),
 		),
-	).WithInput(in).WithOutput(out).WithWidth(width).WithHeight(height).WithAccessible(true)
+	).WithProgramOptions(bubbletea.MakeOptions(sess)...)
 
 	if err := form.Run(); err != nil {
 		return defaults, fmt.Errorf("wizard: %w", err)

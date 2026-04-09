@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/client"
-	"github.com/gliderlabs/ssh"
+	"github.com/charmbracelet/ssh"
 	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/hopboxdev/hopbox/internal/config"
@@ -101,7 +101,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 	// Registration flow for new users
 	if needsReg {
-		username, err := users.RunRegistration(s.store, sess, sess)
+		username, err := users.RunRegistration(s.store, sess)
 		if err != nil {
 			log.Printf("[session] registration failed addr=%s: %v", sess.RemoteAddr(), err)
 			fmt.Fprintf(sess, "Registration failed: %v\r\n", err)
@@ -157,7 +157,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			defaults = *userDefault
 		}
 
-		chosen, err := wizard.RunWizard(defaults, sess, sess, ptyReq.Window.Width, ptyReq.Window.Height)
+		chosen, err := wizard.RunWizard(defaults, sess)
 		if err != nil {
 			log.Printf("[session] wizard failed: %v", err)
 			fmt.Fprintf(sess, "Setup cancelled, using defaults.\r\n")

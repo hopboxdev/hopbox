@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/docker/docker/client"
-	"github.com/gliderlabs/ssh"
+	"github.com/charmbracelet/ssh"
 	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/hopboxdev/hopbox/internal/containers"
