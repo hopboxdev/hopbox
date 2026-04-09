@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish/bubbletea"
@@ -37,6 +38,11 @@ func containsDoubleHyphen(s string) bool {
 
 // RunRegistration presents a TUI form over the SSH session to collect a username.
 func RunRegistration(store *Store, sess ssh.Session) (string, error) {
+	pty, winCh, ok := sess.Pty()
+	if !ok {
+		return "", fmt.Errorf("no PTY available")
+	}
+
 	var username string
 
 	form := huh.NewForm(
@@ -56,10 +62,45 @@ func RunRegistration(store *Store, sess ssh.Session) (string, error) {
 					return nil
 				}),
 		),
-	).WithProgramOptions(bubbletea.MakeOptions(sess)...)
+	)
 
-	if err := form.Run(); err != nil {
+	opts := append(bubbletea.MakeOptions(sess), tea.WithAltScreen())
+	p := tea.NewProgram(form, opts...)
+
+	go func() {
+		p.Send(tea.WindowSizeMsg{
+			Width:  pty.Window.Width,
+			Height: pty.Window.Height,
+		})
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case w, ok := <-winCh:
+				if !ok {
+					return
+				}
+				p.Send(tea.WindowSizeMsg{
+					Width:  w.Width,
+					Height: w.Height,
+				})
+			}
+		}
+	}()
+
+	result, err := p.Run()
+	close(done)
+	if err != nil {
 		return "", fmt.Errorf("registration form: %w", err)
+	}
+
+	f := result.(*huh.Form)
+	if f.State == huh.StateAborted {
+		return "", fmt.Errorf("registration cancelled")
 	}
 
 	return username, nil

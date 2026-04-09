@@ -17,7 +17,10 @@ const (
 	stepMux step = iota
 	stepEditor
 	stepShell
-	stepRuntimes
+	stepNode
+	stepPython
+	stepGo
+	stepRust
 	stepTools
 	stepDone
 )
@@ -40,6 +43,15 @@ func (m wizardModel) Init() tea.Cmd {
 }
 
 func (m wizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Handle back navigation (Esc goes to previous step)
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		if keyMsg.Type == tea.KeyEscape && m.step > stepMux {
+			m.step--
+			m.form = m.buildForm(m.step)
+			return m, m.form.Init()
+		}
+	}
+
 	form, cmd := m.form.Update(msg)
 	if f, ok := form.(*huh.Form); ok {
 		m.form = f
@@ -100,7 +112,7 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 					huh.NewOption("fish", "fish"),
 				).Value(&m.profile.Shell.Tool),
 		))
-	case stepRuntimes:
+	case stepNode:
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Node.js").
@@ -109,6 +121,9 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 					huh.NewOption("Latest", "latest"),
 					huh.NewOption("None", "none"),
 				).Value(&m.profile.Runtimes.Node),
+		))
+	case stepPython:
+		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Python").
 				Options(
@@ -116,12 +131,18 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 					huh.NewOption("3.13", "3.13"),
 					huh.NewOption("None", "none"),
 				).Value(&m.profile.Runtimes.Python),
+		))
+	case stepGo:
+		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Go").
 				Options(
 					huh.NewOption("Latest", "latest"),
 					huh.NewOption("None", "none"),
 				).Value(&m.profile.Runtimes.Go),
+		))
+	case stepRust:
+		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Rust").
 				Options(
@@ -148,7 +169,6 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 }
 
 // RunWizard presents the tool selection wizard over the SSH session.
-// Uses a single tea.Program to avoid cancel reader races between forms.
 func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) {
 	pty, winCh, ok := sess.Pty()
 	if !ok {
@@ -159,7 +179,6 @@ func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) 
 	opts := append(bubbletea.MakeOptions(sess), tea.WithAltScreen())
 	p := tea.NewProgram(m, opts...)
 
-	// Send initial window size
 	go func() {
 		p.Send(tea.WindowSizeMsg{
 			Width:  pty.Window.Width,
@@ -167,7 +186,6 @@ func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) 
 		})
 	}()
 
-	// Forward window resizes until program exits
 	done := make(chan struct{})
 	go func() {
 		for {
