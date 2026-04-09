@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -146,8 +146,7 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 }
 
 // EnsureUserImage checks if the per-user image exists and builds it if not.
-// If progress is non-nil, build step summaries are written to it (e.g. the SSH session).
-func EnsureUserImage(ctx context.Context, cli *client.Client, username string, p users.Profile, baseTag string, progress io.Writer) (string, error) {
+func EnsureUserImage(ctx context.Context, cli *client.Client, username string, p users.Profile, baseTag string) (string, error) {
 	tag := UserImageTag(username, p.Hash())
 
 	// Check if image already exists
@@ -164,6 +163,7 @@ func EnsureUserImage(ctx context.Context, cli *client.Client, username string, p
 	}
 
 	// Generate Dockerfile and build
+	log.Printf("[builder] building image %s for user %s", tag, username)
 	df := GenerateDockerfile(p, baseTag)
 
 	tmpDir, err := os.MkdirTemp("", "hopbox-userbuild-*")
@@ -192,7 +192,7 @@ func EnsureUserImage(ctx context.Context, cli *client.Client, username string, p
 	}
 	defer resp.Body.Close()
 
-	// Parse build output, check for errors, stream progress
+	// Drain build output, check for errors
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		var msg struct {
@@ -201,13 +201,6 @@ func EnsureUserImage(ctx context.Context, cli *client.Client, username string, p
 		}
 		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
 			continue
-		}
-		if msg.Stream != "" {
-			fmt.Fprint(os.Stderr, msg.Stream)
-			// Show Docker build steps to the user
-			if progress != nil && strings.HasPrefix(msg.Stream, "Step ") {
-				fmt.Fprintf(progress, "  %s", msg.Stream)
-			}
 		}
 		if msg.Error != "" {
 			return "", fmt.Errorf("build failed: %s", msg.Error)

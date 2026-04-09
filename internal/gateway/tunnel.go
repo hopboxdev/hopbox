@@ -64,7 +64,7 @@ func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *user
 		profile = &p
 	}
 
-	imageTag, err := containers.EnsureUserImage(context.Background(), dockerCli, user.Username, *profile, baseTag, nil)
+	imageTag, err := containers.EnsureUserImage(context.Background(), dockerCli, user.Username, *profile, baseTag)
 	if err != nil {
 		return "", fmt.Errorf("ensure image: %w", err)
 	}
