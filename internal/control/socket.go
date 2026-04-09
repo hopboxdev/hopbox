@@ -15,12 +15,13 @@ type SocketServer struct {
 	listener  net.Listener
 	info      BoxInfo
 	destroyFn DestroyFunc
+	linkStore *LinkStore
 	done      chan struct{}
 	wg        sync.WaitGroup
 }
 
 // NewSocketServer creates a socket server for a container.
-func NewSocketServer(socketPath string, info BoxInfo, destroyFn DestroyFunc) (*SocketServer, error) {
+func NewSocketServer(socketPath string, info BoxInfo, destroyFn DestroyFunc, linkStore *LinkStore) (*SocketServer, error) {
 	// Remove stale socket file
 	os.Remove(socketPath)
 
@@ -40,6 +41,7 @@ func NewSocketServer(socketPath string, info BoxInfo, destroyFn DestroyFunc) (*S
 		listener:  listener,
 		info:      info,
 		destroyFn: destroyFn,
+		linkStore: linkStore,
 		done:      make(chan struct{}),
 	}, nil
 }
@@ -75,7 +77,7 @@ func (s *SocketServer) handleConn(conn net.Conn) {
 		return
 	}
 
-	resp := HandleRequest(req, s.info, s.destroyFn)
+	resp := HandleRequest(req, s.info, s.destroyFn, s.linkStore)
 	json.NewEncoder(conn).Encode(resp)
 }
 

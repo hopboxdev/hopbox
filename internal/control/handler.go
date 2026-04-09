@@ -17,21 +17,40 @@ type BoxInfo struct {
 	StartedAt   time.Time
 	Hostname    string
 	SSHPort     int
+	Fingerprint string
 }
 
 // DestroyFunc is called by the destroy handler to clean up the container and box data.
 type DestroyFunc func() error
 
 // HandleRequest processes a control request and returns a response.
-func HandleRequest(req Request, info BoxInfo, destroyFn DestroyFunc) Response {
+func HandleRequest(req Request, info BoxInfo, destroyFn DestroyFunc, linkStore *LinkStore) Response {
 	switch req.Command {
 	case "status":
 		return handleStatus(info)
 	case "destroy":
 		return handleDestroy(req, info, destroyFn)
+	case "link":
+		return handleLink(info, linkStore)
 	default:
 		return Response{OK: false, Error: fmt.Sprintf("unknown command: %s", req.Command)}
 	}
+}
+
+func handleLink(info BoxInfo, linkStore *LinkStore) Response {
+	if linkStore == nil {
+		return Response{OK: false, Error: "link codes not available"}
+	}
+	if info.Fingerprint == "" {
+		return Response{OK: false, Error: "fingerprint not available"}
+	}
+
+	code, err := linkStore.GenerateCode(info.Fingerprint)
+	if err != nil {
+		return Response{OK: false, Error: fmt.Sprintf("generate link code: %v", err)}
+	}
+
+	return Response{OK: true, Data: map[string]string{"code": code}}
 }
 
 func handleStatus(info BoxInfo) Response {

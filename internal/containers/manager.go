@@ -42,6 +42,12 @@ type Manager struct {
 	mu          sync.Mutex
 	idleTimeout time.Duration
 	resources   config.ResourcesConfig
+	linkStore   *control.LinkStore
+}
+
+// SetLinkStore sets the LinkStore used for generating link codes in control sockets.
+func (m *Manager) SetLinkStore(ls *control.LinkStore) {
+	m.linkStore = ls
 }
 
 func NewManager(cli *client.Client, cfg config.Config) *Manager {
@@ -166,7 +172,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 				destroyFn := func() error {
 					return m.DestroyBox(context.Background(), username, boxname, boxDir)
 				}
-				srv, err := control.NewSocketServer(socketPath, info, destroyFn)
+				srv, err := control.NewSocketServer(socketPath, info, destroyFn, m.linkStore)
 				if err == nil {
 					m.mu.Lock()
 					m.sockets[c.ID] = srv
@@ -217,7 +223,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 	destroyFn := func() error {
 		return m.DestroyBox(context.Background(), username, boxname, boxDir)
 	}
-	srv, err := control.NewSocketServer(socketPath, info, destroyFn)
+	srv, err := control.NewSocketServer(socketPath, info, destroyFn, m.linkStore)
 	if err != nil {
 		log.Printf("[container] failed to create control socket: %v", err)
 	} else {

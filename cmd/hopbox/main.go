@@ -15,6 +15,7 @@ const socketPath = "/var/run/hopbox/control.sock"
 type CLI struct {
 	Status  StatusCmd  `cmd:"" help:"Show box info."`
 	Expose  ExposeCmd  `cmd:"" help:"Print SSH tunnel instructions for a port."`
+	Link    LinkCmd    `cmd:"" help:"Generate a link code to connect this account from another device."`
 	Destroy DestroyCmd `cmd:"" help:"Destroy this box."`
 }
 
@@ -26,6 +27,8 @@ type StatusCmd struct {
 	JSON bool `help:"Output as JSON." default:"false"`
 }
 
+type LinkCmd struct{}
+
 type DestroyCmd struct{}
 
 func main() {
@@ -36,6 +39,8 @@ func main() {
 		doStatus(cli.Status.JSON)
 	case "expose <port>":
 		doExpose(cli.Expose.Port)
+	case "link":
+		doLink()
 	case "destroy":
 		doDestroy()
 	}
@@ -57,6 +62,22 @@ func sendRequest(req control.Request) (control.Response, error) {
 		return control.Response{}, fmt.Errorf("read response: %w", err)
 	}
 	return resp, nil
+}
+
+func doLink() {
+	resp, err := sendRequest(control.Request{Command: "link"})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if !resp.OK {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", resp.Error)
+		os.Exit(1)
+	}
+
+	code := resp.Data["code"]
+	fmt.Printf("Link code: %s\n", code)
+	fmt.Println("Expires in 5 minutes. On your other machine, connect and enter this code.")
 }
 
 func doExpose(port int) {
