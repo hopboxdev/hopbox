@@ -32,8 +32,6 @@ func RunWizard(defaults users.Profile, in io.Reader, out io.Writer) (users.Profi
 					huh.NewOption("tmux", "tmux"),
 				).
 				Value(&p.Multiplexer.Tool),
-		),
-		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Editor").
 				Options(
@@ -42,8 +40,6 @@ func RunWizard(defaults users.Profile, in io.Reader, out io.Writer) (users.Profi
 					huh.NewOption("none", "none"),
 				).
 				Value(&p.Editor.Tool),
-		),
-		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Shell").
 				Options(
@@ -52,8 +48,6 @@ func RunWizard(defaults users.Profile, in io.Reader, out io.Writer) (users.Profi
 					huh.NewOption("fish", "fish"),
 				).
 				Value(&p.Shell.Tool),
-		),
-		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Node.js").
 				Options(
