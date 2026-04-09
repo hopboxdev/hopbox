@@ -1,0 +1,57 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<div>
+    <div class="flex items-center gap-3">
+        <a href="/users" class="text-sm text-gray-500 hover:text-gray-700">&larr; Users</a>
+        <h1 class="text-2xl font-bold text-gray-900">{{.Username}}'s Boxes</h1>
+    </div>
+    <p class="mt-1 text-sm text-gray-500">Manage boxes and containers for this user.</p>
+
+    <div class="mt-6 overflow-hidden rounded-lg bg-white shadow">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Box Name</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Container Status</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 bg-white">
+                {{range .Boxes}}
+                <tr id="box-row-{{.Username}}-{{.Name}}">
+                    <td class="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">{{.Name}}</td>
+                    <td class="whitespace-nowrap px-6 py-4 text-sm" id="status-{{.Username}}-{{.Name}}">
+                        {{if eq .ContainerStatus "running"}}
+                        <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">running</span>
+                        {{else if eq .ContainerStatus "exited"}}
+                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">exited</span>
+                        {{else}}
+                        <span class="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800">{{.ContainerStatus}}</span>
+                        {{end}}
+                    </td>
+                    <td class="whitespace-nowrap px-6 py-4 text-right text-sm space-x-2">
+                        {{if eq .ContainerStatus "running"}}
+                        <button hx-post="/api/users/{{.Username}}/boxes/{{.Name}}/stop" hx-target="#status-{{.Username}}-{{.Name}}" hx-swap="innerHTML"
+                            hx-confirm="Stop the container for box '{{.Name}}'?"
+                            class="rounded bg-yellow-50 px-2 py-1 text-xs font-semibold text-yellow-700 hover:bg-yellow-100">
+                            Stop
+                        </button>
+                        {{end}}
+                        <button hx-delete="/api/users/{{.Username}}/boxes/{{.Name}}" hx-target="#box-row-{{.Username}}-{{.Name}}" hx-swap="outerHTML"
+                            hx-confirm="Are you sure you want to remove box '{{.Name}}'? This will delete the container and all box data."
+                            class="rounded bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">
+                            Remove
+                        </button>
+                    </td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="3" class="px-6 py-8 text-center text-sm text-gray-500">No boxes for this user.</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}

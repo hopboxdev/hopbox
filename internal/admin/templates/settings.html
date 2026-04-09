@@ -1,0 +1,34 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<div>
+    <h1 class="text-2xl font-bold text-gray-900">Settings</h1>
+    <p class="mt-1 text-sm text-gray-500">Runtime server settings. Changes do not persist to the config file.</p>
+
+    <div class="mt-6 overflow-hidden rounded-lg bg-white shadow">
+        <div class="px-6 py-5">
+            <h3 class="text-base font-semibold text-gray-900">Open Registration</h3>
+            <p class="mt-1 text-sm text-gray-500">When enabled, new users can register by SSH-ing in with an unrecognized key.</p>
+            <div class="mt-4">
+                {{if .OpenRegistration}}
+                <div id="registration-toggle" class="flex items-center gap-4">
+                    <span class="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">Open</span>
+                    <button hx-put="/api/settings/registration" hx-vals='{"enabled":"false"}' hx-target="#registration-toggle" hx-swap="outerHTML"
+                        class="rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-red-500">
+                        Disable Registration
+                    </button>
+                </div>
+                {{else}}
+                <div id="registration-toggle" class="flex items-center gap-4">
+                    <span class="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-800">Closed</span>
+                    <button hx-put="/api/settings/registration" hx-vals='{"enabled":"true"}' hx-target="#registration-toggle" hx-swap="outerHTML"
+                        class="rounded-md bg-green-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+                        Enable Registration
+                    </button>
+                </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}

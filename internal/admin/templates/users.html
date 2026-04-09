@@ -1,0 +1,45 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<div>
+    <h1 class="text-2xl font-bold text-gray-900">Users</h1>
+    <p class="mt-1 text-sm text-gray-500">All registered users and their boxes.</p>
+
+    <div class="mt-6 overflow-hidden rounded-lg bg-white shadow">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Username</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Key Type</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Registered</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Boxes</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 bg-white">
+                {{range .Users}}
+                <tr id="user-row-{{.Username}}">
+                    <td class="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
+                        <a href="/users/{{.Username}}/boxes" class="text-indigo-600 hover:text-indigo-500">{{.Username}}</a>
+                    </td>
+                    <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-500">{{.KeyType}}</td>
+                    <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-500">{{.RegisteredAt.Format "2006-01-02"}}</td>
+                    <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-500">{{.BoxCount}}</td>
+                    <td class="whitespace-nowrap px-6 py-4 text-right text-sm">
+                        <button hx-delete="/api/users/{{.Username}}" hx-target="#user-row-{{.Username}}" hx-swap="outerHTML"
+                            hx-confirm="Are you sure you want to remove user '{{.Username}}'? This will delete all their boxes and containers."
+                            class="rounded bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100">
+                            Remove
+                        </button>
+                    </td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="5" class="px-6 py-8 text-center text-sm text-gray-500">No users registered yet.</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}

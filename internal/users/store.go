@@ -113,6 +113,35 @@ func (s *Store) HomePath(fp, boxname string) string {
 	return filepath.Join(s.dir, fp, "boxes", boxname, "home")
 }
 
+// ListAll returns a copy of all users keyed by fingerprint.
+func (s *Store) ListAll() map[string]User {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string]User, len(s.users))
+	for fp, u := range s.users {
+		out[fp] = u
+	}
+	return out
+}
+
+// Delete removes a user by fingerprint from the in-memory map and deletes their directory.
+func (s *Store) Delete(fp string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.users[fp]; !ok {
+		return fmt.Errorf("user not found: %s", fp)
+	}
+
+	userDir := filepath.Join(s.dir, fp)
+	if err := os.RemoveAll(userDir); err != nil {
+		return fmt.Errorf("remove user dir: %w", err)
+	}
+
+	delete(s.users, fp)
+	return nil
+}
+
 // FormatFingerprint converts an SSH fingerprint to a filesystem-safe directory name.
 // Replaces colons with underscores and slashes with dashes (base64 fingerprints contain /).
 func FormatFingerprint(raw string) string {

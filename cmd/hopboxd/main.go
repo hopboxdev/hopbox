@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/docker/docker/client"
 
+	"github.com/hopboxdev/hopbox/internal/admin"
 	"github.com/hopboxdev/hopbox/internal/config"
 	"github.com/hopboxdev/hopbox/internal/containers"
 	"github.com/hopboxdev/hopbox/internal/gateway"
@@ -68,6 +70,20 @@ func main() {
 
 	// Initialize container manager
 	mgr := containers.NewManager(cli, cfg)
+
+	// Start admin web UI if enabled
+	if cfg.Admin.Enabled {
+		if cfg.Admin.Password == "" {
+			log.Fatal("admin.password must be set when admin is enabled")
+		}
+		adminSrv := admin.NewAdminServer(&cfg, store, mgr, cli)
+		go func() {
+			log.Printf("admin UI: http://0.0.0.0:%d (user: %s)", cfg.Admin.Port, cfg.Admin.Username)
+			if err := adminSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Printf("admin server error: %v", err)
+			}
+		}()
+	}
 
 	// Start SSH server
 	srv, err := gateway.NewServer(cfg, store, mgr, cli, imageTag)
