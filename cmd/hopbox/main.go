@@ -60,28 +60,8 @@ func sendRequest(req control.Request) (control.Response, error) {
 }
 
 func doExpose(port int) {
-	resp, err := sendRequest(control.Request{Command: "status"})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	if !resp.OK {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", resp.Error)
-		os.Exit(1)
-	}
-
-	hostname := resp.Data["hostname"]
-	if hostname == "" {
-		hostname = "<server>"
-	}
-	sshPort := resp.Data["ssh_port"]
-	if sshPort == "" {
-		sshPort = "2222"
-	}
-	user := resp.Data["user"]
-
 	fmt.Printf("To access port %d from your machine, run:\n\n", port)
-	fmt.Printf("  ssh -p %s -L %d:localhost:%d -N %s@%s\n\n", sshPort, port, port, user, hostname)
+	fmt.Printf("  ssh -p 2222 -L %d:localhost:%d -N hop@<server>\n\n", port, port)
 	fmt.Printf("Then open http://localhost:%d\n", port)
 }
 
