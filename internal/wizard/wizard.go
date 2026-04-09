@@ -91,7 +91,7 @@ func RunWizard(defaults users.Profile, in io.Reader, out io.Writer, width, heigh
 				Options(toolOptions...).
 				Value(&p.Tools.Extras),
 		),
-	).WithInput(in).WithOutput(out).WithWidth(width).WithHeight(height)
+	).WithInput(in).WithOutput(out).WithWidth(width).WithHeight(height).WithAccessible(true)
 
 	if err := form.Run(); err != nil {
 		return defaults, fmt.Errorf("wizard: %w", err)
