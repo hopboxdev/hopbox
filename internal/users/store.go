@@ -108,7 +108,11 @@ func (s *Store) HomePath(fp string) string {
 	return filepath.Join(s.dir, fp, "home")
 }
 
-// FormatFingerprint converts "SHA256:aa:bb:cc:dd" to "SHA256_aa_bb_cc_dd".
+// FormatFingerprint converts an SSH fingerprint to a filesystem-safe directory name.
+// Replaces colons with underscores and slashes with dashes (base64 fingerprints contain /).
 func FormatFingerprint(raw string) string {
-	return strings.ReplaceAll(raw, ":", "_")
+	s := strings.ReplaceAll(raw, ":", "_")
+	s = strings.ReplaceAll(s, "/", "-")
+	s = strings.ReplaceAll(s, "+", "-")
+	return s
 }

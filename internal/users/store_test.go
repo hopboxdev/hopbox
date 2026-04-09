@@ -3,6 +3,7 @@ package users
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -68,9 +69,24 @@ func TestUsernameUniqueness(t *testing.T) {
 }
 
 func TestFingerprintFormat(t *testing.T) {
-	fp := FormatFingerprint("SHA256:aa:bb:cc:dd")
-	if fp != "SHA256_aa_bb_cc_dd" {
-		t.Errorf("got %q, want %q", fp, "SHA256_aa_bb_cc_dd")
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"SHA256:aa:bb:cc:dd", "SHA256_aa_bb_cc_dd"},
+		{"SHA256:1oqjkkSmu/CY8iEziTJSGfY0ii66r0DKrv81SKH7vpE", "SHA256_1oqjkkSmu-CY8iEziTJSGfY0ii66r0DKrv81SKH7vpE"},
+		{"SHA256:abc+def/ghi", "SHA256_abc-def-ghi"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := FormatFingerprint(tt.input)
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+			if strings.Contains(got, "/") {
+				t.Errorf("fingerprint contains /: %q", got)
+			}
+		})
 	}
 }
 
