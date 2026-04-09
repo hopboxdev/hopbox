@@ -34,15 +34,16 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 		nvimArch = "arm64"
 	}
 
-	b.WriteString(fmt.Sprintf("FROM %s\n", baseTag))
+	fmt.Fprintf(&b, "FROM %s\n\nUSER root\n\n", baseTag)
 
 	// Multiplexer
 	switch p.Multiplexer.Tool {
 	case "zellij":
-		b.WriteString(fmt.Sprintf(
-			"RUN curl -fsSL https://github.com/zellij-org/zellij/releases/latest/download/zellij-%s-unknown-linux-musl.tar.gz | tar -xz -C /usr/local/bin/\n",
+		fmt.Fprintf(&b,
+			"RUN ZELLIJ_VERSION=$(curl -s https://api.github.com/repos/zellij-org/zellij/releases/latest | grep tag_name | cut -d '\"' -f4 | tr -d 'v') && "+
+				"curl -fsSL \"https://github.com/zellij-org/zellij/releases/download/v${ZELLIJ_VERSION}/zellij-%s-unknown-linux-musl.tar.gz\" | tar -xz -C /usr/local/bin/\n",
 			linuxArch,
-		))
+		)
 	case "tmux":
 		b.WriteString("RUN apt-get update && apt-get install -y tmux && rm -rf /var/lib/apt/lists/*\n")
 	}
@@ -114,7 +115,9 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 		}
 	}
 
-	// Runtimes (run as dev user with mise)
+	// Switch to dev user for runtime installs via mise
+	b.WriteString("\nUSER dev\nWORKDIR /home/dev\n\n")
+
 	type rt struct {
 		name    string
 		version string
@@ -127,12 +130,12 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 	}
 	for _, r := range runtimes {
 		if r.version != "" && r.version != "none" {
-			b.WriteString(fmt.Sprintf(
-				"RUN --mount=type=cache,target=/home/dev/.local/share/mise su dev -c 'mise install %s@%s && mise use --global %s@%s'\n",
-				r.name, r.version, r.name, r.version,
-			))
+			fmt.Fprintf(&b, "RUN mise install %s@%s && mise use --global %s@%s\n",
+				r.name, r.version, r.name, r.version)
 		}
 	}
+
+	b.WriteString("\nCMD [\"sleep\", \"infinity\"]\n")
 
 	return b.String()
 }
