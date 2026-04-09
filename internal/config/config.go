@@ -8,11 +8,19 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+type ResourcesConfig struct {
+	CPUCores  int   `toml:"cpu_cores"`
+	MemoryGB  int   `toml:"memory_gb"`
+	PidsLimit int64 `toml:"pids_limit"`
+}
+
 type Config struct {
-	Port             int    `toml:"port"`
-	DataDir          string `toml:"data_dir"`
-	HostKeyPath      string `toml:"host_key_path"`
-	OpenRegistration bool   `toml:"open_registration"`
+	Port             int             `toml:"port"`
+	DataDir          string          `toml:"data_dir"`
+	HostKeyPath      string          `toml:"host_key_path"`
+	OpenRegistration bool            `toml:"open_registration"`
+	IdleTimeoutHours int             `toml:"idle_timeout_hours"`
+	Resources        ResourcesConfig `toml:"resources"`
 }
 
 func defaults() Config {
@@ -21,6 +29,12 @@ func defaults() Config {
 		DataDir:          "./data",
 		HostKeyPath:      "",
 		OpenRegistration: true,
+		IdleTimeoutHours: 24,
+		Resources: ResourcesConfig{
+			CPUCores:  2,
+			MemoryGB:  4,
+			PidsLimit: 512,
+		},
 	}
 }
 

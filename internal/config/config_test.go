@@ -64,3 +64,55 @@ func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 		t.Errorf("expected default port, got %d", cfg.Port)
 	}
 }
+
+func TestLoadResourceDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.IdleTimeoutHours != 24 {
+		t.Errorf("idle timeout: got %d, want 24", cfg.IdleTimeoutHours)
+	}
+	if cfg.Resources.CPUCores != 2 {
+		t.Errorf("cpu cores: got %d, want 2", cfg.Resources.CPUCores)
+	}
+	if cfg.Resources.MemoryGB != 4 {
+		t.Errorf("memory gb: got %d, want 4", cfg.Resources.MemoryGB)
+	}
+	if cfg.Resources.PidsLimit != 512 {
+		t.Errorf("pids limit: got %d, want 512", cfg.Resources.PidsLimit)
+	}
+}
+
+func TestLoadResourcesFromFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	err := os.WriteFile(path, []byte(`
+port = 2222
+idle_timeout_hours = 12
+
+[resources]
+cpu_cores = 4
+memory_gb = 8
+pids_limit = 1024
+`), 0644)
+	if err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.IdleTimeoutHours != 12 {
+		t.Errorf("idle timeout: got %d, want 12", cfg.IdleTimeoutHours)
+	}
+	if cfg.Resources.CPUCores != 4 {
+		t.Errorf("cpu cores: got %d, want 4", cfg.Resources.CPUCores)
+	}
+	if cfg.Resources.MemoryGB != 8 {
+		t.Errorf("memory gb: got %d, want 8", cfg.Resources.MemoryGB)
+	}
+	if cfg.Resources.PidsLimit != 1024 {
+		t.Errorf("pids limit: got %d, want 1024", cfg.Resources.PidsLimit)
+	}
+}
