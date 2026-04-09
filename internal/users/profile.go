@@ -48,8 +48,8 @@ func DefaultProfile() Profile {
 		Editor:      EditorConfig{Tool: "neovim"},
 		Shell:       ShellConfig{Tool: "bash"},
 		Runtimes: RuntimesConfig{
-			Node:   "lts",
-			Python: "3.12",
+			Node:   "none",
+			Python: "none",
 			Go:     "none",
 			Rust:   "none",
 		},

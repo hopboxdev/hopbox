@@ -17,11 +17,11 @@ func TestDefaultProfile(t *testing.T) {
 	if p.Shell.Tool != "bash" {
 		t.Errorf("shell: got %q, want %q", p.Shell.Tool, "bash")
 	}
-	if p.Runtimes.Node != "lts" {
-		t.Errorf("node: got %q, want %q", p.Runtimes.Node, "lts")
+	if p.Runtimes.Node != "none" {
+		t.Errorf("node: got %q, want %q", p.Runtimes.Node, "none")
 	}
-	if p.Runtimes.Python != "3.12" {
-		t.Errorf("python: got %q, want %q", p.Runtimes.Python, "3.12")
+	if p.Runtimes.Python != "none" {
+		t.Errorf("python: got %q, want %q", p.Runtimes.Python, "none")
 	}
 	if p.Runtimes.Go != "none" {
 		t.Errorf("go: got %q, want %q", p.Runtimes.Go, "none")

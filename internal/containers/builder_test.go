@@ -25,17 +25,9 @@ func TestGenerateDockerfile(t *testing.T) {
 	if strings.Contains(df, "apt-get install -y zsh") {
 		t.Error("should not install zsh when shell is bash")
 	}
-	if !strings.Contains(df, "mise install node@lts") {
-		t.Error("should install node lts")
-	}
-	if !strings.Contains(df, "mise install python@3.12") {
-		t.Error("should install python 3.12")
-	}
-	if strings.Contains(df, "mise install go") {
-		t.Error("should not install go when set to none")
-	}
-	if strings.Contains(df, "mise install rust") {
-		t.Error("should not install rust when set to none")
+	// Default profile has all runtimes set to "none"
+	if strings.Contains(df, "mise install") {
+		t.Error("should not install any runtimes when all set to none")
 	}
 	if !strings.Contains(df, "ripgrep") {
 		t.Error("should install ripgrep")
