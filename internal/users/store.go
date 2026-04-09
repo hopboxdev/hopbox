@@ -38,7 +38,9 @@ func (s *Store) load() {
 		return
 	}
 	for _, e := range entries {
-		if !e.IsDir() {
+		// Use os.Stat (follows symlinks) rather than e.IsDir() to handle symlinked dirs
+		info, err := os.Stat(filepath.Join(s.dir, e.Name()))
+		if err != nil || !info.IsDir() {
 			continue
 		}
 		fp := e.Name()
@@ -139,6 +141,35 @@ func (s *Store) Delete(fp string) error {
 	}
 
 	delete(s.users, fp)
+	return nil
+}
+
+// LinkKey creates a symlink so that newFP resolves to the same user as originalFP.
+// After linking, both fingerprints will return the same User from LookupByFingerprint.
+func (s *Store) LinkKey(newFP, originalFP string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Verify the original fingerprint exists
+	if _, ok := s.users[originalFP]; !ok {
+		return fmt.Errorf("original fingerprint not found: %s", originalFP)
+	}
+
+	newDir := filepath.Join(s.dir, newFP)
+
+	// Check the new fingerprint dir doesn't already exist
+	if _, err := os.Lstat(newDir); err == nil {
+		return fmt.Errorf("fingerprint directory already exists: %s", newFP)
+	}
+
+	// Create the symlink: newFP -> originalFP (relative so it works if data dir moves)
+	if err := os.Symlink(originalFP, newDir); err != nil {
+		return fmt.Errorf("create symlink: %w", err)
+	}
+
+	// Update the in-memory map for the new fingerprint
+	s.users[newFP] = s.users[originalFP]
+
 	return nil
 }
 

@@ -94,3 +94,118 @@ func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
 }
+
+func TestLinkKey_BothFingerprintsResolve(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+
+	// Create a user
+	originalFP := "SHA256_original"
+	user := User{
+		Username:     "testuser",
+		KeyType:      "ssh-ed25519",
+		RegisteredAt: time.Now().UTC(),
+	}
+	if err := store.Save(originalFP, user); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Link a new key
+	newFP := "SHA256_newkey"
+	if err := store.LinkKey(newFP, originalFP); err != nil {
+		t.Fatalf("LinkKey: %v", err)
+	}
+
+	// Both fingerprints should resolve to the same user
+	u1, ok := store.LookupByFingerprint(originalFP)
+	if !ok {
+		t.Fatal("original fingerprint not found")
+	}
+	u2, ok := store.LookupByFingerprint(newFP)
+	if !ok {
+		t.Fatal("new fingerprint not found after linking")
+	}
+	if u1.Username != u2.Username {
+		t.Fatalf("usernames don't match: %q vs %q", u1.Username, u2.Username)
+	}
+
+	// Verify the symlink exists on disk
+	linkPath := filepath.Join(dir, newFP)
+	fi, err := os.Lstat(linkPath)
+	if err != nil {
+		t.Fatalf("Lstat symlink: %v", err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("expected symlink, got regular file/dir")
+	}
+}
+
+func TestLinkKey_OriginalNotFound(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+
+	err := store.LinkKey("SHA256_new", "SHA256_nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent original fingerprint")
+	}
+}
+
+func TestLinkKey_NewAlreadyExists(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+
+	fp1 := "SHA256_first"
+	fp2 := "SHA256_second"
+	user := User{
+		Username:     "user1",
+		KeyType:      "ssh-ed25519",
+		RegisteredAt: time.Now().UTC(),
+	}
+	if err := store.Save(fp1, user); err != nil {
+		t.Fatalf("Save fp1: %v", err)
+	}
+
+	user2 := User{
+		Username:     "user2",
+		KeyType:      "ssh-ed25519",
+		RegisteredAt: time.Now().UTC(),
+	}
+	if err := store.Save(fp2, user2); err != nil {
+		t.Fatalf("Save fp2: %v", err)
+	}
+
+	err := store.LinkKey(fp2, fp1)
+	if err == nil {
+		t.Fatal("expected error when new fingerprint dir already exists")
+	}
+}
+
+func TestLinkKey_ReloadPicksUpLink(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+
+	originalFP := "SHA256_orig"
+	user := User{
+		Username:     "reloaduser",
+		KeyType:      "ssh-ed25519",
+		RegisteredAt: time.Now().UTC(),
+	}
+	if err := store.Save(originalFP, user); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	newFP := "SHA256_linked"
+	if err := store.LinkKey(newFP, originalFP); err != nil {
+		t.Fatalf("LinkKey: %v", err)
+	}
+
+	// Create a fresh store from the same directory to test load picks up symlinks
+	store2 := NewStore(dir)
+	u, ok := store2.LookupByFingerprint(newFP)
+	if !ok {
+		t.Fatal("linked fingerprint not found after reload")
+	}
+	if u.Username != "reloaduser" {
+		t.Fatalf("expected username reloaduser, got %q", u.Username)
+	}
+}
