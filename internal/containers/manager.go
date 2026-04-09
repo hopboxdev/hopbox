@@ -311,6 +311,26 @@ func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, en
 	return nil
 }
 
+// Shutdown cleans up all socket servers and cancels all idle timers.
+func (m *Manager) Shutdown() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for id, srv := range m.sockets {
+		log.Printf("[shutdown] closing socket server for container %s", id[:12])
+		srv.Close()
+	}
+	m.sockets = make(map[string]*control.SocketServer)
+
+	for id, s := range m.states {
+		if s.idleTimer != nil {
+			s.idleTimer.Stop()
+			log.Printf("[shutdown] cancelled idle timer for container %s", id[:12])
+		}
+	}
+	m.states = make(map[string]*containerState)
+}
+
 func (m *Manager) ContainerIP(ctx context.Context, containerID string) (string, error) {
 	info, err := m.cli.ContainerInspect(ctx, containerID)
 	if err != nil {

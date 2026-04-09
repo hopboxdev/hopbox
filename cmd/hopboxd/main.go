@@ -81,7 +81,9 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
 		log.Println("shutting down...")
+		mgr.Shutdown()
 		srv.Close()
+		log.Println("shutdown complete")
 	}()
 
 	if err := srv.ListenAndServe(); err != nil {
