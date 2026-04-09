@@ -125,7 +125,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		if len(boxes) == 0 {
 			boxname = "default"
 		} else {
-			chosen, err := picker.RunPicker(boxes, sess)
+			chosen, err := picker.RunPicker(boxes, sess, sess)
 			if err != nil {
 				log.Printf("[session] picker cancelled for user=%s: %v", user.Username, err)
 				sess.Exit(0)
@@ -133,8 +133,6 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			}
 			boxname = chosen
 			log.Printf("[session] user=%s picked box=%s", user.Username, boxname)
-			// Brief pause for bubbletea cancel reader cleanup
-			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
