@@ -159,13 +159,14 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	if term == "" {
 		term = "xterm-256color"
 	}
-	// Fall back to xterm-256color if the container lacks the requested terminfo
+	// Fall back to xterm-256color if the container lacks the requested terminfo.
+	// Set SHELL so zellij spawns bash (not /bin/sh which lacks readline).
 	shellCmd := fmt.Sprintf(
-		`if ! infocmp %s >/dev/null 2>&1; then export TERM=xterm-256color; else export TERM=%s; fi; exec zellij attach --create default`,
+		`if ! infocmp %s >/dev/null 2>&1; then export TERM=xterm-256color; else export TERM=%s; fi; export SHELL=/bin/bash; exec zellij attach --create default`,
 		term, term,
 	)
 	cmd := []string{"bash", "-c", shellCmd}
-	env := []string{fmt.Sprintf("TERM=%s", term)}
+	env := []string{fmt.Sprintf("TERM=%s", term), "SHELL=/bin/bash"}
 	if err := s.manager.Exec(ctx, containerID, cmd, env, sess, sess, resizeCh); err != nil {
 		log.Printf("[session] exec error user=%s: %v", user.Username, err)
 		fmt.Fprintf(sess, "Session error: %v\r\n", err)
