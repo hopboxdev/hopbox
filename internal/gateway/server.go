@@ -71,17 +71,20 @@ func (s *Server) authHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 	ctx.SetValue("fingerprint", fp)
 	ctx.SetValue("key_type", key.Type())
 
-	_, known := s.store.LookupByFingerprint(fp)
+	user, known := s.store.LookupByFingerprint(fp)
 	if known {
+		log.Printf("[auth] user=%s key=%s addr=%s", user.Username, key.Type(), ctx.RemoteAddr())
 		ctx.SetValue("needs_registration", false)
 		return true
 	}
 
 	if s.cfg.OpenRegistration {
+		log.Printf("[auth] new key addr=%s type=%s — starting registration", ctx.RemoteAddr(), key.Type())
 		ctx.SetValue("needs_registration", true)
 		return true
 	}
 
+	log.Printf("[auth] rejected unknown key addr=%s (registration closed)", ctx.RemoteAddr())
 	return false
 }
 
@@ -95,6 +98,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	if needsReg {
 		username, err := users.RunRegistration(s.store, sess, sess)
 		if err != nil {
+			log.Printf("[session] registration failed addr=%s: %v", sess.RemoteAddr(), err)
 			fmt.Fprintf(sess, "Registration failed: %v\r\n", err)
 			return
 		}
@@ -105,29 +109,38 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			RegisteredAt: time.Now().UTC(),
 		}
 		if err := s.store.Save(fp, u); err != nil {
+			log.Printf("[session] save user failed: %v", err)
 			fmt.Fprintf(sess, "Failed to save user: %v\r\n", err)
 			return
 		}
 
+		log.Printf("[session] registered user=%s fp=%s", username, fp[:20])
 		fmt.Fprintf(sess, "Welcome, %s! Setting up your dev environment...\r\n", username)
 	}
 
 	user, ok := s.store.LookupByFingerprint(fp)
 	if !ok {
+		log.Printf("[session] user not found for fp=%s", fp[:20])
 		fmt.Fprintf(sess, "User not found\r\n")
 		return
 	}
 
+	log.Printf("[session] connect user=%s box=%s", user.Username, boxname)
+
 	homePath := s.store.HomePath(fp)
 	containerID, err := s.manager.EnsureRunning(ctx, user.Username, boxname, s.imageTag, homePath)
 	if err != nil {
+		log.Printf("[session] container failed user=%s box=%s: %v", user.Username, boxname, err)
 		fmt.Fprintf(sess, "Failed to start container: %v\r\n", err)
 		return
 	}
 	ctx.SetValue("container_id", containerID)
 
+	log.Printf("[session] attached user=%s box=%s container=%s", user.Username, boxname, containerID[:12])
+
 	ptyReq, winCh, isPty := sess.Pty()
 	if !isPty {
+		log.Printf("[session] no PTY user=%s", user.Username)
 		fmt.Fprintf(sess, "PTY required. Use: ssh -t ...\r\n")
 		return
 	}
@@ -144,8 +157,11 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 	cmd := []string{"zellij", "attach", "--create", "default"}
 	if err := s.manager.Exec(ctx, containerID, cmd, sess, sess, resizeCh); err != nil {
+		log.Printf("[session] exec error user=%s: %v", user.Username, err)
 		fmt.Fprintf(sess, "Session error: %v\r\n", err)
 	}
+
+	log.Printf("[session] disconnect user=%s box=%s", user.Username, boxname)
 	sess.Exit(0)
 }
 

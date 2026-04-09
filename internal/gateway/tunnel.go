@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
 
@@ -52,9 +53,12 @@ func DirectTCPIPHandler(mgr *containers.Manager) ssh.ChannelHandler {
 		dest := RewriteDestination(d.DestAddr, containerIP)
 		addr := net.JoinHostPort(dest, fmt.Sprintf("%d", d.DestPort))
 
+		log.Printf("[tunnel] %s:%d → %s (container %s)", d.DestAddr, d.DestPort, addr, containerID[:12])
+
 		var dialer net.Dialer
 		conn2, err := dialer.DialContext(context.Background(), "tcp", addr)
 		if err != nil {
+			log.Printf("[tunnel] dial failed %s: %v", addr, err)
 			newChan.Reject(gossh.ConnectionFailed, fmt.Sprintf("dial %s: %v", addr, err))
 			return
 		}
