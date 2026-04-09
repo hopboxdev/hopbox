@@ -26,6 +26,10 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
+	log.Printf("config: port=%d data_dir=%s registration=%v idle_timeout=%dh resources=[cpu=%d mem=%dGB pids=%d]",
+		cfg.Port, cfg.DataDir, cfg.OpenRegistration, cfg.IdleTimeoutHours,
+		cfg.Resources.CPUCores, cfg.Resources.MemoryGB, cfg.Resources.PidsLimit)
+
 	// Resolve data dir to absolute path (Docker bind mounts require absolute paths)
 	cfg.DataDir, err = filepath.Abs(cfg.DataDir)
 	if err != nil {
