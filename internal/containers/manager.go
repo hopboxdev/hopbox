@@ -5,10 +5,16 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+
+	"github.com/hopboxdev/hopbox/internal/control"
 )
 
 const profileHashLabelKey = "hopbox.profile-hash"
@@ -24,14 +30,19 @@ func ShouldRecreate(containerLabel, wantHash string) bool {
 }
 
 type Manager struct {
-	cli *client.Client
+	cli     *client.Client
+	sockets map[string]*control.SocketServer // containerID -> socket server
+	mu      sync.Mutex
 }
 
 func NewManager(cli *client.Client) *Manager {
-	return &Manager{cli: cli}
+	return &Manager{
+		cli:     cli,
+		sockets: make(map[string]*control.SocketServer),
+	}
 }
 
-func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag, profileHash, homePath string) (string, error) {
+func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag, profileHash, homePath string, info control.BoxInfo) (string, error) {
 	name := ContainerName(username, boxname)
 
 	containers, err := m.cli.ContainerList(ctx, container.ListOptions{
@@ -56,9 +67,36 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 					return "", fmt.Errorf("start container: %w", err)
 				}
 			}
+
+			// Ensure socket server is running for existing container
+			m.mu.Lock()
+			_, hasSocket := m.sockets[c.ID]
+			m.mu.Unlock()
+			if !hasSocket {
+				socketPath := control.SocketPath(name)
+				boxDir := filepath.Dir(homePath)
+				info.ContainerID = c.ID
+				info.StartedAt = time.Unix(c.Created, 0)
+				destroyFn := func() error {
+					return m.DestroyBox(context.Background(), username, boxname, boxDir)
+				}
+				srv, err := control.NewSocketServer(socketPath, info, destroyFn)
+				if err == nil {
+					m.mu.Lock()
+					m.sockets[c.ID] = srv
+					m.mu.Unlock()
+					go srv.Serve()
+				}
+			}
+
 			return c.ID, nil
 		}
 	}
+
+	containerName := ContainerName(username, boxname)
+	socketDir := control.SocketDir(containerName)
+	os.MkdirAll(socketDir, 0755)
+	socketPath := control.SocketPath(containerName)
 
 	cfg := &container.Config{
 		Image:      imageTag,
@@ -68,7 +106,10 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 		Labels:     map[string]string{profileHashLabelKey: profileHash},
 	}
 	hostCfg := &container.HostConfig{
-		Binds: []string{fmt.Sprintf("%s:/home/dev", homePath)},
+		Binds: []string{
+			fmt.Sprintf("%s:/home/dev", homePath),
+			fmt.Sprintf("%s:/var/run/hopbox", socketDir),
+		},
 	}
 
 	log.Printf("[container] creating %s with bind mount %s -> /home/dev", name, homePath)
@@ -82,7 +123,61 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 		return "", fmt.Errorf("start container: %w", err)
 	}
 
+	// Start control socket
+	boxDir := filepath.Dir(homePath)
+	info.ContainerID = resp.ID
+	info.StartedAt = time.Now()
+	destroyFn := func() error {
+		return m.DestroyBox(context.Background(), username, boxname, boxDir)
+	}
+	srv, err := control.NewSocketServer(socketPath, info, destroyFn)
+	if err != nil {
+		log.Printf("[container] failed to create control socket: %v", err)
+	} else {
+		m.mu.Lock()
+		m.sockets[resp.ID] = srv
+		m.mu.Unlock()
+		go srv.Serve()
+	}
+
 	return resp.ID, nil
+}
+
+func (m *Manager) DestroyBox(ctx context.Context, username, boxname, boxDir string) error {
+	name := ContainerName(username, boxname)
+
+	containers, err := m.cli.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: filters.NewArgs(filters.Arg("name", "^/"+name+"$")),
+	})
+	if err != nil {
+		return fmt.Errorf("list containers: %w", err)
+	}
+
+	for _, c := range containers {
+		m.mu.Lock()
+		if srv, ok := m.sockets[c.ID]; ok {
+			srv.Close()
+			delete(m.sockets, c.ID)
+		}
+		m.mu.Unlock()
+
+		_ = m.cli.ContainerStop(ctx, c.ID, container.StopOptions{})
+		if err := m.cli.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true}); err != nil {
+			return fmt.Errorf("remove container: %w", err)
+		}
+	}
+
+	// Clean up socket directory
+	socketDir := control.SocketDir(name)
+	os.RemoveAll(socketDir)
+
+	// Delete box directory
+	if err := os.RemoveAll(boxDir); err != nil {
+		return fmt.Errorf("remove box dir: %w", err)
+	}
+
+	return nil
 }
 
 func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, env []string, stdin io.Reader, stdout io.Writer, resizeCh <-chan [2]uint) error {
@@ -150,4 +245,23 @@ func (m *Manager) ContainerIP(ctx context.Context, containerID string) (string, 
 		return "", fmt.Errorf("container %s has no IP address", containerID)
 	}
 	return ip, nil
+}
+
+// ListBoxes returns the names of all box directories under the given user directory.
+func ListBoxes(userDir string) ([]string, error) {
+	boxesDir := filepath.Join(userDir, "boxes")
+	entries, err := os.ReadDir(boxesDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var boxes []string
+	for _, e := range entries {
+		if e.IsDir() {
+			boxes = append(boxes, e.Name())
+		}
+	}
+	return boxes, nil
 }

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -86,7 +87,12 @@ func (s *SocketServer) Close() {
 	os.Remove(s.path)
 }
 
+// SocketDir returns the host directory that holds the control socket for a container.
+func SocketDir(containerName string) string {
+	return "/tmp/hopbox-" + containerName
+}
+
 // SocketPath returns the path of the Unix socket on the host for a container.
 func SocketPath(containerName string) string {
-	return "/tmp/hopbox-" + containerName + ".sock"
+	return filepath.Join(SocketDir(containerName), "control.sock")
 }

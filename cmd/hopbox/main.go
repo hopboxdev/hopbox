@@ -10,7 +10,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/control"
 )
 
-const socketPath = "/var/run/hopbox.sock"
+const socketPath = "/var/run/hopbox/control.sock"
 
 type CLI struct {
 	Status  StatusCmd  `cmd:"" help:"Show box info."`
