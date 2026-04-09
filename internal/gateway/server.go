@@ -173,7 +173,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 	// Ensure per-user image exists
 	fmt.Fprintf(sess, "Building environment...\r\n")
-	imageTag, err := containers.EnsureUserImage(ctx, s.dockerCli, user.Username, *profile, s.baseTag)
+	imageTag, err := containers.EnsureUserImage(ctx, s.dockerCli, user.Username, *profile, s.baseTag, sess)
 	if err != nil {
 		log.Printf("[session] build image failed: %v", err)
 		fmt.Fprintf(sess, "Failed to build environment: %v\r\n", err)
