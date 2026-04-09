@@ -146,6 +146,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	if err := s.manager.Exec(ctx, containerID, cmd, sess, sess, resizeCh); err != nil {
 		fmt.Fprintf(sess, "Session error: %v\r\n", err)
 	}
+	sess.Exit(0)
 }
 
 func (s *Server) loadOrGenerateHostKey() (gossh.Signer, error) {

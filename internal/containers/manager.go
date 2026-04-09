@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -99,34 +98,18 @@ func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, st
 		}
 	}()
 
-	var wg sync.WaitGroup
-	var firstErr error
-	var errOnce sync.Once
-
-	setErr := func(err error) {
-		if err != nil {
-			errOnce.Do(func() { firstErr = err })
-		}
-	}
-
-	wg.Add(2)
-
-	// stdin -> container
+	// stdin -> container (background; will unblock when we close attachResp)
 	go func() {
-		defer wg.Done()
-		_, err := io.Copy(attachResp.Conn, stdin)
-		setErr(err)
+		io.Copy(attachResp.Conn, stdin)
 	}()
 
-	// container -> stdout
-	go func() {
-		defer wg.Done()
-		_, err := io.Copy(stdout, attachResp.Reader)
-		setErr(err)
-	}()
+	// container -> stdout (blocks until process exits)
+	io.Copy(stdout, attachResp.Reader)
 
-	wg.Wait()
-	return firstErr
+	// Process exited — close connection to unblock stdin goroutine
+	attachResp.Close()
+
+	return nil
 }
 
 func (m *Manager) ContainerIP(ctx context.Context, containerID string) (string, error) {
