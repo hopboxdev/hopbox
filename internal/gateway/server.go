@@ -99,78 +99,89 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 	_, boxname := ParseUsername(sess.User())
 
-	// Registration flow for new users
-	if needsReg {
-		username, err := users.RunRegistration(s.store, sess)
-		if err != nil {
-			log.Printf("[session] registration failed addr=%s: %v", sess.RemoteAddr(), err)
-			fmt.Fprintf(sess, "Registration failed: %v\r\n", err)
-			return
-		}
-
-		u := users.User{
-			Username:     username,
-			KeyType:      ctx.Value("key_type").(string),
-			RegisteredAt: time.Now().UTC(),
-		}
-		if err := s.store.Save(fp, u); err != nil {
-			log.Printf("[session] save user failed: %v", err)
-			fmt.Fprintf(sess, "Failed to save user: %v\r\n", err)
-			return
-		}
-
-		log.Printf("[session] registered user=%s fp=%s", username, fp[:20])
-		fmt.Fprintf(sess, "Welcome, %s! Setting up your dev environment...\r\n", username)
-	}
-
-	user, ok := s.store.LookupByFingerprint(fp)
-	if !ok {
-		log.Printf("[session] user not found for fp=%s", fp[:20])
-		fmt.Fprintf(sess, "User not found\r\n")
-		return
-	}
-
-	log.Printf("[session] connect user=%s box=%s", user.Username, boxname)
-
-	// Resolve profile
+	// Resolve user and profile
 	userDir := filepath.Join(s.store.Dir(), fp)
-	profile, err := users.ResolveProfile(userDir, boxname)
-	if err != nil {
-		log.Printf("[session] resolve profile failed: %v", err)
-		fmt.Fprintf(sess, "Failed to load profile: %v\r\n", err)
-		return
-	}
+	var user users.User
+	var profile *users.Profile
 
-	// Run wizard if no profile exists
-	if profile == nil {
-		defaults := users.DefaultProfile()
-		// Try loading user-level defaults for pre-filling new box wizard
-		if userDefault, err := users.ResolveProfile(userDir, "__nonexistent__"); err == nil && userDefault != nil {
-			defaults = *userDefault
+	if !needsReg {
+		var ok bool
+		user, ok = s.store.LookupByFingerprint(fp)
+		if !ok {
+			log.Printf("[session] user not found for fp=%s", fp[:20])
+			fmt.Fprintf(sess, "User not found\r\n")
+			return
 		}
 
-		chosen, err := wizard.RunWizard(defaults, sess)
+		log.Printf("[session] connect user=%s box=%s", user.Username, boxname)
+
+		var err error
+		profile, err = users.ResolveProfile(userDir, boxname)
 		if err != nil {
-			log.Printf("[session] wizard cancelled by user: %v", err)
-			fmt.Fprintf(sess, "Setup cancelled.\r\n")
+			log.Printf("[session] resolve profile failed: %v", err)
+			fmt.Fprintf(sess, "Failed to load profile: %v\r\n", err)
+			return
+		}
+	}
+
+	// Run wizard if new user or no profile exists
+	if needsReg || profile == nil {
+		defaults := users.DefaultProfile()
+		if !needsReg {
+			// Pre-fill with user's default for new box
+			if userDefault, err := users.ResolveProfile(userDir, "__nonexistent__"); err == nil && userDefault != nil {
+				defaults = *userDefault
+			}
+		}
+
+		validateUsername := func(name string) error {
+			if err := users.ValidateUsername(name); err != nil {
+				return err
+			}
+			if s.store.IsUsernameTaken(name) {
+				return fmt.Errorf("username %q is already taken", name)
+			}
+			return nil
+		}
+
+		result, err := wizard.RunSetup(defaults, sess, needsReg, validateUsername)
+		if err != nil {
+			log.Printf("[session] setup cancelled: %v", err)
 			sess.Exit(0)
 			return
 		}
 
-		// Save user-level default profile on first registration
+		// Save user if new registration
 		if needsReg {
-			if err := users.SaveProfile(filepath.Join(userDir, "profile.toml"), chosen); err != nil {
+			u := users.User{
+				Username:     result.Username,
+				KeyType:      ctx.Value("key_type").(string),
+				RegisteredAt: time.Now().UTC(),
+			}
+			if err := s.store.Save(fp, u); err != nil {
+				log.Printf("[session] save user failed: %v", err)
+				fmt.Fprintf(sess, "Failed to save user: %v\r\n", err)
+				return
+			}
+			user = u
+			log.Printf("[session] registered user=%s fp=%s", user.Username, fp[:20])
+
+			// Save as user-level default
+			if err := users.SaveProfile(filepath.Join(userDir, "profile.toml"), result.Profile); err != nil {
 				log.Printf("[session] save user profile failed: %v", err)
 			}
 		}
-		// Always save box-level profile
+
+		// Save box-level profile
 		boxDir := filepath.Join(userDir, "boxes", boxname)
 		os.MkdirAll(boxDir, 0755)
-		if err := users.SaveProfile(filepath.Join(boxDir, "profile.toml"), chosen); err != nil {
+		if err := users.SaveProfile(filepath.Join(boxDir, "profile.toml"), result.Profile); err != nil {
 			log.Printf("[session] save box profile failed: %v", err)
 		}
-		profile = &chosen
+		profile = &result.Profile
 	}
+
+	log.Printf("[session] connect user=%s box=%s", user.Username, boxname)
 
 	// Ensure per-user image exists (with loading indicator)
 	fmt.Fprintf(sess, "Building environment...")

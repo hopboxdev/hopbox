@@ -14,7 +14,8 @@ import (
 type step int
 
 const (
-	stepMux step = iota
+	stepUsername step = iota
+	stepMux
 	stepEditor
 	stepShell
 	stepNode
@@ -25,17 +26,20 @@ const (
 	stepDone
 )
 
-type wizardModel struct {
-	step    step
-	form    *huh.Form
-	profile users.Profile
-	aborted bool
+// Result holds the wizard output.
+type Result struct {
+	Username string // only set if registration was included
+	Profile  users.Profile
 }
 
-func newWizardModel(defaults users.Profile) wizardModel {
-	m := wizardModel{profile: defaults}
-	m.form = m.buildForm(stepMux)
-	return m
+type wizardModel struct {
+	step     step
+	firstStep step
+	form     *huh.Form
+	profile  users.Profile
+	username string
+	validateUsername func(string) error
+	aborted  bool
 }
 
 func (m wizardModel) Init() tea.Cmd {
@@ -43,9 +47,9 @@ func (m wizardModel) Init() tea.Cmd {
 }
 
 func (m wizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Handle back navigation (Esc goes to previous step)
+	// Esc goes back one step
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		if keyMsg.Type == tea.KeyEscape && m.step > stepMux {
+		if keyMsg.Type == tea.KeyEscape && m.step > m.firstStep {
 			m.step--
 			m.form = m.buildForm(m.step)
 			return m, m.form.Init()
@@ -83,6 +87,15 @@ func (m wizardModel) View() string {
 
 func (m wizardModel) buildForm(s step) *huh.Form {
 	switch s {
+	case stepUsername:
+		return huh.NewForm(huh.NewGroup(
+			huh.NewInput().
+				Title("Welcome to Hopbox!").
+				Description("Choose a username for your dev environment.").
+				Placeholder("username").
+				Value(&m.username).
+				Validate(m.validateUsername),
+		))
 	case stepMux:
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
@@ -168,16 +181,13 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 	}
 }
 
-// RunWizard presents the tool selection wizard over the SSH session.
-func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) {
+func runProgram(sess ssh.Session, model tea.Model) (tea.Model, error) {
 	pty, winCh, ok := sess.Pty()
 	if !ok {
-		return defaults, fmt.Errorf("no PTY available")
+		return nil, fmt.Errorf("no PTY available")
 	}
 
-	m := newWizardModel(defaults)
-	opts := bubbletea.MakeOptions(sess)
-	p := tea.NewProgram(m, opts...)
+	p := tea.NewProgram(model, bubbletea.MakeOptions(sess)...)
 
 	go func() {
 		p.Send(tea.WindowSizeMsg{
@@ -206,13 +216,45 @@ func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) 
 
 	result, err := p.Run()
 	close(done)
+	return result, err
+}
+
+// RunSetup runs registration + tool selection as a single tea.Program.
+// If needsRegistration is true, the username step is included.
+func RunSetup(defaults users.Profile, sess ssh.Session, needsRegistration bool, validateUsername func(string) error) (*Result, error) {
+	firstStep := stepMux
+	if needsRegistration {
+		firstStep = stepUsername
+	}
+
+	m := wizardModel{
+		step:            firstStep,
+		firstStep:       firstStep,
+		profile:         defaults,
+		validateUsername: validateUsername,
+	}
+	m.form = m.buildForm(m.step)
+
+	result, err := runProgram(sess, m)
 	if err != nil {
-		return defaults, fmt.Errorf("wizard: %w", err)
+		return nil, fmt.Errorf("setup: %w", err)
 	}
 
 	wm := result.(wizardModel)
 	if wm.aborted {
-		return defaults, fmt.Errorf("wizard cancelled")
+		return nil, fmt.Errorf("setup cancelled")
 	}
-	return wm.profile, nil
+	return &Result{
+		Username: wm.username,
+		Profile:  wm.profile,
+	}, nil
+}
+
+// RunWizard runs just the tool selection wizard (no registration step).
+func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) {
+	result, err := RunSetup(defaults, sess, false, nil)
+	if err != nil {
+		return defaults, err
+	}
+	return result.Profile, nil
 }
