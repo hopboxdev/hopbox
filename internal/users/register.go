@@ -38,7 +38,7 @@ func containsDoubleHyphen(s string) bool {
 
 // RunRegistration presents a TUI form over the SSH session to collect a username.
 func RunRegistration(store *Store, sess ssh.Session) (string, error) {
-	pty, winCh, ok := sess.Pty()
+	pty, _, ok := sess.Pty()
 	if !ok {
 		return "", fmt.Errorf("no PTY available")
 	}
@@ -64,9 +64,10 @@ func RunRegistration(store *Store, sess ssh.Session) (string, error) {
 		),
 	)
 
-	opts := append(bubbletea.MakeOptions(sess), tea.WithAltScreen())
+	opts := bubbletea.MakeOptions(sess)
 	p := tea.NewProgram(form, opts...)
 
+	// Send initial window size only — no resize goroutine needed for a simple input
 	go func() {
 		p.Send(tea.WindowSizeMsg{
 			Width:  pty.Window.Width,
@@ -74,26 +75,7 @@ func RunRegistration(store *Store, sess ssh.Session) (string, error) {
 		})
 	}()
 
-	done := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-done:
-				return
-			case w, ok := <-winCh:
-				if !ok {
-					return
-				}
-				p.Send(tea.WindowSizeMsg{
-					Width:  w.Width,
-					Height: w.Height,
-				})
-			}
-		}
-	}()
-
 	result, err := p.Run()
-	close(done)
 	if err != nil {
 		return "", fmt.Errorf("registration form: %w", err)
 	}

@@ -176,7 +176,7 @@ func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) 
 	}
 
 	m := newWizardModel(defaults)
-	opts := append(bubbletea.MakeOptions(sess), tea.WithAltScreen())
+	opts := bubbletea.MakeOptions(sess)
 	p := tea.NewProgram(m, opts...)
 
 	go func() {
