@@ -1,0 +1,23 @@
+[Unit]
+Description=Hopbox SSH Dev Environment Gateway
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=hopbox
+Group=hopbox
+WorkingDirectory=/opt/hopbox
+ExecStart=/usr/local/bin/hopboxd --config /etc/hopbox/config.toml
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/hopbox /tmp
+ReadOnlyPaths=/opt/hopbox /etc/hopbox
+
+[Install]
+WantedBy=multi-user.target
