@@ -269,6 +269,8 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		return
 	}
 	ctx.SetValue("container_id", containerID)
+	s.manager.SessionConnect(containerID)
+	defer s.manager.SessionDisconnect(containerID)
 
 	log.Printf("[session] attached user=%s box=%s container=%s", user.Username, boxname, containerID[:12])
 

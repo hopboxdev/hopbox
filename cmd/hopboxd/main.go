@@ -63,7 +63,7 @@ func main() {
 	store := users.NewStore(usersDir)
 
 	// Initialize container manager
-	mgr := containers.NewManager(cli)
+	mgr := containers.NewManager(cli, cfg)
 
 	// Start SSH server
 	srv, err := gateway.NewServer(cfg, store, mgr, cli, imageTag)
