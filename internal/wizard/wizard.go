@@ -256,12 +256,3 @@ func RunSetup(defaults users.Profile, sess ssh.Session, needsRegistration bool, 
 		Profile:  data.Profile,
 	}, nil
 }
-
-// RunWizard runs just the tool selection wizard (no registration step).
-func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) {
-	result, err := RunSetup(defaults, sess, false, nil)
-	if err != nil {
-		return defaults, err
-	}
-	return result.Profile, nil
-}

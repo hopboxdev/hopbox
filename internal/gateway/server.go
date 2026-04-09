@@ -174,14 +174,14 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 		// Save box-level profile
 		boxDir := filepath.Join(userDir, "boxes", boxname)
-		os.MkdirAll(boxDir, 0755)
+		if err := os.MkdirAll(boxDir, 0755); err != nil {
+			log.Printf("[session] create box dir failed: %v", err)
+		}
 		if err := users.SaveProfile(filepath.Join(boxDir, "profile.toml"), result.Profile); err != nil {
 			log.Printf("[session] save box profile failed: %v", err)
 		}
 		profile = &result.Profile
 	}
-
-	log.Printf("[session] connect user=%s box=%s", user.Username, boxname)
 
 	// Ensure per-user image exists (with spinner)
 	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -267,6 +267,8 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		muxCmd = "zellij attach --create default"
 	case "tmux":
 		muxCmd = "tmux new-session -As default"
+	default:
+		muxCmd = shellBin
 	}
 
 	shellCmd := fmt.Sprintf(
