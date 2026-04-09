@@ -28,11 +28,11 @@ func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) 
 	if err := runForm(sess,
 		huh.NewSelect[string]().
 			Title("Terminal Multiplexer").
-			Description("Navigate with arrow keys, press enter to select").
 			Options(
 				huh.NewOption("zellij", "zellij"),
 				huh.NewOption("tmux", "tmux"),
 			).
+			Filtering(false).
 			Value(&p.Multiplexer.Tool),
 	); err != nil {
 		return defaults, fmt.Errorf("wizard: %w", err)
@@ -47,6 +47,7 @@ func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) 
 				huh.NewOption("vim", "vim"),
 				huh.NewOption("none", "none"),
 			).
+			Filtering(false).
 			Value(&p.Editor.Tool),
 	); err != nil {
 		return defaults, fmt.Errorf("wizard: %w", err)
@@ -61,6 +62,7 @@ func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) 
 				huh.NewOption("zsh", "zsh"),
 				huh.NewOption("fish", "fish"),
 			).
+			Filtering(false).
 			Value(&p.Shell.Tool),
 	); err != nil {
 		return defaults, fmt.Errorf("wizard: %w", err)
