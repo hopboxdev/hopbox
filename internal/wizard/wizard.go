@@ -14,7 +14,9 @@ import (
 type step int
 
 const (
-	stepUsername step = iota
+	stepChoice   step = iota
+	stepLinkCode
+	stepUsername
 	stepMux
 	stepEditor
 	stepShell
@@ -30,6 +32,8 @@ const (
 type Result struct {
 	Username string // only set if registration was included
 	Profile  users.Profile
+	LinkMode bool   // true if user chose "link to existing account"
+	LinkCode string // the code entered by the user
 }
 
 // wizardData is shared via pointer so huh form Value() bindings persist
@@ -37,6 +41,8 @@ type Result struct {
 type wizardData struct {
 	Profile  users.Profile
 	Username string
+	Choice   string // "create" or "link"
+	LinkCode string
 }
 
 type wizardModel struct {
@@ -57,6 +63,10 @@ func (m wizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		if keyMsg.Type == tea.KeyEscape && m.step > m.firstStep {
 			m.step--
+			// Skip stepLinkCode when going back if choice was "create"
+			if m.step == stepLinkCode && m.data.Choice == "create" {
+				m.step = stepChoice
+			}
 			m.form = m.buildForm(m.step)
 			return m, m.form.Init()
 		}
@@ -73,6 +83,23 @@ func (m wizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.form.State == huh.StateCompleted {
+		// Handle choice-based transitions
+		if m.step == stepChoice {
+			if m.data.Choice == "link" {
+				m.step = stepLinkCode
+			} else {
+				m.step = stepUsername
+			}
+			m.form = m.buildForm(m.step)
+			return m, m.form.Init()
+		}
+
+		if m.step == stepLinkCode {
+			// Link code entered, we're done
+			m.step = stepDone
+			return m, tea.Quit
+		}
+
 		m.step++
 		if m.step >= stepDone {
 			return m, tea.Quit
@@ -93,6 +120,30 @@ func (m wizardModel) View() string {
 
 func (m wizardModel) buildForm(s step) *huh.Form {
 	switch s {
+	case stepChoice:
+		return huh.NewForm(huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Welcome to Hopbox!").
+				Description("Choose how to get started.").
+				Options(
+					huh.NewOption("Create new account", "create"),
+					huh.NewOption("Link to existing account", "link"),
+				).Value(&m.data.Choice),
+		))
+	case stepLinkCode:
+		return huh.NewForm(huh.NewGroup(
+			huh.NewInput().
+				Title("Link Code").
+				Description("Enter the code from `hopbox link` on your other device.").
+				Placeholder("XXXX-XXXX").
+				Value(&m.data.LinkCode).
+				Validate(func(s string) error {
+					if len(s) != 9 || s[4] != '-' {
+						return fmt.Errorf("code must be in XXXX-XXXX format")
+					}
+					return nil
+				}),
+		))
 	case stepUsername:
 		return huh.NewForm(huh.NewGroup(
 			huh.NewInput().
@@ -230,7 +281,7 @@ func runProgram(sess ssh.Session, model tea.Model) (tea.Model, error) {
 func RunSetup(defaults users.Profile, sess ssh.Session, needsRegistration bool, validateUsername func(string) error) (*Result, error) {
 	firstStep := stepMux
 	if needsRegistration {
-		firstStep = stepUsername
+		firstStep = stepChoice
 	}
 
 	data := &wizardData{Profile: defaults}
@@ -254,5 +305,7 @@ func RunSetup(defaults users.Profile, sess ssh.Session, needsRegistration bool, 
 	return &Result{
 		Username: data.Username,
 		Profile:  data.Profile,
+		LinkMode: data.Choice == "link",
+		LinkCode: data.LinkCode,
 	}, nil
 }
