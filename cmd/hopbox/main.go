@@ -14,7 +14,12 @@ const socketPath = "/var/run/hopbox/control.sock"
 
 type CLI struct {
 	Status  StatusCmd  `cmd:"" help:"Show box info."`
+	Expose  ExposeCmd  `cmd:"" help:"Print SSH tunnel instructions for a port."`
 	Destroy DestroyCmd `cmd:"" help:"Destroy this box."`
+}
+
+type ExposeCmd struct {
+	Port int `arg:"" help:"Port to expose."`
 }
 
 type StatusCmd struct {
@@ -29,6 +34,8 @@ func main() {
 	switch ctx.Command() {
 	case "status":
 		doStatus(cli.Status.JSON)
+	case "expose <port>":
+		doExpose(cli.Expose.Port)
 	case "destroy":
 		doDestroy()
 	}
@@ -50,6 +57,32 @@ func sendRequest(req control.Request) (control.Response, error) {
 		return control.Response{}, fmt.Errorf("read response: %w", err)
 	}
 	return resp, nil
+}
+
+func doExpose(port int) {
+	resp, err := sendRequest(control.Request{Command: "status"})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if !resp.OK {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", resp.Error)
+		os.Exit(1)
+	}
+
+	hostname := resp.Data["hostname"]
+	if hostname == "" {
+		hostname = "<server>"
+	}
+	sshPort := resp.Data["ssh_port"]
+	if sshPort == "" {
+		sshPort = "2222"
+	}
+	user := resp.Data["user"]
+
+	fmt.Printf("To access port %d from your machine, run:\n\n", port)
+	fmt.Printf("  ssh -p %s -L %d:localhost:%d -N %s@%s\n\n", sshPort, port, port, user, hostname)
+	fmt.Printf("Then open http://localhost:%d\n", port)
 }
 
 func doStatus(jsonOutput bool) {

@@ -54,7 +54,7 @@ func NewServer(cfg config.Config, store *users.Store, manager *containers.Manage
 		},
 		ChannelHandlers: map[string]ssh.ChannelHandler{
 			"session":      ssh.DefaultSessionHandler,
-			"direct-tcpip": DirectTCPIPHandler(s.manager, s.store, s.dockerCli, s.baseTag),
+			"direct-tcpip": DirectTCPIPHandler(s.manager, s.store, s.dockerCli, s.baseTag, s.cfg.Hostname, s.cfg.Port),
 		},
 	}
 
@@ -261,6 +261,8 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		Username:    user.Username,
 		Shell:       profile.Shell.Tool,
 		Multiplexer: profile.Multiplexer.Tool,
+		Hostname:    s.cfg.Hostname,
+		SSHPort:     s.cfg.Port,
 	}
 	containerID, err := s.manager.EnsureRunning(ctx, user.Username, boxname, imageTag, profileHash, homePath, boxInfo)
 	if err != nil {

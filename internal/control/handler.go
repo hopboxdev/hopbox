@@ -15,6 +15,8 @@ type BoxInfo struct {
 	Multiplexer string
 	ContainerID string
 	StartedAt   time.Time
+	Hostname    string
+	SSHPort     int
 }
 
 // DestroyFunc is called by the destroy handler to clean up the container and box data.
@@ -35,6 +37,11 @@ func HandleRequest(req Request, info BoxInfo, destroyFn DestroyFunc) Response {
 func handleStatus(info BoxInfo) Response {
 	uptime := time.Since(info.StartedAt).Truncate(time.Second).String()
 
+	sshPort := "2222"
+	if info.SSHPort > 0 {
+		sshPort = fmt.Sprintf("%d", info.SSHPort)
+	}
+
 	return Response{
 		OK: true,
 		Data: map[string]string{
@@ -44,6 +51,8 @@ func handleStatus(info BoxInfo) Response {
 			"shell":       info.Shell,
 			"multiplexer": info.Multiplexer,
 			"uptime":      uptime,
+			"hostname":    info.Hostname,
+			"ssh_port":    sshPort,
 		},
 	}
 }

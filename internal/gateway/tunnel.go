@@ -38,7 +38,7 @@ type directTCPIPData struct {
 // resolveContainerID returns the container ID for the current SSH connection.
 // If the session handler already set it, use that. Otherwise (e.g. ssh -N -L),
 // look up the user by fingerprint and ensure their container is running.
-func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *users.Store, dockerCli *client.Client, baseTag string) (string, error) {
+func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *users.Store, dockerCli *client.Client, baseTag string, hostname string, sshPort int) (string, error) {
 	if id, ok := sshCtx.Value("container_id").(string); ok && id != "" {
 		return id, nil
 	}
@@ -79,6 +79,8 @@ func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *user
 	boxInfo := control.BoxInfo{
 		BoxName:  boxname,
 		Username: user.Username,
+		Hostname: hostname,
+		SSHPort:  sshPort,
 	}
 	if profile != nil {
 		boxInfo.Shell = profile.Shell.Tool
@@ -93,7 +95,7 @@ func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *user
 	return containerID, nil
 }
 
-func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, dockerCli *client.Client, baseTag string) ssh.ChannelHandler {
+func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, dockerCli *client.Client, baseTag string, hostname string, sshPort int) ssh.ChannelHandler {
 	return func(srv *ssh.Server, conn *gossh.ServerConn, newChan gossh.NewChannel, sshCtx ssh.Context) {
 		var d directTCPIPData
 		if err := gossh.Unmarshal(newChan.ExtraData(), &d); err != nil {
@@ -101,7 +103,7 @@ func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, dockerCli *
 			return
 		}
 
-		containerID, err := resolveContainerID(sshCtx, mgr, store, dockerCli, baseTag)
+		containerID, err := resolveContainerID(sshCtx, mgr, store, dockerCli, baseTag, hostname, sshPort)
 		if err != nil {
 			log.Printf("[tunnel] resolve container failed: %v", err)
 			newChan.Reject(gossh.ConnectionFailed, fmt.Sprintf("resolve container: %v", err))
