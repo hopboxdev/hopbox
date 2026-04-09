@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"strings"
-	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -58,13 +56,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 
 	log.Printf("[container] creating %s with bind mount %s -> /home/dev", name, homePath)
 
-	// Docker Desktop (macOS) uses VirtioFS; newly created directories may not
-	// be visible to the VM immediately. Retry once after a short delay.
 	resp, err := m.cli.ContainerCreate(ctx, cfg, hostCfg, nil, nil, name)
-	if err != nil && strings.Contains(err.Error(), "bind source path does not exist") {
-		time.Sleep(500 * time.Millisecond)
-		resp, err = m.cli.ContainerCreate(ctx, cfg, hostCfg, nil, nil, name)
-	}
 	if err != nil {
 		return "", fmt.Errorf("create container: %w", err)
 	}
