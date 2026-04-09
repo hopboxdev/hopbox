@@ -13,31 +13,17 @@ RUN existing=$(getent passwd 1000 | cut -d: -f1) && \
     useradd -m -s /bin/bash -u 1000 dev && \
     echo "dev ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/dev
 
-COPY stacks/tools.sh /tmp/stacks/tools.sh
-COPY stacks/runtimes.sh /tmp/stacks/runtimes.sh
+# Install mise (runtime version manager)
+RUN curl https://mise.run | sh \
+    && mv /root/.local/bin/mise /usr/local/bin/mise
 
-RUN bash /tmp/stacks/tools.sh
-RUN bash /tmp/stacks/runtimes.sh
-
-# Clean up
-RUN rm -rf /tmp/stacks
-
-# Install mise runtimes to /opt/mise (outside /home/dev which gets bind-mounted)
+# Set up mise data outside /home/dev (which gets bind-mounted)
 ENV MISE_DATA_DIR=/opt/mise
 ENV MISE_CONFIG_DIR=/opt/mise/config
 RUN mkdir -p /opt/mise/config && chown -R dev:dev /opt/mise
 
-USER dev
-WORKDIR /home/dev
-
-RUN mise install node@lts && mise use --global node@lts \
-    && mise install python@3.12 && mise use --global python@3.12
-
 # Activate mise in all bash sessions
-USER root
 RUN echo 'eval "$(/usr/local/bin/mise activate bash)"' >> /etc/bash.bashrc
-ENV MISE_DATA_DIR=/opt/mise
-ENV MISE_CONFIG_DIR=/opt/mise/config
 
 USER dev
 WORKDIR /home/dev
