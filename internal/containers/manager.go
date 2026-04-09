@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 )
 
@@ -53,14 +53,10 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 		Cmd:        []string{"sleep", "infinity"},
 	}
 	hostCfg := &container.HostConfig{
-		Mounts: []mount.Mount{
-			{
-				Type:   mount.TypeBind,
-				Source: homePath,
-				Target: "/home/dev",
-			},
-		},
+		Binds: []string{fmt.Sprintf("%s:/home/dev", homePath)},
 	}
+
+	log.Printf("[container] creating %s with bind mount %s -> /home/dev", name, homePath)
 
 	// Docker Desktop (macOS) uses VirtioFS; newly created directories may not
 	// be visible to the VM immediately. Retry once after a short delay.
