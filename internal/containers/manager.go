@@ -11,8 +11,16 @@ import (
 	"github.com/docker/docker/client"
 )
 
+const profileHashLabelKey = "hopbox.profile-hash"
+
 func ContainerName(username, boxname string) string {
 	return fmt.Sprintf("hopbox-%s-%s", username, boxname)
+}
+
+// ShouldRecreate returns true if the container's profile-hash label does not
+// match the desired hash, indicating the container needs to be recreated.
+func ShouldRecreate(containerLabel, wantHash string) bool {
+	return containerLabel != wantHash
 }
 
 type Manager struct {
@@ -23,7 +31,7 @@ func NewManager(cli *client.Client) *Manager {
 	return &Manager{cli: cli}
 }
 
-func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag, homePath string) (string, error) {
+func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag, profileHash, homePath string) (string, error) {
 	name := ContainerName(username, boxname)
 
 	containers, err := m.cli.ContainerList(ctx, container.ListOptions{
@@ -36,12 +44,20 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 
 	if len(containers) > 0 {
 		c := containers[0]
-		if c.State != "running" {
-			if err := m.cli.ContainerStart(ctx, c.ID, container.StartOptions{}); err != nil {
-				return "", fmt.Errorf("start container: %w", err)
+		if ShouldRecreate(c.Labels[profileHashLabelKey], profileHash) {
+			log.Printf("[container] profile hash mismatch for %s — removing and recreating", name)
+			_ = m.cli.ContainerStop(ctx, c.ID, container.StopOptions{})
+			if err := m.cli.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true}); err != nil {
+				return "", fmt.Errorf("remove container: %w", err)
 			}
+		} else {
+			if c.State != "running" {
+				if err := m.cli.ContainerStart(ctx, c.ID, container.StartOptions{}); err != nil {
+					return "", fmt.Errorf("start container: %w", err)
+				}
+			}
+			return c.ID, nil
 		}
-		return c.ID, nil
 	}
 
 	cfg := &container.Config{
@@ -49,6 +65,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 		User:       "dev",
 		WorkingDir: "/home/dev",
 		Cmd:        []string{"sleep", "infinity"},
+		Labels:     map[string]string{profileHashLabelKey: profileHash},
 	}
 	hostCfg := &container.HostConfig{
 		Binds: []string{fmt.Sprintf("%s:/home/dev", homePath)},
