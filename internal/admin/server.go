@@ -22,12 +22,20 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
-var templates *template.Template
+var pageTmpl map[string]*template.Template
+
+var funcMap = template.FuncMap{
+	"sub": func(a, b int) int { return a - b },
+}
 
 func init() {
-	templates = template.Must(template.New("").Funcs(template.FuncMap{
-		"sub": func(a, b int) int { return a - b },
-	}).ParseFS(templateFS, "templates/*.html"))
+	pageTmpl = make(map[string]*template.Template)
+	pages := []string{"dashboard.html", "users.html", "boxes.html", "settings.html"}
+	for _, page := range pages {
+		pageTmpl[page] = template.Must(
+			template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/layout.html", "templates/"+page),
+		)
+	}
 }
 
 // AdminServer serves the admin web UI.
@@ -95,8 +103,13 @@ func (s *AdminServer) basicAuth(next http.Handler) http.Handler {
 
 // renderPage renders a full page template with the layout.
 func (s *AdminServer) renderPage(w http.ResponseWriter, name string, data any) {
+	tmpl, ok := pageTmpl[name]
+	if !ok {
+		http.Error(w, "template not found", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := templates.ExecuteTemplate(w, name, data); err != nil {
+	if err := tmpl.ExecuteTemplate(w, "layout", data); err != nil {
 		log.Printf("[admin] template error: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
