@@ -156,7 +156,8 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	}()
 
 	cmd := []string{"zellij", "attach", "--create", "default"}
-	if err := s.manager.Exec(ctx, containerID, cmd, sess, sess, resizeCh); err != nil {
+	env := []string{fmt.Sprintf("TERM=%s", ptyReq.Term)}
+	if err := s.manager.Exec(ctx, containerID, cmd, env, sess, sess, resizeCh); err != nil {
 		log.Printf("[session] exec error user=%s: %v", user.Username, err)
 		fmt.Fprintf(sess, "Session error: %v\r\n", err)
 	}

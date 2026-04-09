@@ -69,9 +69,10 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 	return resp.ID, nil
 }
 
-func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, stdin io.Reader, stdout io.Writer, resizeCh <-chan [2]uint) error {
+func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, env []string, stdin io.Reader, stdout io.Writer, resizeCh <-chan [2]uint) error {
 	execCfg := container.ExecOptions{
 		Cmd:          cmd,
+		Env:          env,
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
