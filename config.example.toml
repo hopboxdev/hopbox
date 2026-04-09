@@ -5,6 +5,9 @@
 # SSH server port
 port = 2222
 
+# Public hostname of this server (used in tunnel instructions)
+hostname = ""
+
 # Data directory for user profiles, box data, and host key
 data_dir = "./data"
 
@@ -22,3 +25,10 @@ idle_timeout_hours = 24
 cpu_cores = 2       # CPU cores (0 = unlimited)
 memory_gb = 4       # RAM in GB (0 = unlimited)
 pids_limit = 512    # Max processes (0 = unlimited)
+
+# Admin web UI
+[admin]
+enabled = false
+port = 8080
+username = "admin"
+password = ""

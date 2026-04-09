@@ -84,6 +84,64 @@ func TestLoadResourceDefaults(t *testing.T) {
 	}
 }
 
+func TestAdminDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Hostname != "" {
+		t.Errorf("expected empty hostname, got %s", cfg.Hostname)
+	}
+	if cfg.Admin.Enabled {
+		t.Error("expected admin to be disabled by default")
+	}
+	if cfg.Admin.Port != 8080 {
+		t.Errorf("expected admin port 8080, got %d", cfg.Admin.Port)
+	}
+	if cfg.Admin.Username != "admin" {
+		t.Errorf("expected admin username 'admin', got %s", cfg.Admin.Username)
+	}
+	if cfg.Admin.Password != "" {
+		t.Errorf("expected empty admin password, got %s", cfg.Admin.Password)
+	}
+}
+
+func TestAdminFromFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	err := os.WriteFile(path, []byte(`
+hostname = "my.server.com"
+
+[admin]
+enabled = true
+port = 9090
+username = "superuser"
+password = "secret"
+`), 0644)
+	if err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Hostname != "my.server.com" {
+		t.Errorf("expected hostname 'my.server.com', got %s", cfg.Hostname)
+	}
+	if !cfg.Admin.Enabled {
+		t.Error("expected admin to be enabled")
+	}
+	if cfg.Admin.Port != 9090 {
+		t.Errorf("expected admin port 9090, got %d", cfg.Admin.Port)
+	}
+	if cfg.Admin.Username != "superuser" {
+		t.Errorf("expected admin username 'superuser', got %s", cfg.Admin.Username)
+	}
+	if cfg.Admin.Password != "secret" {
+		t.Errorf("expected admin password 'secret', got %s", cfg.Admin.Password)
+	}
+}
+
 func TestLoadResourcesFromFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")

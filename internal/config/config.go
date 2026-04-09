@@ -14,18 +14,28 @@ type ResourcesConfig struct {
 	PidsLimit int64 `toml:"pids_limit"`
 }
 
+type AdminConfig struct {
+	Enabled  bool   `toml:"enabled"`
+	Port     int    `toml:"port"`
+	Username string `toml:"username"`
+	Password string `toml:"password"`
+}
+
 type Config struct {
 	Port             int             `toml:"port"`
+	Hostname         string          `toml:"hostname"`
 	DataDir          string          `toml:"data_dir"`
 	HostKeyPath      string          `toml:"host_key_path"`
 	OpenRegistration bool            `toml:"open_registration"`
 	IdleTimeoutHours int             `toml:"idle_timeout_hours"`
 	Resources        ResourcesConfig `toml:"resources"`
+	Admin            AdminConfig     `toml:"admin"`
 }
 
 func defaults() Config {
 	return Config{
 		Port:             2222,
+		Hostname:         "",
 		DataDir:          "./data",
 		HostKeyPath:      "",
 		OpenRegistration: true,
@@ -34,6 +44,12 @@ func defaults() Config {
 			CPUCores:  2,
 			MemoryGB:  4,
 			PidsLimit: 512,
+		},
+		Admin: AdminConfig{
+			Enabled:  false,
+			Port:     8080,
+			Username: "admin",
+			Password: "",
 		},
 	}
 }
