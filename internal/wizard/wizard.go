@@ -20,11 +20,10 @@ func runForm(sess ssh.Session, fields ...huh.Field) error {
 }
 
 // RunWizard presents the tool selection form over the SSH session.
-// Each category is a separate form to avoid rendering issues with multi-group forms over SSH.
 func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) {
 	p := defaults
 
-	// Multiplexer
+	// Core tools (multiplexer, editor, shell)
 	if err := runForm(sess,
 		huh.NewSelect[string]().
 			Title("Terminal Multiplexer").
@@ -33,12 +32,6 @@ func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) 
 				huh.NewOption("tmux", "tmux"),
 			).
 			Value(&p.Multiplexer.Tool),
-	); err != nil {
-		return defaults, fmt.Errorf("wizard: %w", err)
-	}
-
-	// Editor
-	if err := runForm(sess,
 		huh.NewSelect[string]().
 			Title("Editor").
 			Options(
@@ -47,12 +40,6 @@ func RunWizard(defaults users.Profile, sess ssh.Session) (users.Profile, error) 
 				huh.NewOption("none", "none"),
 			).
 			Value(&p.Editor.Tool),
-	); err != nil {
-		return defaults, fmt.Errorf("wizard: %w", err)
-	}
-
-	// Shell
-	if err := runForm(sess,
 		huh.NewSelect[string]().
 			Title("Shell").
 			Options(
