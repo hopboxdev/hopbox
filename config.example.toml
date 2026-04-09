@@ -1,0 +1,24 @@
+# Hopbox Server Configuration
+# Copy to config.toml and modify as needed.
+# All values shown are defaults.
+
+# SSH server port
+port = 2222
+
+# Data directory for user profiles, box data, and host key
+data_dir = "./data"
+
+# Path to SSH host key. Empty = auto-generate to <data_dir>/host_key
+host_key_path = ""
+
+# Allow new users to register via TOFU (Trust On First Use)
+open_registration = true
+
+# Hours of no SSH sessions before a container is auto-stopped (0 = disabled)
+idle_timeout_hours = 24
+
+# Resource limits applied to each container
+[resources]
+cpu_cores = 2       # CPU cores (0 = unlimited)
+memory_gb = 4       # RAM in GB (0 = unlimited)
+pids_limit = 512    # Max processes (0 = unlimited)

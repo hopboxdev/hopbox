@@ -1,4 +1,5 @@
 data/
+config.toml
 /hopboxd
 templates/hopbox
 *.exe
