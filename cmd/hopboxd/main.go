@@ -66,7 +66,7 @@ func main() {
 	mgr := containers.NewManager(cli)
 
 	// Start SSH server
-	srv, err := gateway.NewServer(cfg, store, mgr, imageTag)
+	srv, err := gateway.NewServer(cfg, store, mgr, cli, imageTag)
 	if err != nil {
 		log.Fatalf("create server: %v", err)
 	}

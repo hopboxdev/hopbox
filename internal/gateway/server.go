@@ -10,28 +10,32 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/docker/docker/client"
 	"github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/hopboxdev/hopbox/internal/config"
 	"github.com/hopboxdev/hopbox/internal/containers"
 	"github.com/hopboxdev/hopbox/internal/users"
+	"github.com/hopboxdev/hopbox/internal/wizard"
 )
 
 type Server struct {
-	cfg      config.Config
-	store    *users.Store
-	manager  *containers.Manager
-	imageTag string
-	sshSrv   *ssh.Server
+	cfg       config.Config
+	store     *users.Store
+	manager   *containers.Manager
+	dockerCli *client.Client
+	baseTag   string
+	sshSrv    *ssh.Server
 }
 
-func NewServer(cfg config.Config, store *users.Store, manager *containers.Manager, imageTag string) (*Server, error) {
+func NewServer(cfg config.Config, store *users.Store, manager *containers.Manager, dockerCli *client.Client, baseTag string) (*Server, error) {
 	s := &Server{
-		cfg:      cfg,
-		store:    store,
-		manager:  manager,
-		imageTag: imageTag,
+		cfg:       cfg,
+		store:     store,
+		manager:   manager,
+		dockerCli: dockerCli,
+		baseTag:   baseTag,
 	}
 
 	hostKey, err := s.loadOrGenerateHostKey()
@@ -48,7 +52,7 @@ func NewServer(cfg config.Config, store *users.Store, manager *containers.Manage
 		},
 		ChannelHandlers: map[string]ssh.ChannelHandler{
 			"session":      ssh.DefaultSessionHandler,
-			"direct-tcpip": DirectTCPIPHandler(s.manager, s.store, s.imageTag),
+			"direct-tcpip": DirectTCPIPHandler(s.manager, s.store, s.dockerCli, s.baseTag),
 		},
 	}
 
@@ -95,6 +99,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 	_, boxname := ParseUsername(sess.User())
 
+	// Registration flow for new users
 	if needsReg {
 		username, err := users.RunRegistration(s.store, sess, sess)
 		if err != nil {
@@ -127,13 +132,64 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 	log.Printf("[session] connect user=%s box=%s", user.Username, boxname)
 
+	// Resolve profile
+	userDir := filepath.Join(s.store.Dir(), fp)
+	profile, err := users.ResolveProfile(userDir, boxname)
+	if err != nil {
+		log.Printf("[session] resolve profile failed: %v", err)
+		fmt.Fprintf(sess, "Failed to load profile: %v\r\n", err)
+		return
+	}
+
+	// Run wizard if no profile exists
+	if profile == nil {
+		defaults := users.DefaultProfile()
+		// Try loading user-level defaults for pre-filling new box wizard
+		if userDefault, err := users.ResolveProfile(userDir, "__nonexistent__"); err == nil && userDefault != nil {
+			defaults = *userDefault
+		}
+
+		chosen, err := wizard.RunWizard(defaults, sess, sess)
+		if err != nil {
+			log.Printf("[session] wizard failed: %v", err)
+			fmt.Fprintf(sess, "Setup cancelled, using defaults.\r\n")
+			chosen = defaults
+		}
+
+		// Save user-level default profile on first registration
+		if needsReg {
+			if err := users.SaveProfile(filepath.Join(userDir, "profile.toml"), chosen); err != nil {
+				log.Printf("[session] save user profile failed: %v", err)
+			}
+		}
+		// Always save box-level profile
+		boxDir := filepath.Join(userDir, "boxes", boxname)
+		os.MkdirAll(boxDir, 0755)
+		if err := users.SaveProfile(filepath.Join(boxDir, "profile.toml"), chosen); err != nil {
+			log.Printf("[session] save box profile failed: %v", err)
+		}
+		profile = &chosen
+	}
+
+	// Ensure per-user image exists
+	fmt.Fprintf(sess, "Building environment...\r\n")
+	imageTag, err := containers.EnsureUserImage(ctx, s.dockerCli, user.Username, *profile, s.baseTag)
+	if err != nil {
+		log.Printf("[session] build image failed: %v", err)
+		fmt.Fprintf(sess, "Failed to build environment: %v\r\n", err)
+		return
+	}
+
+	// Container lifecycle
 	homePath := s.store.HomePath(fp, boxname)
 	if err := os.MkdirAll(homePath, 0755); err != nil {
 		log.Printf("[session] create home dir failed: %v", err)
 		fmt.Fprintf(sess, "Failed to create home directory: %v\r\n", err)
 		return
 	}
-	containerID, err := s.manager.EnsureRunning(ctx, user.Username, boxname, s.imageTag, homePath)
+
+	profileHash := profile.Hash()
+	containerID, err := s.manager.EnsureRunning(ctx, user.Username, boxname, imageTag, profileHash, homePath)
 	if err != nil {
 		log.Printf("[session] container failed user=%s box=%s: %v", user.Username, boxname, err)
 		fmt.Fprintf(sess, "Failed to start container: %v\r\n", err)
@@ -143,6 +199,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 	log.Printf("[session] attached user=%s box=%s container=%s", user.Username, boxname, containerID[:12])
 
+	// PTY setup
 	ptyReq, winCh, isPty := sess.Pty()
 	if !isPty {
 		log.Printf("[session] no PTY user=%s", user.Username)
@@ -160,18 +217,35 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		close(resizeCh)
 	}()
 
+	// Adaptive exec based on profile
 	term := ptyReq.Term
 	if term == "" {
 		term = "xterm-256color"
 	}
-	// Fall back to xterm-256color if the container lacks the requested terminfo.
-	// Set SHELL so zellij spawns bash (not /bin/sh which lacks readline).
+
+	shellBin := "/bin/bash"
+	switch profile.Shell.Tool {
+	case "zsh":
+		shellBin = "/usr/bin/zsh"
+	case "fish":
+		shellBin = "/usr/bin/fish"
+	}
+
+	var muxCmd string
+	switch profile.Multiplexer.Tool {
+	case "zellij":
+		muxCmd = "zellij attach --create default"
+	case "tmux":
+		muxCmd = "tmux new-session -As default"
+	}
+
 	shellCmd := fmt.Sprintf(
-		`if ! infocmp %s >/dev/null 2>&1; then export TERM=xterm-256color; else export TERM=%s; fi; export SHELL=/bin/bash; exec zellij attach --create default`,
-		term, term,
+		`if ! infocmp %s >/dev/null 2>&1; then export TERM=xterm-256color; else export TERM=%s; fi; export SHELL=%s; exec %s`,
+		term, term, shellBin, muxCmd,
 	)
 	cmd := []string{"bash", "-c", shellCmd}
-	env := []string{fmt.Sprintf("TERM=%s", term), "SHELL=/bin/bash"}
+	env := []string{fmt.Sprintf("TERM=%s", term), fmt.Sprintf("SHELL=%s", shellBin)}
+
 	if err := s.manager.Exec(ctx, containerID, cmd, env, sess, sess, resizeCh); err != nil {
 		log.Printf("[session] exec error user=%s: %v", user.Username, err)
 		fmt.Fprintf(sess, "Session error: %v\r\n", err)

@@ -103,6 +103,11 @@ func (s *Store) Save(fp string, u User) error {
 	return nil
 }
 
+// Dir returns the base directory of the store.
+func (s *Store) Dir() string {
+	return s.dir
+}
+
 // HomePath returns the path to the user's bind-mounted home directory for a given boxname.
 func (s *Store) HomePath(fp, boxname string) string {
 	return filepath.Join(s.dir, fp, "boxes", boxname, "home")
