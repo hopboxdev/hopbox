@@ -2,10 +2,8 @@
 
 {{define "content"}}
 <div>
-    <div class="flex items-center gap-3">
-        <a href="/users" class="text-sm text-gray-500 hover:text-gray-700">&larr; Users</a>
-        <h1 class="text-2xl font-bold text-gray-900">{{.Username}}'s Boxes</h1>
-    </div>
+    <a href="/users" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Users</a>
+    <h1 class="mt-2 text-2xl font-bold text-gray-900">{{.Username}}'s Boxes</h1>
     <p class="mt-1 text-sm text-gray-500">Manage boxes and containers for this user.</p>
 
     <div class="mt-6 overflow-hidden rounded-lg bg-white shadow">
