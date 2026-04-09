@@ -16,6 +16,8 @@ import (
 
 	"github.com/hopboxdev/hopbox/internal/config"
 	"github.com/hopboxdev/hopbox/internal/containers"
+	"github.com/hopboxdev/hopbox/internal/control"
+	"github.com/hopboxdev/hopbox/internal/picker"
 	"github.com/hopboxdev/hopbox/internal/users"
 	"github.com/hopboxdev/hopbox/internal/wizard"
 )
@@ -98,6 +100,41 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	needsReg := ctx.Value("needs_registration").(bool)
 
 	_, boxname := ParseUsername(sess.User())
+
+	// Handle picker request (hop+?)
+	if boxname == "?" {
+		if needsReg {
+			fmt.Fprintf(sess, "Please register first: ssh hop@server\r\n")
+			sess.Exit(1)
+			return
+		}
+
+		user, ok := s.store.LookupByFingerprint(fp)
+		if !ok {
+			fmt.Fprintf(sess, "User not found\r\n")
+			return
+		}
+
+		userDir := filepath.Join(s.store.Dir(), fp)
+		boxes, err := containers.ListBoxes(userDir)
+		if err != nil {
+			fmt.Fprintf(sess, "Failed to list boxes: %v\r\n", err)
+			return
+		}
+
+		if len(boxes) == 0 {
+			boxname = "default"
+		} else {
+			chosen, err := picker.RunPicker(boxes, sess)
+			if err != nil {
+				log.Printf("[session] picker cancelled for user=%s: %v", user.Username, err)
+				sess.Exit(0)
+				return
+			}
+			boxname = chosen
+			log.Printf("[session] user=%s picked box=%s", user.Username, boxname)
+		}
+	}
 
 	// Resolve user and profile
 	userDir := filepath.Join(s.store.Dir(), fp)
@@ -219,7 +256,13 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	}
 
 	profileHash := profile.Hash()
-	containerID, err := s.manager.EnsureRunning(ctx, user.Username, boxname, imageTag, profileHash, homePath)
+	boxInfo := control.BoxInfo{
+		BoxName:     boxname,
+		Username:    user.Username,
+		Shell:       profile.Shell.Tool,
+		Multiplexer: profile.Multiplexer.Tool,
+	}
+	containerID, err := s.manager.EnsureRunning(ctx, user.Username, boxname, imageTag, profileHash, homePath, boxInfo)
 	if err != nil {
 		log.Printf("[session] container failed user=%s box=%s: %v", user.Username, boxname, err)
 		fmt.Fprintf(sess, "Failed to start container: %v\r\n", err)

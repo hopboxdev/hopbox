@@ -15,6 +15,7 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/hopboxdev/hopbox/internal/containers"
+	"github.com/hopboxdev/hopbox/internal/control"
 	"github.com/hopboxdev/hopbox/internal/users"
 )
 
@@ -75,7 +76,15 @@ func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *user
 	}
 
 	profileHash := profile.Hash()
-	containerID, err := mgr.EnsureRunning(context.Background(), user.Username, boxname, imageTag, profileHash, homePath)
+	boxInfo := control.BoxInfo{
+		BoxName:  boxname,
+		Username: user.Username,
+	}
+	if profile != nil {
+		boxInfo.Shell = profile.Shell.Tool
+		boxInfo.Multiplexer = profile.Multiplexer.Tool
+	}
+	containerID, err := mgr.EnsureRunning(context.Background(), user.Username, boxname, imageTag, profileHash, homePath, boxInfo)
 	if err != nil {
 		return "", err
 	}
