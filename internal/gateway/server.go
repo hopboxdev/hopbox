@@ -127,7 +127,12 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 	log.Printf("[session] connect user=%s box=%s", user.Username, boxname)
 
-	homePath := s.store.HomePath(fp)
+	homePath := s.store.HomePath(fp, boxname)
+	if err := os.MkdirAll(homePath, 0755); err != nil {
+		log.Printf("[session] create home dir failed: %v", err)
+		fmt.Fprintf(sess, "Failed to create home directory: %v\r\n", err)
+		return
+	}
 	containerID, err := s.manager.EnsureRunning(ctx, user.Username, boxname, s.imageTag, homePath)
 	if err != nil {
 		log.Printf("[session] container failed user=%s box=%s: %v", user.Username, boxname, err)

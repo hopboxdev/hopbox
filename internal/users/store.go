@@ -103,9 +103,9 @@ func (s *Store) Save(fp string, u User) error {
 	return nil
 }
 
-// HomePath returns the path to the user's bind-mounted home directory.
-func (s *Store) HomePath(fp string) string {
-	return filepath.Join(s.dir, fp, "home")
+// HomePath returns the path to the user's bind-mounted home directory for a given boxname.
+func (s *Store) HomePath(fp, boxname string) string {
+	return filepath.Join(s.dir, fp, "boxes", boxname, "home")
 }
 
 // FormatFingerprint converts an SSH fingerprint to a filesystem-safe directory name.
