@@ -77,10 +77,11 @@ func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *user
 
 	profileHash := profile.Hash()
 	boxInfo := control.BoxInfo{
-		BoxName:  boxname,
-		Username: user.Username,
-		Hostname: hostname,
-		SSHPort:  sshPort,
+		BoxName:     boxname,
+		Username:    user.Username,
+		Hostname:    hostname,
+		SSHPort:     sshPort,
+		Fingerprint: fp,
 	}
 	if profile != nil {
 		boxInfo.Shell = profile.Shell.Tool

@@ -28,16 +28,18 @@ type Server struct {
 	manager   *containers.Manager
 	dockerCli *client.Client
 	baseTag   string
+	linkStore *control.LinkStore
 	sshSrv    *ssh.Server
 }
 
-func NewServer(cfg config.Config, store *users.Store, manager *containers.Manager, dockerCli *client.Client, baseTag string) (*Server, error) {
+func NewServer(cfg config.Config, store *users.Store, manager *containers.Manager, dockerCli *client.Client, baseTag string, linkStore *control.LinkStore) (*Server, error) {
 	s := &Server{
 		cfg:       cfg,
 		store:     store,
 		manager:   manager,
 		dockerCli: dockerCli,
 		baseTag:   baseTag,
+		linkStore: linkStore,
 	}
 
 	hostKey, err := s.loadOrGenerateHostKey()
@@ -188,8 +190,18 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			return
 		}
 
-		// Save user if new registration
-		if needsReg {
+		// Handle link mode — user chose to link their key to an existing account
+		if result.LinkMode {
+			linkedUser, linkedBox, linkedProfile, linkErr := s.handleLinkFlow(sess, fp, result.LinkCode)
+			if linkErr != nil {
+				return // error already printed to session
+			}
+			user = linkedUser
+			boxname = linkedBox
+			profile = linkedProfile
+			userDir = filepath.Join(s.store.Dir(), fp)
+		} else if needsReg {
+			// Save user if new registration
 			u := users.User{
 				Username:     result.Username,
 				KeyType:      ctx.Value("key_type").(string),
@@ -207,17 +219,27 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			if err := users.SaveProfile(filepath.Join(userDir, "profile.toml"), result.Profile); err != nil {
 				log.Printf("[session] save user profile failed: %v", err)
 			}
-		}
 
-		// Save box-level profile
-		boxDir := filepath.Join(userDir, "boxes", boxname)
-		if err := os.MkdirAll(boxDir, 0755); err != nil {
-			log.Printf("[session] create box dir failed: %v", err)
+			// Save box-level profile
+			boxDir := filepath.Join(userDir, "boxes", boxname)
+			if err := os.MkdirAll(boxDir, 0755); err != nil {
+				log.Printf("[session] create box dir failed: %v", err)
+			}
+			if err := users.SaveProfile(filepath.Join(boxDir, "profile.toml"), result.Profile); err != nil {
+				log.Printf("[session] save box profile failed: %v", err)
+			}
+			profile = &result.Profile
+		} else {
+			// Existing user, new box — save box-level profile
+			boxDir := filepath.Join(userDir, "boxes", boxname)
+			if err := os.MkdirAll(boxDir, 0755); err != nil {
+				log.Printf("[session] create box dir failed: %v", err)
+			}
+			if err := users.SaveProfile(filepath.Join(boxDir, "profile.toml"), result.Profile); err != nil {
+				log.Printf("[session] save box profile failed: %v", err)
+			}
+			profile = &result.Profile
 		}
-		if err := users.SaveProfile(filepath.Join(boxDir, "profile.toml"), result.Profile); err != nil {
-			log.Printf("[session] save box profile failed: %v", err)
-		}
-		profile = &result.Profile
 	}
 
 	// Ensure per-user image exists (with spinner)
@@ -263,6 +285,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		Multiplexer: profile.Multiplexer.Tool,
 		Hostname:    s.cfg.Hostname,
 		SSHPort:     s.cfg.Port,
+		Fingerprint: fp,
 	}
 	containerID, err := s.manager.EnsureRunning(ctx, user.Username, boxname, imageTag, profileHash, homePath, boxInfo)
 	if err != nil {
@@ -332,6 +355,66 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 	log.Printf("[session] disconnect user=%s box=%s", user.Username, boxname)
 	sess.Exit(0)
+}
+
+func (s *Server) handleLinkFlow(sess ssh.Session, fp, code string) (users.User, string, *users.Profile, error) {
+	originalFP, err := s.linkStore.ValidateCode(code)
+	if err != nil {
+		log.Printf("[session] link code validation failed: %v", err)
+		fmt.Fprintf(sess, "Invalid or expired link code.\r\n")
+		sess.Exit(1)
+		return users.User{}, "", nil, err
+	}
+
+	if err := s.store.LinkKey(fp, originalFP); err != nil {
+		log.Printf("[session] link key failed: %v", err)
+		fmt.Fprintf(sess, "Failed to link key: %v\r\n", err)
+		sess.Exit(1)
+		return users.User{}, "", nil, err
+	}
+
+	user, ok := s.store.LookupByFingerprint(fp)
+	if !ok {
+		fmt.Fprintf(sess, "User not found after linking\r\n")
+		sess.Exit(1)
+		return users.User{}, "", nil, fmt.Errorf("user not found after linking")
+	}
+	log.Printf("[session] linked fp=%s to user=%s", fp[:20], user.Username)
+
+	userDir := filepath.Join(s.store.Dir(), originalFP)
+	boxes, err := containers.ListBoxes(userDir)
+	if err != nil {
+		fmt.Fprintf(sess, "Failed to list boxes: %v\r\n", err)
+		sess.Exit(1)
+		return users.User{}, "", nil, err
+	}
+
+	var boxname string
+	if len(boxes) == 0 {
+		boxname = "default"
+	} else if len(boxes) == 1 {
+		boxname = boxes[0]
+	} else {
+		chosen, err := picker.RunPicker(boxes, sess)
+		if err != nil {
+			log.Printf("[session] picker cancelled for user=%s: %v", user.Username, err)
+			sess.Exit(0)
+			return users.User{}, "", nil, err
+		}
+		boxname = chosen
+	}
+
+	profile, err := users.ResolveProfile(userDir, boxname)
+	if err != nil {
+		fmt.Fprintf(sess, "Failed to load profile: %v\r\n", err)
+		return users.User{}, "", nil, err
+	}
+	if profile == nil {
+		p := users.DefaultProfile()
+		profile = &p
+	}
+
+	return user, boxname, profile, nil
 }
 
 func (s *Server) loadOrGenerateHostKey() (gossh.Signer, error) {

@@ -15,6 +15,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/admin"
 	"github.com/hopboxdev/hopbox/internal/config"
 	"github.com/hopboxdev/hopbox/internal/containers"
+	"github.com/hopboxdev/hopbox/internal/control"
 	"github.com/hopboxdev/hopbox/internal/gateway"
 	"github.com/hopboxdev/hopbox/internal/users"
 )
@@ -71,6 +72,10 @@ func main() {
 	// Initialize container manager
 	mgr := containers.NewManager(cli, cfg)
 
+	// Initialize link store and wire it into the manager
+	linkStore := control.NewLinkStore()
+	mgr.SetLinkStore(linkStore)
+
 	// Start admin web UI if enabled
 	if cfg.Admin.Enabled {
 		if cfg.Admin.Password == "" {
@@ -86,7 +91,7 @@ func main() {
 	}
 
 	// Start SSH server
-	srv, err := gateway.NewServer(cfg, store, mgr, cli, imageTag)
+	srv, err := gateway.NewServer(cfg, store, mgr, cli, imageTag, linkStore)
 	if err != nil {
 		log.Fatalf("create server: %v", err)
 	}
