@@ -60,8 +60,36 @@ func sendRequest(req control.Request) (control.Response, error) {
 }
 
 func doExpose(port int) {
+	resp, err := sendRequest(control.Request{Command: "status"})
+	if err != nil {
+		// Fallback if socket not available
+		fmt.Printf("To access port %d from your machine, run:\n\n", port)
+		fmt.Printf("  ssh -p 2222 -L %d:localhost:%d -N hop@<server>\n\n", port, port)
+		fmt.Printf("Then open http://localhost:%d\n", port)
+		return
+	}
+	if !resp.OK {
+		fmt.Printf("To access port %d from your machine, run:\n\n", port)
+		fmt.Printf("  ssh -p 2222 -L %d:localhost:%d -N hop@<server>\n\n", port, port)
+		fmt.Printf("Then open http://localhost:%d\n", port)
+		return
+	}
+
+	hostname := resp.Data["hostname"]
+	if hostname == "" {
+		hostname = "<server>"
+	}
+	sshPort := resp.Data["ssh_port"]
+	if sshPort == "" {
+		sshPort = "2222"
+	}
+	user := resp.Data["user"]
+	if user == "" {
+		user = "hop"
+	}
+
 	fmt.Printf("To access port %d from your machine, run:\n\n", port)
-	fmt.Printf("  ssh -p 2222 -L %d:localhost:%d -N hop@<server>\n\n", port, port)
+	fmt.Printf("  ssh -p %s -L %d:localhost:%d -N %s@%s\n\n", sshPort, port, port, user, hostname)
 	fmt.Printf("Then open http://localhost:%d\n", port)
 }
 
