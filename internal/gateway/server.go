@@ -125,7 +125,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		if len(boxes) == 0 {
 			boxname = "default"
 		} else {
-			chosen, err := picker.RunPicker(boxes, sess, sess)
+			chosen, err := picker.RunPicker(boxes, sess)
 			if err != nil {
 				log.Printf("[session] picker cancelled for user=%s: %v", user.Username, err)
 				sess.Exit(0)
