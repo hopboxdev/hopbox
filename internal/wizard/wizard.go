@@ -32,14 +32,20 @@ type Result struct {
 	Profile  users.Profile
 }
 
+// wizardData is shared via pointer so huh form Value() bindings persist
+// across bubbletea's model copies.
+type wizardData struct {
+	Profile  users.Profile
+	Username string
+}
+
 type wizardModel struct {
-	step     step
-	firstStep step
-	form     *huh.Form
-	profile  users.Profile
-	username string
+	step            step
+	firstStep       step
+	form            *huh.Form
+	data            *wizardData
 	validateUsername func(string) error
-	aborted  bool
+	aborted         bool
 }
 
 func (m wizardModel) Init() tea.Cmd {
@@ -93,7 +99,7 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 				Title("Welcome to Hopbox!").
 				Description("Choose a username for your dev environment.").
 				Placeholder("username").
-				Value(&m.username).
+				Value(&m.data.Username).
 				Validate(m.validateUsername),
 		))
 	case stepMux:
@@ -103,7 +109,7 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 				Options(
 					huh.NewOption("zellij", "zellij"),
 					huh.NewOption("tmux", "tmux"),
-				).Value(&m.profile.Multiplexer.Tool),
+				).Value(&m.data.Profile.Multiplexer.Tool),
 		))
 	case stepEditor:
 		return huh.NewForm(huh.NewGroup(
@@ -113,7 +119,7 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 					huh.NewOption("neovim", "neovim"),
 					huh.NewOption("vim", "vim"),
 					huh.NewOption("none", "none"),
-				).Value(&m.profile.Editor.Tool),
+				).Value(&m.data.Profile.Editor.Tool),
 		))
 	case stepShell:
 		return huh.NewForm(huh.NewGroup(
@@ -123,7 +129,7 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 					huh.NewOption("bash", "bash"),
 					huh.NewOption("zsh", "zsh"),
 					huh.NewOption("fish", "fish"),
-				).Value(&m.profile.Shell.Tool),
+				).Value(&m.data.Profile.Shell.Tool),
 		))
 	case stepNode:
 		return huh.NewForm(huh.NewGroup(
@@ -133,7 +139,7 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 					huh.NewOption("LTS", "lts"),
 					huh.NewOption("Latest", "latest"),
 					huh.NewOption("None", "none"),
-				).Value(&m.profile.Runtimes.Node),
+				).Value(&m.data.Profile.Runtimes.Node),
 		))
 	case stepPython:
 		return huh.NewForm(huh.NewGroup(
@@ -143,7 +149,7 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 					huh.NewOption("3.12", "3.12"),
 					huh.NewOption("3.13", "3.13"),
 					huh.NewOption("None", "none"),
-				).Value(&m.profile.Runtimes.Python),
+				).Value(&m.data.Profile.Runtimes.Python),
 		))
 	case stepGo:
 		return huh.NewForm(huh.NewGroup(
@@ -152,7 +158,7 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 				Options(
 					huh.NewOption("Latest", "latest"),
 					huh.NewOption("None", "none"),
-				).Value(&m.profile.Runtimes.Go),
+				).Value(&m.data.Profile.Runtimes.Go),
 		))
 	case stepRust:
 		return huh.NewForm(huh.NewGroup(
@@ -161,7 +167,7 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 				Options(
 					huh.NewOption("Latest", "latest"),
 					huh.NewOption("None", "none"),
-				).Value(&m.profile.Runtimes.Rust),
+				).Value(&m.data.Profile.Runtimes.Rust),
 		))
 	case stepTools:
 		return huh.NewForm(huh.NewGroup(
@@ -174,7 +180,7 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 					huh.NewOption("bat", "bat"),
 					huh.NewOption("lazygit", "lazygit"),
 					huh.NewOption("direnv", "direnv"),
-				).Value(&m.profile.Tools.Extras),
+				).Value(&m.data.Profile.Tools.Extras),
 		))
 	default:
 		return huh.NewForm(huh.NewGroup())
@@ -227,10 +233,11 @@ func RunSetup(defaults users.Profile, sess ssh.Session, needsRegistration bool, 
 		firstStep = stepUsername
 	}
 
+	data := &wizardData{Profile: defaults}
 	m := wizardModel{
 		step:            firstStep,
 		firstStep:       firstStep,
-		profile:         defaults,
+		data:            data,
 		validateUsername: validateUsername,
 	}
 	m.form = m.buildForm(m.step)
@@ -245,8 +252,8 @@ func RunSetup(defaults users.Profile, sess ssh.Session, needsRegistration bool, 
 		return nil, fmt.Errorf("setup cancelled")
 	}
 	return &Result{
-		Username: wm.username,
-		Profile:  wm.profile,
+		Username: data.Username,
+		Profile:  data.Profile,
 	}, nil
 }
 
