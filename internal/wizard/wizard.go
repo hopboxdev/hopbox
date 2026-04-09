@@ -3,6 +3,7 @@ package wizard
 import (
 	"fmt"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish/bubbletea"
@@ -12,9 +13,10 @@ import (
 
 // runForm runs a single huh form over the SSH session.
 func runForm(sess ssh.Session, fields ...huh.Field) error {
+	opts := append(bubbletea.MakeOptions(sess), tea.WithAltScreen())
 	form := huh.NewForm(
 		huh.NewGroup(fields...),
-	).WithProgramOptions(bubbletea.MakeOptions(sess)...)
+	).WithProgramOptions(opts...)
 
 	return form.Run()
 }

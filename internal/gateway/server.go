@@ -159,9 +159,10 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 		chosen, err := wizard.RunWizard(defaults, sess)
 		if err != nil {
-			log.Printf("[session] wizard failed: %v", err)
-			fmt.Fprintf(sess, "Setup cancelled, using defaults.\r\n")
-			chosen = defaults
+			log.Printf("[session] wizard cancelled by user: %v", err)
+			fmt.Fprintf(sess, "Setup cancelled.\r\n")
+			sess.Exit(0)
+			return
 		}
 
 		// Save user-level default profile on first registration
