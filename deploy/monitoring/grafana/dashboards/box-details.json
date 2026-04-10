@@ -56,7 +56,7 @@
       },
       "targets": [
         {
-          "expr": "hopbox_box_cpu_percent{user=\"$user\",box=\"$box\"}",
+          "expr": "sum(last_over_time(hopbox_box_cpu_percent{user=\"$user\",box=\"$box\"}[1m]))",
           "refId": "A"
         }
       ],
@@ -91,7 +91,7 @@
       },
       "targets": [
         {
-          "expr": "hopbox_box_memory_bytes{user=\"$user\",box=\"$box\"}",
+          "expr": "sum(last_over_time(hopbox_box_memory_bytes{user=\"$user\",box=\"$box\"}[1m]))",
           "refId": "A"
         }
       ],
@@ -126,7 +126,7 @@
       },
       "targets": [
         {
-          "expr": "hopbox_box_memory_limit_bytes{user=\"$user\",box=\"$box\"}",
+          "expr": "sum(last_over_time(hopbox_box_memory_limit_bytes{user=\"$user\",box=\"$box\"}[1m]))",
           "refId": "A"
         }
       ],
@@ -161,7 +161,7 @@
       },
       "targets": [
         {
-          "expr": "hopbox_box_cpu_percent{user=\"$user\",box=\"$box\"}",
+          "expr": "sum(last_over_time(hopbox_box_cpu_percent{user=\"$user\",box=\"$box\"}[1m]))",
           "refId": "A"
         }
       ],
@@ -188,12 +188,12 @@
       },
       "targets": [
         {
-          "expr": "hopbox_box_memory_bytes{user=\"$user\",box=\"$box\"}",
+          "expr": "sum(last_over_time(hopbox_box_memory_bytes{user=\"$user\",box=\"$box\"}[1m]))",
           "refId": "A",
           "legendFormat": "usage"
         },
         {
-          "expr": "hopbox_box_memory_limit_bytes{user=\"$user\",box=\"$box\"}",
+          "expr": "sum(last_over_time(hopbox_box_memory_limit_bytes{user=\"$user\",box=\"$box\"}[1m]))",
           "refId": "B",
           "legendFormat": "limit"
         }
