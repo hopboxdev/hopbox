@@ -277,6 +277,13 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		fmt.Fprintf(sess, "Failed to create home directory: %v\r\n", err)
 		return
 	}
+	// The home dir is bind-mounted into the container as /home/dev (UID 1000),
+	// but hopboxd runs as a system user whose UID doesn't match. Widen the
+	// mode so the in-container dev user can write to its own home. The dir
+	// lives under a per-user, per-box sandbox so 0777 is acceptable.
+	if err := os.Chmod(homePath, 0777); err != nil {
+		slog.Warn("chmod home dir failed", "component", "session", "err", err)
+	}
 
 	profileHash := profile.Hash()
 	boxInfo := control.BoxInfo{
