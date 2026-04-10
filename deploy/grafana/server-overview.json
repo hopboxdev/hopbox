@@ -86,8 +86,28 @@
         { "expr": "hopbox_box_cpu_percent", "refId": "A", "format": "table", "instant": true }
       ],
       "transformations": [
-        { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true }, "renameByName": { "Value": "CPU %" } } }
-      ]
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "Value": true } } }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "box" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open Box Details",
+                    "url": "/d/hopbox-box-details/hopbox-e28094-box-details?var-user=${__data.fields.user}&var-box=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "type": "timeseries",
