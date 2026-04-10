@@ -23,7 +23,17 @@ Self-hosted SSH gateway that drops users into isolated Docker-based dev containe
 
 ## Quick Start
 
-### One-command install (Linux, with Docker)
+### Fresh VPS (one command, sets up everything)
+
+On a brand-new Ubuntu/Debian VPS with nothing installed:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hopboxdev/hopbox/main/scripts/provision-vps.sh | sudo bash
+```
+
+This installs Docker, configures UFW (allows 22/tcp and 2222/tcp), then runs the hopbox installer. It intentionally does **not** touch `/etc/ssh/sshd_config` or create admin users to avoid lockout — harden OpenSSH yourself afterwards. Supports the same flags as the install script (`v0.1.0`, `--with-monitoring`).
+
+### One-command install (Linux with Docker already set up)
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/hopboxdev/hopbox/main/scripts/install.sh | sudo bash
