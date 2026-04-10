@@ -82,9 +82,22 @@ func handleDestroy(req Request, info BoxInfo, destroyFn DestroyFunc) Response {
 	}
 
 	slog.Info("destroying box", "component", "control", "box", info.BoxName, "container", info.ContainerID[:12])
-	if err := destroyFn(); err != nil {
-		return Response{OK: false, Error: fmt.Sprintf("destroy: %v", err)}
-	}
+
+	// Run the actual destruction asynchronously for two reasons:
+	//  1. The hopbox CLI client lives inside the container we're about to
+	//     stop — it must receive and print the OK response before the
+	//     container goes away, or it hangs.
+	//  2. Manager.DestroyBox calls SocketServer.Close(), which wg.Wait()s
+	//     on in-flight handlers. This handler IS one of those in-flight
+	//     handlers, so calling destroyFn synchronously would self-deadlock.
+	go func() {
+		// Small delay to ensure the response flushes to the client before
+		// we start tearing the container down.
+		time.Sleep(200 * time.Millisecond)
+		if err := destroyFn(); err != nil {
+			slog.Error("destroy failed", "component", "control", "box", info.BoxName, "err", err)
+		}
+	}()
 
 	return Response{OK: true, Data: map[string]string{"destroyed": info.BoxName}}
 }
