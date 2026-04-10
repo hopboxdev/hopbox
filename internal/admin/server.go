@@ -13,6 +13,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/hopboxdev/hopbox/internal/config"
 	"github.com/hopboxdev/hopbox/internal/containers"
@@ -56,23 +57,26 @@ func NewAdminServer(cfg *config.Config, store *users.Store, mgr *containers.Mana
 		dockerCli: dockerCli,
 	}
 
-	mux := http.NewServeMux()
+	// Authenticated routes live on their own sub-mux.
+	authed := http.NewServeMux()
+	authed.HandleFunc("GET /", s.handleDashboard)
+	authed.HandleFunc("GET /users", s.handleUsers)
+	authed.HandleFunc("GET /users/{username}/boxes", s.handleBoxes)
+	authed.HandleFunc("GET /settings", s.handleSettings)
+	authed.HandleFunc("DELETE /api/users/{username}", s.handleDeleteUser)
+	authed.HandleFunc("DELETE /api/users/{username}/boxes/{boxname}", s.handleDeleteBox)
+	authed.HandleFunc("POST /api/users/{username}/boxes/{boxname}/stop", s.handleStopBox)
+	authed.HandleFunc("PUT /api/settings/registration", s.handleToggleRegistration)
 
-	// Page routes
-	mux.HandleFunc("GET /", s.handleDashboard)
-	mux.HandleFunc("GET /users", s.handleUsers)
-	mux.HandleFunc("GET /users/{username}/boxes", s.handleBoxes)
-	mux.HandleFunc("GET /settings", s.handleSettings)
-
-	// API routes (htmx actions)
-	mux.HandleFunc("DELETE /api/users/{username}", s.handleDeleteUser)
-	mux.HandleFunc("DELETE /api/users/{username}/boxes/{boxname}", s.handleDeleteBox)
-	mux.HandleFunc("POST /api/users/{username}/boxes/{boxname}/stop", s.handleStopBox)
-	mux.HandleFunc("PUT /api/settings/registration", s.handleToggleRegistration)
+	// Top-level mux: public routes direct, everything else via basicAuth(authed).
+	root := http.NewServeMux()
+	root.HandleFunc("GET /healthz", s.handleHealthz)
+	root.Handle("GET /metrics", promhttp.Handler())
+	root.Handle("/", s.basicAuth(authed))
 
 	s.httpSrv = &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Admin.Port),
-		Handler: s.basicAuth(mux),
+		Handler: root,
 	}
 
 	return s
@@ -99,6 +103,21 @@ func (s *AdminServer) basicAuth(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// handleHealthz checks Docker reachability and returns JSON health status.
+func (s *AdminServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := s.dockerCli.Ping(ctx); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprintf(w, `{"status":"unhealthy","docker":"unreachable","error":%q}`, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, `{"status":"healthy","docker":"reachable"}`)
 }
 
 // renderPage renders a full page template with the layout.
