@@ -4,7 +4,8 @@ services:
     container_name: hopbox-prometheus
     restart: unless-stopped
     ports:
-      - "9090:9090"
+      # Localhost only — tunnel over SSH or front with a reverse proxy.
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -16,10 +17,21 @@ services:
     container_name: hopbox-grafana
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # Localhost only — tunnel over SSH or front with a reverse proxy.
+      - "127.0.0.1:3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+      # ---- Reverse-proxy mode ----
+      # Uncomment when fronting Grafana with a reverse proxy that handles
+      # authentication itself (e.g. Caddy basic_auth on grafana.hopbox.dev).
+      # This disables Grafana's own login and auto-signs the user in as an
+      # admin, so Caddy is the only auth boundary.
+      # - GF_AUTH_ANONYMOUS_ENABLED=true
+      # - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      # - GF_AUTH_DISABLE_LOGIN_FORM=true
+      # - GF_AUTH_BASIC_ENABLED=false
+      # - GF_SERVER_ROOT_URL=https://grafana.hopbox.dev
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards

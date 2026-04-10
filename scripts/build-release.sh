@@ -60,6 +60,14 @@ cp -R deploy/monitoring/. "${STAGE_DIR}/deploy/monitoring/"
 # Strip README from monitoring dir (not needed in release)
 rm -f "${STAGE_DIR}/deploy/monitoring/README.md"
 
+# Copy Caddy example config
+mkdir -p "${STAGE_DIR}/deploy/caddy"
+cp deploy/caddy/Caddyfile.example "${STAGE_DIR}/deploy/caddy/Caddyfile.example"
+
+# Copy landing page
+mkdir -p "${STAGE_DIR}/web"
+cp -R web/landing "${STAGE_DIR}/web/landing"
+
 # VERSION file
 echo "${VERSION}" > "${STAGE_DIR}/VERSION"
 

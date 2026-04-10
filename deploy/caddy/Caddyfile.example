@@ -1,0 +1,65 @@
+# Example Caddyfile for a hopbox VPS.
+#
+# Copy to /etc/caddy/Caddyfile, then:
+#   1. Replace `hopbox.dev` with your own apex domain everywhere it appears.
+#   2. Generate a bcrypt hash for Grafana and paste it into the `basic_auth`
+#      block below:
+#        caddy hash-password --plaintext 'your-strong-password'
+#   3. `sudo caddy validate --config /etc/caddy/Caddyfile`
+#   4. `sudo systemctl reload caddy`
+#
+# DNS records you need (all A records pointing at your VPS IP):
+#   hopbox.dev
+#   www.hopbox.dev        (optional — CNAME is fine too)
+#   admin.hopbox.dev
+#   grafana.hopbox.dev    (only if you run the monitoring stack)
+
+# ---------------------------------------------------------------------------
+# Public landing page + unauthenticated health check.
+# ---------------------------------------------------------------------------
+hopbox.dev, www.hopbox.dev {
+	encode zstd gzip
+
+	# Liveness probe — proxied straight to hopboxd.
+	# hopboxd serves /healthz without auth; it belongs on the public host,
+	# not behind admin credentials.
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	# Everything else: serve the static landing page from /var/www/hopbox.
+	handle {
+		root * /var/www/hopbox
+		file_server
+	}
+}
+
+# ---------------------------------------------------------------------------
+# Admin dashboard — hopboxd handles its own basic auth from config.toml.
+# ---------------------------------------------------------------------------
+admin.hopbox.dev {
+	encode zstd gzip
+
+	# Keep the unauthenticated endpoints off the admin host; they live on
+	# the public domain.
+	@public path /metrics /healthz
+	respond @public 404
+
+	reverse_proxy 127.0.0.1:8080
+}
+
+# ---------------------------------------------------------------------------
+# Grafana — shielded by Caddy basic auth (Grafana itself runs in
+# anonymous-admin mode; see deploy/monitoring/compose.yml).
+# ---------------------------------------------------------------------------
+grafana.hopbox.dev {
+	encode zstd gzip
+
+	basic_auth {
+		# Replace <BCRYPT_HASH> with the output of:
+		#   caddy hash-password --plaintext 'your-strong-password'
+		admin <BCRYPT_HASH>
+	}
+
+	reverse_proxy 127.0.0.1:3000
+}
