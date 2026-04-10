@@ -8,9 +8,12 @@ Self-hosted SSH gateway that drops users into isolated Docker-based dev containe
 - **Per-user isolation** — each user gets their own Docker container with a persistent home directory.
 - **Tool selection wizard** — choose your multiplexer, editor, shell, runtimes, and CLI tools on first connect.
 - **Multiple devboxes** — `ssh hop+project@server` for separate environments. `ssh hop+?@server` to pick.
+- **Shared boxes across keys** — `hopbox link` lets a second device join an existing box.
 - **TOFU registration** — new SSH keys are auto-registered with an interactive username prompt.
 - **Idle timeout** — containers auto-stop after configurable hours of inactivity.
 - **Resource limits** — CPU, memory, and PID limits per container.
+- **Admin web UI** — dashboard for users, boxes, and settings with HTTP basic auth.
+- **Observability** — structured logs, `/healthz`, Prometheus metrics, ready-made Grafana dashboards.
 
 ## Requirements
 
@@ -20,22 +23,39 @@ Self-hosted SSH gateway that drops users into isolated Docker-based dev containe
 
 ## Quick Start
 
+### One-command install (Linux, with Docker)
+
 ```bash
-# Build
+curl -sSL https://raw.githubusercontent.com/hopboxdev/hopbox/main/scripts/install.sh | sudo bash
+```
+
+This downloads the latest release, installs hopboxd to `/usr/local/bin`, drops a config at `/etc/hopbox/config.toml`, and starts the systemd service on port 2222. Re-run the same command to upgrade.
+
+Optional flags:
+
+```bash
+# Pin to a specific version
+curl -sSL https://raw.githubusercontent.com/hopboxdev/hopbox/main/scripts/install.sh | sudo bash -s -- v0.1.0
+
+# Also start Prometheus + Grafana with pre-provisioned dashboards
+curl -sSL https://raw.githubusercontent.com/hopboxdev/hopbox/main/scripts/install.sh | sudo bash -s -- --with-monitoring
+```
+
+Then connect:
+
+```bash
+ssh -p 2222 hop@your-server
+```
+
+### Build from source
+
+```bash
 git clone https://github.com/hopboxdev/hopbox.git
 cd hopbox
-go build -o hopboxd ./cmd/hopboxd/
-./scripts/build-cli.sh  # cross-compile in-container CLI
-
-# Run
-./hopboxd
-# First run builds the base Docker image (~2 min)
-# Listens on :2222 by default
-
-# Connect
-ssh -p 2222 hop@localhost
-# Register a username, pick your tools, land in your container
+make run   # builds hopboxd + in-container CLI and runs it
 ```
+
+Listens on `:2222` by default. First run builds the base Docker image (~2 min).
 
 ## Configuration
 
@@ -102,14 +122,66 @@ Each user's tunnels are isolated — no port collisions.
 Inside your container, the `hopbox` command is available:
 
 ```bash
-hopbox status          # show box info
-hopbox status --json   # JSON output
+hopbox status          # show box info (user, box, container, resources)
+hopbox expose 3000     # print the SSH tunnel command for a local port
+hopbox link            # generate a one-time code to add another SSH key to this box
 hopbox destroy         # destroy this box (with confirmation)
 ```
 
+### Sharing a box across devices
+
+From inside a box on your first device:
+
+```bash
+hopbox link
+# → code: ABCD-1234 (valid 5 min)
+```
+
+From your second device:
+
+```bash
+ssh -p 2222 hop@server
+# the wizard offers "Link to existing box" — paste the code
+```
+
+The second key is linked to the same user and boxes via a filesystem symlink, so both devices share the same container and home directory.
+
+## Admin Web UI
+
+If `[admin].enabled = true` in the config (default: on, bound to `127.0.0.1:8080`), hopboxd serves a small htmx/Tailwind admin UI:
+
+- **Dashboard** — user, box, and container counts
+- **Users** — registered users and their keys
+- **Boxes** — running boxes with live resource usage
+- **Settings** — current config (read-only)
+
+Protected by HTTP basic auth (`admin.username` / `admin.password` in config). Expose it behind a reverse proxy with TLS if you want remote access.
+
+Also exposed (unauthenticated):
+- `GET /healthz` — liveness probe; pings Docker
+- `GET /metrics` — Prometheus metrics
+
+## Monitoring
+
+A ready-to-run Prometheus + Grafana stack lives under [`deploy/monitoring/`](deploy/monitoring/). It's bundled into release tarballs, and the install script sets it up for you with `--with-monitoring`.
+
+For local development:
+
+```bash
+make monitoring-up      # starts Prometheus on :9090 and Grafana on :3001
+# Grafana default login: admin / admin
+make monitoring-down
+```
+
+Grafana comes pre-provisioned with two dashboards:
+- **Hopbox — Server Overview** — users, boxes, build durations, running containers with drill-down
+- **Hopbox — Box Details** — per-box CPU, memory, network, and disk IO
+
 ## Deployment
 
-### Systemd (recommended)
+Most users should use the [install script](#quick-start). The steps below document what it does in case you want to install manually.
+
+### Systemd (manual)
 
 1. **Create a hopbox user:**
 
