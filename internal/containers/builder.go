@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/build"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+	"github.com/hopboxdev/hopbox/internal/metrics"
 	"github.com/hopboxdev/hopbox/internal/users"
 	"github.com/moby/go-archive"
 )
@@ -163,6 +165,10 @@ func EnsureUserImage(ctx context.Context, cli *client.Client, username string, p
 	}
 
 	// Generate Dockerfile and build
+	start := time.Now()
+	defer func() {
+		metrics.BuildDurationSeconds.Observe(time.Since(start).Seconds())
+	}()
 	slog.Info("building user image", "component", "builder", "tag", tag, "user", username)
 	df := GenerateDockerfile(p, baseTag)
 

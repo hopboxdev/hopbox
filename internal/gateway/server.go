@@ -17,6 +17,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/config"
 	"github.com/hopboxdev/hopbox/internal/containers"
 	"github.com/hopboxdev/hopbox/internal/control"
+	"github.com/hopboxdev/hopbox/internal/metrics"
 	"github.com/hopboxdev/hopbox/internal/picker"
 	"github.com/hopboxdev/hopbox/internal/users"
 	"github.com/hopboxdev/hopbox/internal/wizard"
@@ -298,6 +299,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	defer s.manager.SessionDisconnect(containerID)
 
 	slog.Info("session attached", "component", "session", "user", user.Username, "box", boxname, "container", containerID[:12])
+	metrics.BoxConnectTotal.WithLabelValues(user.Username, boxname).Inc()
 
 	// Get PTY for container exec (wizard already consumed resize events during its run)
 	ptyReq, winCh, isPty := sess.Pty()

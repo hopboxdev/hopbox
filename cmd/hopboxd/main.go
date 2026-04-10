@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/docker/docker/client"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/containers"
 	"github.com/hopboxdev/hopbox/internal/control"
 	"github.com/hopboxdev/hopbox/internal/gateway"
+	"github.com/hopboxdev/hopbox/internal/metrics"
 	"github.com/hopboxdev/hopbox/internal/users"
 )
 
@@ -66,6 +68,10 @@ func main() {
 		log.Fatalf("cannot reach Docker daemon: %v", err)
 	}
 
+	// Root context for long-lived background goroutines (collector, refresher).
+	rootCtx, rootCancel := context.WithCancel(context.Background())
+	defer rootCancel()
+
 	// Ensure base image is built
 	templatesDir := findTemplatesDir()
 	imageTag, err := containers.EnsureBaseImage(ctx, cli, templatesDir)
@@ -76,6 +82,11 @@ func main() {
 
 	// Initialize user store
 	store := users.NewStore(usersDir)
+
+	// Start metrics collector and totals refresher.
+	collector := metrics.NewCollector(cli)
+	go collector.Start(rootCtx)
+	startTotalsRefresher(rootCtx, store)
 
 	// Initialize container manager
 	mgr := containers.NewManager(cli, cfg)
@@ -110,6 +121,7 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
 		slog.Info("shutting down")
+		rootCancel()
 		mgr.Shutdown()
 		srv.Close()
 		slog.Info("shutdown complete")
@@ -118,6 +130,33 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil {
 		slog.Error("server stopped", "err", err)
 	}
+}
+
+func startTotalsRefresher(ctx context.Context, store *users.Store) {
+	refresh := func() {
+		all := store.ListAll()
+		metrics.UsersTotal.Set(float64(len(all)))
+		boxes := 0
+		for fp := range all {
+			userDir := filepath.Join(store.Dir(), fp)
+			names, _ := containers.ListBoxes(userDir)
+			boxes += len(names)
+		}
+		metrics.BoxesTotal.Set(float64(boxes))
+	}
+	refresh()
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				refresh()
+			}
+		}
+	}()
 }
 
 func initLogger(cfg config.Config) {

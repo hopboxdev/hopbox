@@ -16,6 +16,7 @@ import (
 
 	"github.com/hopboxdev/hopbox/internal/config"
 	"github.com/hopboxdev/hopbox/internal/control"
+	"github.com/hopboxdev/hopbox/internal/metrics"
 )
 
 const profileHashLabelKey = "hopbox.profile-hash"
@@ -74,6 +75,7 @@ func (m *Manager) SessionConnect(containerID string) {
 		m.states[containerID] = s
 	}
 	s.sessions++
+	metrics.ActiveSessionsTotal.Inc()
 
 	if s.idleTimer != nil {
 		s.idleTimer.Stop()
@@ -94,6 +96,7 @@ func (m *Manager) SessionDisconnect(containerID string) {
 	if s.sessions < 0 {
 		s.sessions = 0
 	}
+	metrics.ActiveSessionsTotal.Dec()
 
 	if s.sessions == 0 && m.idleTimeout > 0 {
 		slog.Info("idle timer started", "component", "idle", "timeout", m.idleTimeout, "container", containerID[:12])
@@ -108,6 +111,8 @@ func (m *Manager) stopIdleContainer(containerID string) {
 	ctx := context.Background()
 	if err := m.cli.ContainerStop(ctx, containerID, container.StopOptions{}); err != nil {
 		slog.Error("failed to stop idle container", "component", "idle", "container", containerID[:12], "err", err)
+	} else {
+		metrics.ContainersRunningTotal.Dec()
 	}
 
 	m.mu.Lock()
@@ -158,6 +163,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 				if err := m.cli.ContainerStart(ctx, c.ID, container.StartOptions{}); err != nil {
 					return "", fmt.Errorf("start container: %w", err)
 				}
+				metrics.ContainersRunningTotal.Inc()
 			}
 
 			// Ensure socket server is running for existing container
@@ -215,6 +221,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 	if err := m.cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		return "", fmt.Errorf("start container: %w", err)
 	}
+	metrics.ContainersRunningTotal.Inc()
 
 	// Start control socket
 	boxDir := filepath.Dir(homePath)
@@ -259,6 +266,7 @@ func (m *Manager) DestroyBox(ctx context.Context, username, boxname, boxDir stri
 		if err := m.cli.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true}); err != nil {
 			return fmt.Errorf("remove container: %w", err)
 		}
+		metrics.ContainersRunningTotal.Dec()
 	}
 
 	// Clean up socket directory
