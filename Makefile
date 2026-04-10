@@ -68,7 +68,7 @@ monitoring-up: ## Local testing: Start Prometheus + Grafana (deploy/monitoring)
 	cd deploy/monitoring && docker compose up -d
 	@echo ""
 	@echo "Prometheus: http://localhost:9090"
-	@echo "Grafana:    http://localhost:3001 (admin/admin)"
+	@echo "Grafana:    http://localhost:3000 (admin/admin)"
 
 monitoring-down: ## Local testing: Stop Prometheus + Grafana
 	cd deploy/monitoring && docker compose down

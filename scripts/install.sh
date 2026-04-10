@@ -171,14 +171,25 @@ if [[ $WITH_MONITORING -eq 1 ]]; then
     cp -R "${VERSION_DIR}/deploy/monitoring" "$MON_DIR"
     ok "copied monitoring stack to ${MON_DIR}"
   else
-    ok "${MON_DIR} already exists (preserving prometheus.yml and grafana config)"
+    # compose.yml and the grafana provisioning files are shipped code, not
+    # user config — always refresh them on upgrade so new defaults land
+    # (env vars, ports, datasource pinning, etc.). prometheus.yml and the
+    # named docker volumes (grafana-data, prometheus-data) are preserved.
+    cp "${VERSION_DIR}/deploy/monitoring/compose.yml" "$MON_DIR/compose.yml"
+    rm -rf "$MON_DIR/grafana/provisioning"
+    cp -R "${VERSION_DIR}/deploy/monitoring/grafana/provisioning" "$MON_DIR/grafana/provisioning"
+    rm -rf "$MON_DIR/grafana/dashboards"
+    cp -R "${VERSION_DIR}/deploy/monitoring/grafana/dashboards" "$MON_DIR/grafana/dashboards"
+    ok "refreshed ${MON_DIR} (compose.yml + grafana provisioning/dashboards)"
+    ok "preserved prometheus.yml and docker volumes"
   fi
 
   (cd "$MON_DIR" && docker compose up -d)
   ok "monitoring stack is up"
   echo
-  echo "  Grafana:    http://<server>:3000  (admin / admin — change on first login)"
-  echo "  Prometheus: http://<server>:9090"
+  echo "  Grafana:    http://127.0.0.1:3000  (admin / admin — change on first login)"
+  echo "  Prometheus: http://127.0.0.1:9090"
+  echo "  (both bound to localhost — tunnel over SSH or front with a reverse proxy)"
 fi
 
 # ---------- summary ----------
@@ -192,7 +203,9 @@ ${GREEN}${BOLD}Hopbox ${VERSION} installed successfully.${RESET}
   Service: systemctl status hopboxd
 
 Next steps:
-  1. Edit /etc/hopbox/config.toml (set hostname, admin password, etc.)
+  1. Edit /etc/hopbox/config.toml
+       - set hostname, admin.username, admin.password
+       - generate a strong password: openssl rand -base64 24
   2. Restart:  systemctl restart hopboxd
   3. Connect:  ssh -p 2222 hop@your-server
 

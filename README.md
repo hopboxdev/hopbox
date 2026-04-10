@@ -158,16 +158,18 @@ The second key is linked to the same user and boxes via a filesystem symlink, so
 
 ## Admin Web UI
 
-If `[admin].enabled = true` in the config (default: on, bound to `127.0.0.1:8080`), hopboxd serves a small htmx/Tailwind admin UI:
+Set `[admin].enabled = true` in the config (disabled by default) and hopboxd serves a small htmx/Tailwind admin UI on port 8080:
 
 - **Dashboard** — user, box, and container counts
 - **Users** — registered users and their keys
 - **Boxes** — running boxes with live resource usage
 - **Settings** — current config (read-only)
 
-Protected by HTTP basic auth (`admin.username` / `admin.password` in config). Expose it behind a reverse proxy with TLS if you want remote access.
+Protected by HTTP basic auth (`admin.username` / `admin.password` in config).
 
-Also exposed (unauthenticated):
+> **Security note:** the admin server binds `:8080` on all interfaces. `/healthz` and `/metrics` on the same port are **unauthenticated**. Block 8080 at the firewall (the provisioning script already does) and front it with a reverse proxy that handles TLS — see [`deploy/caddy/Caddyfile.example`](deploy/caddy/Caddyfile.example) for a ready-to-use setup.
+
+Unauthenticated endpoints on the same listener:
 - `GET /healthz` — liveness probe; pings Docker
 - `GET /metrics` — Prometheus metrics
 
@@ -175,10 +177,12 @@ Also exposed (unauthenticated):
 
 A ready-to-run Prometheus + Grafana stack lives under [`deploy/monitoring/`](deploy/monitoring/). It's bundled into release tarballs, and the install script sets it up for you with `--with-monitoring`.
 
+Both services bind to `127.0.0.1` only — reach them over an SSH tunnel or front them with a reverse proxy.
+
 For local development:
 
 ```bash
-make monitoring-up      # starts Prometheus on :9090 and Grafana on :3001
+make monitoring-up      # starts Prometheus on :9090 and Grafana on :3000
 # Grafana default login: admin / admin
 make monitoring-down
 ```
@@ -186,6 +190,22 @@ make monitoring-down
 Grafana comes pre-provisioned with two dashboards:
 - **Hopbox — Server Overview** — users, boxes, build durations, running containers with drill-down
 - **Hopbox — Box Details** — per-box CPU, memory, network, and disk IO
+
+## Putting it behind a domain
+
+Release tarballs ship a ready-to-use Caddy config at `/opt/hopbox/current/deploy/caddy/Caddyfile.example` and a static landing page at `/opt/hopbox/current/web/landing/`. To wire up `hopbox.dev`, `admin.hopbox.dev`, and `grafana.hopbox.dev`:
+
+```bash
+# Install Caddy (see https://caddyserver.com/docs/install)
+sudo mkdir -p /var/www/hopbox
+sudo cp -R /opt/hopbox/current/web/landing/. /var/www/hopbox/
+sudo cp /opt/hopbox/current/deploy/caddy/Caddyfile.example /etc/caddy/Caddyfile
+# Edit /etc/caddy/Caddyfile: replace hopbox.dev with your domain and paste a bcrypt hash
+# from: caddy hash-password --plaintext 'your-grafana-password'
+sudo systemctl reload caddy
+```
+
+Open `80/tcp` and `443/tcp` in UFW (`sudo ufw allow 80/tcp && sudo ufw allow 443/tcp`). Caddy handles Let's Encrypt automatically.
 
 ## Deployment
 

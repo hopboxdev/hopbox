@@ -331,6 +331,11 @@ func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, en
 // VSCode remote-ssh bootstrap, scp, and rsync. stdout and stderr are
 // demultiplexed from Docker's framed stream so the caller gets them on
 // separate writers.
+//
+// Ownership of stdin is the caller's: after ExecNoTTY returns the stdin
+// copy goroutine keeps running until the reader hits EOF. Callers must
+// close their stdin source once the exec is done (ssh channel close,
+// session teardown, etc.) to avoid leaking that goroutine.
 func (m *Manager) ExecNoTTY(ctx context.Context, containerID string, cmd []string, env []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) (int, error) {
 	execCfg := container.ExecOptions{
 		Cmd:          cmd,
@@ -392,29 +397,6 @@ func (m *Manager) Shutdown() {
 		}
 	}
 	m.states = make(map[string]*containerState)
-}
-
-func (m *Manager) ContainerIP(ctx context.Context, containerID string) (string, error) {
-	info, err := m.cli.ContainerInspect(ctx, containerID)
-	if err != nil {
-		return "", fmt.Errorf("inspect container: %w", err)
-	}
-
-	// Try top-level IP first, then check per-network settings
-	// (containerd snapshotter only populates the per-network map)
-	ip := info.NetworkSettings.IPAddress
-	if ip == "" {
-		for _, net := range info.NetworkSettings.Networks {
-			if net.IPAddress != "" {
-				ip = net.IPAddress
-				break
-			}
-		}
-	}
-	if ip == "" {
-		return "", fmt.Errorf("container %s has no IP address", containerID)
-	}
-	return ip, nil
 }
 
 // ListBoxes returns the names of all box directories under the given user directory.

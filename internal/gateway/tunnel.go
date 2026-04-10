@@ -128,8 +128,9 @@ func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, dockerCli *
 		// to hit services bound to the container's loopback (e.g. the VSCode
 		// remote server, which listens on 127.0.0.1 by design).
 		//
-		// -N closes the TCP connection after stdin EOF so half-close is
-		// propagated; -w caps the connect timeout.
+		// -N (openbsd-netcat only; provided by netcat-openbsd in the base
+		// image) half-closes the socket after stdin EOF so the remote side
+		// sees a clean end-of-stream. -w caps the inactivity timeout.
 		ncCmd := []string{
 			"nc",
 			"-N",
@@ -138,7 +139,9 @@ func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, dockerCli *
 			fmt.Sprintf("%d", d.DestPort),
 		}
 
-		exitCode, err := mgr.ExecNoTTY(context.Background(), containerID, ncCmd, nil, ch, ch, io.Discard)
+		// Use the ssh context so cancellation propagates if the session
+		// dies before nc finishes (rather than stranding exec goroutines).
+		exitCode, err := mgr.ExecNoTTY(sshCtx, containerID, ncCmd, nil, ch, ch, io.Discard)
 		if err != nil {
 			slog.Error("tunnel exec failed", "component", "tunnel", "target", dest, "port", d.DestPort, "err", err)
 		} else if exitCode != 0 {
