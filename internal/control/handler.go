@@ -2,7 +2,7 @@ package control
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"runtime"
 	"time"
 )
@@ -81,7 +81,7 @@ func handleDestroy(req Request, info BoxInfo, destroyFn DestroyFunc) Response {
 		return Response{OK: false, Error: fmt.Sprintf("confirmation does not match box name %q", info.BoxName)}
 	}
 
-	log.Printf("[control] destroying box %s (container %s)", info.BoxName, info.ContainerID[:12])
+	slog.Info("destroying box", "component", "control", "box", info.BoxName, "container", info.ContainerID[:12])
 	if err := destroyFn(); err != nil {
 		return Response{OK: false, Error: fmt.Sprintf("destroy: %v", err)}
 	}

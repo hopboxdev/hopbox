@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -163,7 +163,7 @@ func EnsureUserImage(ctx context.Context, cli *client.Client, username string, p
 	}
 
 	// Generate Dockerfile and build
-	log.Printf("[builder] building image %s for user %s", tag, username)
+	slog.Info("building user image", "component", "builder", "tag", tag, "user", username)
 	df := GenerateDockerfile(p, baseTag)
 
 	tmpDir, err := os.MkdirTemp("", "hopbox-userbuild-*")

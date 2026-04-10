@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -106,7 +106,7 @@ func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, dockerCli *
 
 		containerID, err := resolveContainerID(sshCtx, mgr, store, dockerCli, baseTag, hostname, sshPort)
 		if err != nil {
-			log.Printf("[tunnel] resolve container failed: %v", err)
+			slog.Error("tunnel resolve container failed", "component", "tunnel", "err", err)
 			newChan.Reject(gossh.ConnectionFailed, fmt.Sprintf("resolve container: %v", err))
 			return
 		}
@@ -120,12 +120,17 @@ func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, dockerCli *
 		dest := RewriteDestination(d.DestAddr, containerIP)
 		addr := net.JoinHostPort(dest, fmt.Sprintf("%d", d.DestPort))
 
-		log.Printf("[tunnel] %s:%d → %s (container %s)", d.DestAddr, d.DestPort, addr, containerID[:12])
+		slog.Info("tunnel forward",
+			"component", "tunnel",
+			"dest_addr", d.DestAddr,
+			"dest_port", d.DestPort,
+			"target", addr,
+			"container", containerID[:12])
 
 		var dialer net.Dialer
 		conn2, err := dialer.DialContext(context.Background(), "tcp", addr)
 		if err != nil {
-			log.Printf("[tunnel] dial failed %s: %v", addr, err)
+			slog.Error("tunnel dial failed", "component", "tunnel", "target", addr, "err", err)
 			newChan.Reject(gossh.ConnectionFailed, fmt.Sprintf("dial %s: %v", addr, err))
 			return
 		}

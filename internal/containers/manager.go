@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -78,7 +78,7 @@ func (m *Manager) SessionConnect(containerID string) {
 	if s.idleTimer != nil {
 		s.idleTimer.Stop()
 		s.idleTimer = nil
-		log.Printf("[idle] cancelled idle timer for container %s (session reconnected)", containerID[:12])
+		slog.Info("idle timer cancelled (session reconnected)", "component", "idle", "container", containerID[:12])
 	}
 }
 
@@ -96,7 +96,7 @@ func (m *Manager) SessionDisconnect(containerID string) {
 	}
 
 	if s.sessions == 0 && m.idleTimeout > 0 {
-		log.Printf("[idle] starting %v idle timer for container %s", m.idleTimeout, containerID[:12])
+		slog.Info("idle timer started", "component", "idle", "timeout", m.idleTimeout, "container", containerID[:12])
 		s.idleTimer = time.AfterFunc(m.idleTimeout, func() {
 			m.stopIdleContainer(containerID)
 		})
@@ -104,10 +104,10 @@ func (m *Manager) SessionDisconnect(containerID string) {
 }
 
 func (m *Manager) stopIdleContainer(containerID string) {
-	log.Printf("[idle] stopping idle container %s", containerID[:12])
+	slog.Info("stopping idle container", "component", "idle", "container", containerID[:12])
 	ctx := context.Background()
 	if err := m.cli.ContainerStop(ctx, containerID, container.StopOptions{}); err != nil {
-		log.Printf("[idle] failed to stop container %s: %v", containerID[:12], err)
+		slog.Error("failed to stop idle container", "component", "idle", "container", containerID[:12], "err", err)
 	}
 
 	m.mu.Lock()
@@ -148,7 +148,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 	if len(containers) > 0 {
 		c := containers[0]
 		if ShouldRecreate(c.Labels[profileHashLabelKey], profileHash) {
-			log.Printf("[container] profile hash mismatch for %s — removing and recreating", name)
+			slog.Info("profile hash mismatch, recreating container", "component", "container", "name", name)
 			_ = m.cli.ContainerStop(ctx, c.ID, container.StopOptions{})
 			if err := m.cli.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true}); err != nil {
 				return "", fmt.Errorf("remove container: %w", err)
@@ -205,7 +205,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 		Resources: m.resourceLimits(),
 	}
 
-	log.Printf("[container] creating %s with bind mount %s -> /home/dev", name, homePath)
+	slog.Info("creating container", "component", "container", "name", name, "home", homePath)
 
 	resp, err := m.cli.ContainerCreate(ctx, cfg, hostCfg, nil, nil, name)
 	if err != nil {
@@ -225,7 +225,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 	}
 	srv, err := control.NewSocketServer(socketPath, info, destroyFn, m.linkStore)
 	if err != nil {
-		log.Printf("[container] failed to create control socket: %v", err)
+		slog.Error("failed to create control socket", "component", "container", "err", err)
 	} else {
 		m.mu.Lock()
 		m.sockets[resp.ID] = srv
@@ -323,7 +323,7 @@ func (m *Manager) Shutdown() {
 	defer m.mu.Unlock()
 
 	for id, srv := range m.sockets {
-		log.Printf("[shutdown] closing socket server for container %s", id[:12])
+		slog.Info("closing socket server", "component", "shutdown", "container", id[:12])
 		srv.Close()
 	}
 	m.sockets = make(map[string]*control.SocketServer)
@@ -331,7 +331,7 @@ func (m *Manager) Shutdown() {
 	for id, s := range m.states {
 		if s.idleTimer != nil {
 			s.idleTimer.Stop()
-			log.Printf("[shutdown] cancelled idle timer for container %s", id[:12])
+			slog.Info("cancelled idle timer", "component", "shutdown", "container", id[:12])
 		}
 	}
 	m.states = make(map[string]*containerState)

@@ -5,7 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -110,7 +110,7 @@ func (s *AdminServer) renderPage(w http.ResponseWriter, name string, data any) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tmpl.ExecuteTemplate(w, "layout", data); err != nil {
-		log.Printf("[admin] template error: %v", err)
+		slog.Error("template error", "component", "admin", "err", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 }
@@ -289,12 +289,12 @@ func (s *AdminServer) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 
 	// Delete user from store
 	if err := s.store.Delete(fp); err != nil {
-		log.Printf("[admin] failed to delete user %s: %v", username, err)
+		slog.Error("failed to delete user", "component", "admin", "user", username, "err", err)
 		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("[admin] deleted user %s (fp=%s)", username, fp[:12])
+	slog.Info("deleted user", "component", "admin", "user", username, "fp", fp[:12])
 
 	// Return empty string — htmx will remove the row
 	w.Header().Set("Content-Type", "text/html")
@@ -321,12 +321,12 @@ func (s *AdminServer) handleDeleteBox(w http.ResponseWriter, r *http.Request) {
 	userDir := fmt.Sprintf("%s/%s", s.store.Dir(), fp)
 	boxDir := fmt.Sprintf("%s/boxes/%s", userDir, boxname)
 	if err := s.manager.DestroyBox(context.Background(), username, boxname, boxDir); err != nil {
-		log.Printf("[admin] failed to delete box %s/%s: %v", username, boxname, err)
+		slog.Error("failed to delete box", "component", "admin", "user", username, "box", boxname, "err", err)
 		http.Error(w, "Failed to delete box", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("[admin] deleted box %s/%s", username, boxname)
+	slog.Info("deleted box", "component", "admin", "user", username, "box", boxname)
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprint(w, "")
 }
@@ -348,12 +348,12 @@ func (s *AdminServer) handleStopBox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.dockerCli.ContainerStop(ctx, cl[0].ID, container.StopOptions{}); err != nil {
-		log.Printf("[admin] failed to stop container %s: %v", containerName, err)
+		slog.Error("failed to stop container", "component", "admin", "container", containerName, "err", err)
 		http.Error(w, "Failed to stop container", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("[admin] stopped container %s", containerName)
+	slog.Info("stopped container", "component", "admin", "container", containerName)
 
 	// Return updated status badge
 	w.Header().Set("Content-Type", "text/html")
@@ -370,7 +370,7 @@ func (s *AdminServer) handleToggleRegistration(w http.ResponseWriter, r *http.Re
 	enabled := r.FormValue("enabled") == "true"
 	s.cfg.OpenRegistration = enabled
 
-	log.Printf("[admin] registration toggled to %v (runtime only)", enabled)
+	slog.Info("registration toggled (runtime only)", "component", "admin", "enabled", enabled)
 
 	// Return the updated toggle fragment
 	w.Header().Set("Content-Type", "text/html")

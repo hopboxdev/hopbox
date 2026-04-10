@@ -2,7 +2,7 @@ package control
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -55,7 +55,7 @@ func (s *SocketServer) Serve() {
 			case <-s.done:
 				return // intentional close
 			default:
-				log.Printf("[control] accept error on %s: %v", s.path, err)
+				slog.Error("control socket accept error", "component", "control", "path", s.path, "err", err)
 				return
 			}
 		}

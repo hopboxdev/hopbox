@@ -32,9 +32,14 @@ func main() {
 	}
 	initLogger(cfg)
 
-	log.Printf("config: port=%d data_dir=%s registration=%v idle_timeout=%dh resources=[cpu=%d mem=%dGB pids=%d]",
-		cfg.Port, cfg.DataDir, cfg.OpenRegistration, cfg.IdleTimeoutHours,
-		cfg.Resources.CPUCores, cfg.Resources.MemoryGB, cfg.Resources.PidsLimit)
+	slog.Info("config loaded",
+		"port", cfg.Port,
+		"data_dir", cfg.DataDir,
+		"open_registration", cfg.OpenRegistration,
+		"idle_timeout_hours", cfg.IdleTimeoutHours,
+		"cpu_cores", cfg.Resources.CPUCores,
+		"memory_gb", cfg.Resources.MemoryGB,
+		"pids_limit", cfg.Resources.PidsLimit)
 
 	// Resolve data dir to absolute path (Docker bind mounts require absolute paths)
 	cfg.DataDir, err = filepath.Abs(cfg.DataDir)
@@ -67,7 +72,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("ensure base image: %v", err)
 	}
-	log.Printf("using base image: %s", imageTag)
+	slog.Info("base image ready", "image", imageTag)
 
 	// Initialize user store
 	store := users.NewStore(usersDir)
@@ -86,9 +91,9 @@ func main() {
 		}
 		adminSrv := admin.NewAdminServer(&cfg, store, mgr, cli)
 		go func() {
-			log.Printf("admin UI: http://0.0.0.0:%d (user: %s)", cfg.Admin.Port, cfg.Admin.Username)
+			slog.Info("admin UI listening", "port", cfg.Admin.Port, "user", cfg.Admin.Username)
 			if err := adminSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Printf("admin server error: %v", err)
+				slog.Error("admin server error", "err", err)
 			}
 		}()
 	}
@@ -104,14 +109,14 @@ func main() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
-		log.Println("shutting down...")
+		slog.Info("shutting down")
 		mgr.Shutdown()
 		srv.Close()
-		log.Println("shutdown complete")
+		slog.Info("shutdown complete")
 	}()
 
 	if err := srv.ListenAndServe(); err != nil {
-		log.Printf("server stopped: %v", err)
+		slog.Error("server stopped", "err", err)
 	}
 }
 

@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/pem"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -66,7 +66,7 @@ func NewServer(cfg config.Config, store *users.Store, manager *containers.Manage
 }
 
 func (s *Server) ListenAndServe() error {
-	log.Printf("hopboxd listening on :%d", s.cfg.Port)
+	slog.Info("hopboxd listening", "port", s.cfg.Port)
 	return s.sshSrv.ListenAndServe()
 }
 
@@ -81,18 +81,18 @@ func (s *Server) authHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 
 	user, known := s.store.LookupByFingerprint(fp)
 	if known {
-		log.Printf("[auth] user=%s key=%s addr=%s", user.Username, key.Type(), ctx.RemoteAddr())
+		slog.Info("auth success", "component", "auth", "user", user.Username, "key_type", key.Type(), "addr", ctx.RemoteAddr())
 		ctx.SetValue("needs_registration", false)
 		return true
 	}
 
 	if s.cfg.OpenRegistration {
-		log.Printf("[auth] new key addr=%s type=%s — starting registration", ctx.RemoteAddr(), key.Type())
+		slog.Info("auth new key, starting registration", "component", "auth", "addr", ctx.RemoteAddr(), "key_type", key.Type())
 		ctx.SetValue("needs_registration", true)
 		return true
 	}
 
-	log.Printf("[auth] rejected unknown key addr=%s (registration closed)", ctx.RemoteAddr())
+	slog.Warn("auth rejected: registration closed", "component", "auth", "addr", ctx.RemoteAddr())
 	return false
 }
 
@@ -129,12 +129,12 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		} else {
 			chosen, err := picker.RunPicker(boxes, sess)
 			if err != nil {
-				log.Printf("[session] picker cancelled for user=%s: %v", user.Username, err)
+				slog.Warn("picker cancelled", "component", "session", "user", user.Username, "err", err)
 				sess.Exit(0)
 				return
 			}
 			boxname = chosen
-			log.Printf("[session] user=%s picked box=%s", user.Username, boxname)
+			slog.Info("box picked", "component", "session", "user", user.Username, "box", boxname)
 		}
 	}
 
@@ -147,17 +147,17 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		var ok bool
 		user, ok = s.store.LookupByFingerprint(fp)
 		if !ok {
-			log.Printf("[session] user not found for fp=%s", fp[:20])
+			slog.Warn("session user not found", "component", "session", "fp", fp[:20])
 			fmt.Fprintf(sess, "User not found\r\n")
 			return
 		}
 
-		log.Printf("[session] connect user=%s box=%s", user.Username, boxname)
+		slog.Info("session connect", "component", "session", "user", user.Username, "box", boxname)
 
 		var err error
 		profile, err = users.ResolveProfile(userDir, boxname)
 		if err != nil {
-			log.Printf("[session] resolve profile failed: %v", err)
+			slog.Error("resolve profile failed", "component", "session", "err", err)
 			fmt.Fprintf(sess, "Failed to load profile: %v\r\n", err)
 			return
 		}
@@ -185,7 +185,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 		result, err := wizard.RunSetup(defaults, sess, needsReg, validateUsername)
 		if err != nil {
-			log.Printf("[session] setup cancelled: %v", err)
+			slog.Warn("setup cancelled", "component", "session", "err", err)
 			sess.Exit(0)
 			return
 		}
@@ -208,35 +208,35 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 				RegisteredAt: time.Now().UTC(),
 			}
 			if err := s.store.Save(fp, u); err != nil {
-				log.Printf("[session] save user failed: %v", err)
+				slog.Error("save user failed", "component", "session", "err", err)
 				fmt.Fprintf(sess, "Failed to save user: %v\r\n", err)
 				return
 			}
 			user = u
-			log.Printf("[session] registered user=%s fp=%s", user.Username, fp[:20])
+			slog.Info("user registered", "component", "session", "user", user.Username, "fp", fp[:20])
 
 			// Save as user-level default
 			if err := users.SaveProfile(filepath.Join(userDir, "profile.toml"), result.Profile); err != nil {
-				log.Printf("[session] save user profile failed: %v", err)
+				slog.Error("save user profile failed", "component", "session", "err", err)
 			}
 
 			// Save box-level profile
 			boxDir := filepath.Join(userDir, "boxes", boxname)
 			if err := os.MkdirAll(boxDir, 0755); err != nil {
-				log.Printf("[session] create box dir failed: %v", err)
+				slog.Error("create box dir failed", "component", "session", "err", err)
 			}
 			if err := users.SaveProfile(filepath.Join(boxDir, "profile.toml"), result.Profile); err != nil {
-				log.Printf("[session] save box profile failed: %v", err)
+				slog.Error("save box profile failed", "component", "session", "err", err)
 			}
 			profile = &result.Profile
 		} else {
 			// Existing user, new box — save box-level profile
 			boxDir := filepath.Join(userDir, "boxes", boxname)
 			if err := os.MkdirAll(boxDir, 0755); err != nil {
-				log.Printf("[session] create box dir failed: %v", err)
+				slog.Error("create box dir failed", "component", "session", "err", err)
 			}
 			if err := users.SaveProfile(filepath.Join(boxDir, "profile.toml"), result.Profile); err != nil {
-				log.Printf("[session] save box profile failed: %v", err)
+				slog.Error("save box profile failed", "component", "session", "err", err)
 			}
 			profile = &result.Profile
 		}
@@ -263,7 +263,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	close(buildDone)
 	if err != nil {
 		fmt.Fprintf(sess, "\r\x1b[K✗ Building environment failed\r\n")
-		log.Printf("[session] build image failed: %v", err)
+		slog.Error("build image failed", "component", "session", "err", err)
 		fmt.Fprintf(sess, "  %v\r\n", err)
 		return
 	}
@@ -272,7 +272,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	// Container lifecycle
 	homePath := s.store.HomePath(fp, boxname)
 	if err := os.MkdirAll(homePath, 0755); err != nil {
-		log.Printf("[session] create home dir failed: %v", err)
+		slog.Error("create home dir failed", "component", "session", "err", err)
 		fmt.Fprintf(sess, "Failed to create home directory: %v\r\n", err)
 		return
 	}
@@ -289,7 +289,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	}
 	containerID, err := s.manager.EnsureRunning(ctx, user.Username, boxname, imageTag, profileHash, homePath, boxInfo)
 	if err != nil {
-		log.Printf("[session] container failed user=%s box=%s: %v", user.Username, boxname, err)
+		slog.Error("container failed", "component", "session", "user", user.Username, "box", boxname, "err", err)
 		fmt.Fprintf(sess, "Failed to start container: %v\r\n", err)
 		return
 	}
@@ -297,12 +297,12 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	s.manager.SessionConnect(containerID)
 	defer s.manager.SessionDisconnect(containerID)
 
-	log.Printf("[session] attached user=%s box=%s container=%s", user.Username, boxname, containerID[:12])
+	slog.Info("session attached", "component", "session", "user", user.Username, "box", boxname, "container", containerID[:12])
 
 	// Get PTY for container exec (wizard already consumed resize events during its run)
 	ptyReq, winCh, isPty := sess.Pty()
 	if !isPty {
-		log.Printf("[session] no PTY user=%s", user.Username)
+		slog.Warn("session no PTY", "component", "session", "user", user.Username)
 		fmt.Fprintf(sess, "PTY required. Use: ssh -t ...\r\n")
 		return
 	}
@@ -349,25 +349,25 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	env := []string{fmt.Sprintf("TERM=%s", term), fmt.Sprintf("SHELL=%s", shellBin)}
 
 	if err := s.manager.Exec(ctx, containerID, cmd, env, sess, sess, resizeCh); err != nil {
-		log.Printf("[session] exec error user=%s: %v", user.Username, err)
+		slog.Error("exec error", "component", "session", "user", user.Username, "err", err)
 		fmt.Fprintf(sess, "Session error: %v\r\n", err)
 	}
 
-	log.Printf("[session] disconnect user=%s box=%s", user.Username, boxname)
+	slog.Info("session disconnect", "component", "session", "user", user.Username, "box", boxname)
 	sess.Exit(0)
 }
 
 func (s *Server) handleLinkFlow(sess ssh.Session, fp, code string) (users.User, string, *users.Profile, error) {
 	originalFP, err := s.linkStore.ValidateCode(code)
 	if err != nil {
-		log.Printf("[session] link code validation failed: %v", err)
+		slog.Warn("link code validation failed", "component", "session", "err", err)
 		fmt.Fprintf(sess, "Invalid or expired link code.\r\n")
 		sess.Exit(1)
 		return users.User{}, "", nil, err
 	}
 
 	if err := s.store.LinkKey(fp, originalFP); err != nil {
-		log.Printf("[session] link key failed: %v", err)
+		slog.Error("link key failed", "component", "session", "err", err)
 		fmt.Fprintf(sess, "Failed to link key: %v\r\n", err)
 		sess.Exit(1)
 		return users.User{}, "", nil, err
@@ -379,7 +379,7 @@ func (s *Server) handleLinkFlow(sess ssh.Session, fp, code string) (users.User, 
 		sess.Exit(1)
 		return users.User{}, "", nil, fmt.Errorf("user not found after linking")
 	}
-	log.Printf("[session] linked fp=%s to user=%s", fp[:20], user.Username)
+	slog.Info("key linked", "component", "session", "fp", fp[:20], "user", user.Username)
 
 	userDir := filepath.Join(s.store.Dir(), originalFP)
 	boxes, err := containers.ListBoxes(userDir)
@@ -397,7 +397,7 @@ func (s *Server) handleLinkFlow(sess ssh.Session, fp, code string) (users.User, 
 	} else {
 		chosen, err := picker.RunPicker(boxes, sess)
 		if err != nil {
-			log.Printf("[session] picker cancelled for user=%s: %v", user.Username, err)
+			slog.Warn("picker cancelled", "component", "session", "user", user.Username, "err", err)
 			sess.Exit(0)
 			return users.User{}, "", nil, err
 		}
@@ -427,7 +427,7 @@ func (s *Server) loadOrGenerateHostKey() (gossh.Signer, error) {
 			return loadHostKey(keyPath)
 		}
 
-		log.Printf("WARNING: No host key configured, auto-generating to %s", keyPath)
+		slog.Warn("no host key configured, auto-generating", "path", keyPath)
 		if err := os.MkdirAll(filepath.Dir(keyPath), 0755); err != nil {
 			return nil, err
 		}
