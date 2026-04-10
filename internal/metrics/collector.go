@@ -80,6 +80,12 @@ func (c *Collector) collect(ctx context.Context) {
 		}
 	}
 
+	// Single source of truth for the gauge: whatever Docker says is
+	// running right now. Replaces the previous Inc/Dec bookkeeping in
+	// Manager, which drifted across hopboxd restarts because the gauge
+	// reset to 0 while containers kept running.
+	ContainersRunningTotal.Set(float64(len(seen)))
+
 	// Delete metrics for containers that have gone away.
 	for id, k := range c.known {
 		if _, still := seen[id]; !still {

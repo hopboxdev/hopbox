@@ -112,9 +112,9 @@ func (m *Manager) stopIdleContainer(containerID string) {
 	ctx := context.Background()
 	if err := m.cli.ContainerStop(ctx, containerID, container.StopOptions{}); err != nil {
 		slog.Error("failed to stop idle container", "component", "idle", "container", containerID[:12], "err", err)
-	} else {
-		metrics.ContainersRunningTotal.Dec()
 	}
+	// ContainersRunningTotal is refreshed by the metrics collector from
+	// Docker directly — no manual bookkeeping here.
 
 	m.mu.Lock()
 	delete(m.states, containerID)
@@ -164,7 +164,6 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 				if err := m.cli.ContainerStart(ctx, c.ID, container.StartOptions{}); err != nil {
 					return "", fmt.Errorf("start container: %w", err)
 				}
-				metrics.ContainersRunningTotal.Inc()
 			}
 
 			// Ensure socket server is running for existing container
@@ -222,7 +221,6 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 	if err := m.cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		return "", fmt.Errorf("start container: %w", err)
 	}
-	metrics.ContainersRunningTotal.Inc()
 
 	// Start control socket
 	boxDir := filepath.Dir(homePath)
@@ -267,7 +265,7 @@ func (m *Manager) DestroyBox(ctx context.Context, username, boxname, boxDir stri
 		if err := m.cli.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true}); err != nil {
 			return fmt.Errorf("remove container: %w", err)
 		}
-		metrics.ContainersRunningTotal.Dec()
+		// ContainersRunningTotal is refreshed by the metrics collector.
 	}
 
 	// Clean up socket directory
