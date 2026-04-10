@@ -34,14 +34,7 @@ func main() {
 	}
 	initLogger(cfg)
 
-	slog.Info("config loaded",
-		"port", cfg.Port,
-		"data_dir", cfg.DataDir,
-		"open_registration", cfg.OpenRegistration,
-		"idle_timeout_hours", cfg.IdleTimeoutHours,
-		"cpu_cores", cfg.Resources.CPUCores,
-		"memory_gb", cfg.Resources.MemoryGB,
-		"pids_limit", cfg.Resources.PidsLimit)
+	slog.Info("config loaded", "config", cfg)
 
 	// Resolve data dir to absolute path (Docker bind mounts require absolute paths)
 	cfg.DataDir, err = filepath.Abs(cfg.DataDir)

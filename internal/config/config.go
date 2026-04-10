@@ -1,8 +1,10 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"os"
 
 	"github.com/pelletier/go-toml/v2"
@@ -79,4 +81,19 @@ func Load(path string) (Config, error) {
 		return cfg, err
 	}
 	return cfg, nil
+}
+
+// LogValue implements slog.LogValuer so the full config is logged as a
+// single JSON attribute. Any field added to Config automatically shows up
+// in the log, and sensitive fields are redacted before serialisation.
+func (c Config) LogValue() slog.Value {
+	redacted := c
+	if redacted.Admin.Password != "" {
+		redacted.Admin.Password = "***"
+	}
+	data, err := json.Marshal(redacted)
+	if err != nil {
+		return slog.StringValue("<marshal error: " + err.Error() + ">")
+	}
+	return slog.StringValue(string(data))
 }
