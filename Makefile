@@ -1,4 +1,4 @@
-.PHONY: help build build-cli run test clean release install-local tag docker-cleanup monitoring-up monitoring-down
+.PHONY: help build build-cli run test clean release release-local docker-cleanup monitoring-up monitoring-down
 
 # Default target
 help:
@@ -12,8 +12,8 @@ help:
 	@echo "  make clean            Remove build artifacts"
 	@echo ""
 	@echo "Release:"
-	@echo "  make release VERSION=v0.1.0    Build release tarballs for current host arch"
-	@echo "  make tag VERSION=v0.1.0        Create and push git tag (triggers CI release)"
+	@echo "  make release VERSION=v0.1.0       Create and push git tag (triggers CI release)"
+	@echo "  make release-local VERSION=v0.1.0 Build release tarball locally for testing"
 	@echo ""
 	@echo "Local testing:"
 	@echo "  make docker-cleanup            Remove all hopbox containers and images"
@@ -42,16 +42,16 @@ clean:
 
 release:
 	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=v0.1.0"; exit 1; fi
-	./scripts/build-release.sh $(VERSION) linux $$(go env GOARCH)
-	@echo ""
-	@echo "Tarball: dist/hopbox-$(VERSION)-linux-$$(go env GOARCH).tar.gz"
-
-tag:
-	@if [ -z "$(VERSION)" ]; then echo "Usage: make tag VERSION=v0.1.0"; exit 1; fi
 	git tag $(VERSION)
 	git push origin $(VERSION)
 	@echo ""
 	@echo "Tag $(VERSION) pushed. GitHub Actions will build the release."
+
+release-local:
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make release-local VERSION=v0.1.0"; exit 1; fi
+	./scripts/build-release.sh $(VERSION) linux $$(go env GOARCH)
+	@echo ""
+	@echo "Tarball: dist/hopbox-$(VERSION)-linux-$$(go env GOARCH).tar.gz"
 
 # Local testing helpers
 
