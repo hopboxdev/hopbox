@@ -4,10 +4,12 @@ import (
 	"context"
 	"flag"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/docker/docker/client"
@@ -28,6 +30,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
+	initLogger(cfg)
 
 	log.Printf("config: port=%d data_dir=%s registration=%v idle_timeout=%dh resources=[cpu=%d mem=%dGB pids=%d]",
 		cfg.Port, cfg.DataDir, cfg.OpenRegistration, cfg.IdleTimeoutHours,
@@ -110,6 +113,30 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil {
 		log.Printf("server stopped: %v", err)
 	}
+}
+
+func initLogger(cfg config.Config) {
+	var level slog.Level
+	switch strings.ToLower(cfg.LogLevel) {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn", "warning":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	opts := &slog.HandlerOptions{Level: level}
+
+	var handler slog.Handler
+	if strings.ToLower(cfg.LogFormat) == "json" {
+		handler = slog.NewJSONHandler(os.Stderr, opts)
+	} else {
+		handler = slog.NewTextHandler(os.Stderr, opts)
+	}
+	slog.SetDefault(slog.New(handler))
 }
 
 func findTemplatesDir() string {

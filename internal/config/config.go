@@ -28,6 +28,8 @@ type Config struct {
 	HostKeyPath      string          `toml:"host_key_path"`
 	OpenRegistration bool            `toml:"open_registration"`
 	IdleTimeoutHours int             `toml:"idle_timeout_hours"`
+	LogFormat        string          `toml:"log_format"`
+	LogLevel         string          `toml:"log_level"`
 	Resources        ResourcesConfig `toml:"resources"`
 	Admin            AdminConfig     `toml:"admin"`
 }
@@ -40,6 +42,8 @@ func defaults() Config {
 		HostKeyPath:      "",
 		OpenRegistration: true,
 		IdleTimeoutHours: 24,
+		LogFormat:        "text",
+		LogLevel:         "info",
 		Resources: ResourcesConfig{
 			CPUCores:  2,
 			MemoryGB:  4,

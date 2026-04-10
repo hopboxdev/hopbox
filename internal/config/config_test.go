@@ -142,6 +142,41 @@ password = "secret"
 	}
 }
 
+func TestLogDefaults(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.LogFormat != "text" {
+		t.Errorf("expected log_format 'text', got %s", cfg.LogFormat)
+	}
+	if cfg.LogLevel != "info" {
+		t.Errorf("expected log_level 'info', got %s", cfg.LogLevel)
+	}
+}
+
+func TestLogFromFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	err := os.WriteFile(path, []byte(`
+log_format = "json"
+log_level  = "debug"
+`), 0644)
+	if err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.LogFormat != "json" {
+		t.Errorf("expected log_format 'json', got %s", cfg.LogFormat)
+	}
+	if cfg.LogLevel != "debug" {
+		t.Errorf("expected log_level 'debug', got %s", cfg.LogLevel)
+	}
+}
+
 func TestLoadResourcesFromFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")

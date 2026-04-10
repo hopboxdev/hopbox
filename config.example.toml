@@ -20,6 +20,12 @@ open_registration = true
 # Hours of no SSH sessions before a container is auto-stopped (0 = disabled)
 idle_timeout_hours = 24
 
+# Log output format: "text" (human-readable) or "json" (structured)
+log_format = "text"   # "text" or "json"
+
+# Minimum log level: "debug" | "info" | "warn" | "error"
+log_level  = "info"   # "debug" | "info" | "warn" | "error"
+
 # Resource limits applied to each container
 [resources]
 cpu_cores = 2       # CPU cores (0 = unlimited)
