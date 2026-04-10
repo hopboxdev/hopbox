@@ -1,0 +1,117 @@
+{
+  "title": "Hopbox — Box Details",
+  "uid": "hopbox-box-details",
+  "schemaVersion": 38,
+  "version": 1,
+  "editable": true,
+  "tags": ["hopbox"],
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "user",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(hopbox_box_cpu_percent, user)",
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "box",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "query": "label_values(hopbox_box_cpu_percent{user=\"$user\"}, box)",
+        "refresh": 2,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "CPU %",
+      "id": 1,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "hopbox_box_cpu_percent{user=\"$user\",box=\"$box\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "Memory in use",
+      "id": 2,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "hopbox_box_memory_bytes{user=\"$user\",box=\"$box\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "Memory limit",
+      "id": 3,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "hopbox_box_memory_limit_bytes{user=\"$user\",box=\"$box\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU usage",
+      "id": 4,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "hopbox_box_cpu_percent{user=\"$user\",box=\"$box\"}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory (usage vs limit)",
+      "id": 5,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "hopbox_box_memory_bytes{user=\"$user\",box=\"$box\"}", "refId": "A", "legendFormat": "usage" },
+        { "expr": "hopbox_box_memory_limit_bytes{user=\"$user\",box=\"$box\"}", "refId": "B", "legendFormat": "limit" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Network I/O (rate)",
+      "id": 6,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(hopbox_box_network_rx_bytes{user=\"$user\",box=\"$box\"}[1m])", "refId": "A", "legendFormat": "rx" },
+        { "expr": "rate(hopbox_box_network_tx_bytes{user=\"$user\",box=\"$box\"}[1m])", "refId": "B", "legendFormat": "tx" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Disk I/O (rate)",
+      "id": 7,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(hopbox_box_block_read_bytes{user=\"$user\",box=\"$box\"}[1m])", "refId": "A", "legendFormat": "read" },
+        { "expr": "rate(hopbox_box_block_write_bytes{user=\"$user\",box=\"$box\"}[1m])", "refId": "B", "legendFormat": "write" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] }
+    }
+  ],
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ]
+}
