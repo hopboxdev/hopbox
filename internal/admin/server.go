@@ -191,10 +191,13 @@ func (s *AdminServer) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		totalBoxes += len(boxes)
 	}
 
-	// Count running hopbox containers
+	// Count running hopbox user containers (filter by profile hash label)
 	ctx := context.Background()
 	runningContainers, err := s.dockerCli.ContainerList(ctx, container.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("name", "hopbox-"), filters.Arg("status", "running")),
+		Filters: filters.NewArgs(
+			filters.Arg("status", "running"),
+			filters.Arg("label", "hopbox.profile-hash"),
+		),
 	})
 	runningCount := 0
 	if err == nil {

@@ -56,8 +56,10 @@ func (c *Collector) collect(ctx context.Context) {
 	defer cancel()
 
 	containers, err := c.cli.ContainerList(cctx, container.ListOptions{
-		All:     false, // running only
-		Filters: filters.NewArgs(filters.Arg("name", "hopbox-")),
+		All: false, // running only
+		Filters: filters.NewArgs(
+			filters.Arg("label", "hopbox.profile-hash"),
+		),
 	})
 	if err != nil {
 		slog.Warn("metrics collector: list containers failed", "err", err)

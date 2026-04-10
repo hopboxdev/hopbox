@@ -86,7 +86,7 @@
         { "expr": "hopbox_box_cpu_percent", "refId": "A", "format": "table", "instant": true }
       ],
       "transformations": [
-        { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true } } }
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true }, "renameByName": { "Value": "CPU %" } } }
       ]
     },
     {
