@@ -70,7 +70,11 @@ func RunPicker(boxes []string, sess ssh.Session) (string, error) {
 	))
 
 	m := pickerModel{form: form, selected: &selected}
-	p := tea.NewProgram(m, bubbletea.MakeOptions(sess)...)
+	// Propagate TERM from the ssh pty into the program's env so termenv
+	// can detect colors (MakeOptions alone doesn't do this).
+	env := append(sess.Environ(), "TERM="+pty.Term)
+	opts := append(bubbletea.MakeOptions(sess), tea.WithEnvironment(env))
+	p := tea.NewProgram(m, opts...)
 
 	go func() {
 		p.Send(tea.WindowSizeMsg{

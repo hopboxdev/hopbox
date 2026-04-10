@@ -244,7 +244,13 @@ func runProgram(sess ssh.Session, model tea.Model) (tea.Model, error) {
 		return nil, fmt.Errorf("no PTY available")
 	}
 
-	p := tea.NewProgram(model, bubbletea.MakeOptions(sess)...)
+	// wish/bubbletea.MakeOptions wires input/output but does not propagate
+	// the pty's TERM from the ssh pty-req into the program environment.
+	// Without TERM, termenv falls back to ASCII mode: no colors, and some
+	// huh widgets misrender on input. Inject TERM explicitly.
+	env := append(sess.Environ(), "TERM="+pty.Term)
+	opts := append(bubbletea.MakeOptions(sess), tea.WithEnvironment(env))
+	p := tea.NewProgram(model, opts...)
 
 	go func() {
 		p.Send(tea.WindowSizeMsg{
