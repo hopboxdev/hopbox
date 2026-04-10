@@ -1,6 +1,9 @@
 apiVersion: 1
 datasources:
   - name: Prometheus
+    # Fixed UID so dashboards can reference it by literal rather than the
+    # ${DS_PROMETHEUS} import placeholder, which file-provisioning doesn't resolve.
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
