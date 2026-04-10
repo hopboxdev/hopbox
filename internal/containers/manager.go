@@ -13,6 +13,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 
 	"github.com/hopboxdev/hopbox/internal/config"
 	"github.com/hopboxdev/hopbox/internal/control"
@@ -323,6 +324,54 @@ func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, en
 	attachResp.Close()
 
 	return nil
+}
+
+// ExecNoTTY runs a command inside a container without allocating a TTY and
+// returns its exit code. Used for non-interactive SSH sessions such as the
+// VSCode remote-ssh bootstrap, scp, and rsync. stdout and stderr are
+// demultiplexed from Docker's framed stream so the caller gets them on
+// separate writers.
+func (m *Manager) ExecNoTTY(ctx context.Context, containerID string, cmd []string, env []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) (int, error) {
+	execCfg := container.ExecOptions{
+		Cmd:          cmd,
+		Env:          env,
+		AttachStdin:  stdin != nil,
+		AttachStdout: true,
+		AttachStderr: true,
+		Tty:          false,
+	}
+
+	execResp, err := m.cli.ContainerExecCreate(ctx, containerID, execCfg)
+	if err != nil {
+		return -1, fmt.Errorf("exec create: %w", err)
+	}
+
+	attachResp, err := m.cli.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{Tty: false})
+	if err != nil {
+		return -1, fmt.Errorf("exec attach: %w", err)
+	}
+	defer attachResp.Close()
+
+	// stdin -> container; close the write side on EOF so the remote process
+	// sees EOF on its own stdin (bootstrap scripts wait for this).
+	if stdin != nil {
+		go func() {
+			_, _ = io.Copy(attachResp.Conn, stdin)
+			_ = attachResp.CloseWrite()
+		}()
+	}
+
+	// Demultiplex the framed stream into stdout and stderr. Blocks until
+	// the exec process exits.
+	if _, err := stdcopy.StdCopy(stdout, stderr, attachResp.Reader); err != nil {
+		return -1, fmt.Errorf("stream copy: %w", err)
+	}
+
+	inspect, err := m.cli.ContainerExecInspect(ctx, execResp.ID)
+	if err != nil {
+		return -1, fmt.Errorf("exec inspect: %w", err)
+	}
+	return inspect.ExitCode, nil
 }
 
 // Shutdown cleans up all socket servers and cancels all idle timers.

@@ -164,6 +164,18 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		}
 	}
 
+	// Detect whether the client requested a PTY up front. Non-PTY sessions
+	// (e.g. VSCode remote-ssh bootstrap, scp, rsync, `ssh host <cmd>`) take a
+	// separate path that skips the wizard, the spinner, and docker exec's TTY.
+	_, _, isPty := sess.Pty()
+
+	// First-time setup requires an interactive session — the wizard is a TUI.
+	if !isPty && (needsReg || profile == nil) {
+		fmt.Fprintf(sess.Stderr(), "hopbox: first-time setup requires an interactive session. Run: ssh hop@<server>\n")
+		sess.Exit(1)
+		return
+	}
+
 	// Run wizard if new user or no profile exists
 	if needsReg || profile == nil {
 		defaults := users.DefaultProfile()
@@ -243,32 +255,41 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		}
 	}
 
-	// Ensure per-user image exists (with spinner)
-	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	// Ensure per-user image exists (spinner only for interactive sessions;
+	// non-PTY sessions like VSCode remote-ssh want a clean stdout).
 	buildDone := make(chan struct{})
-	go func() {
-		i := 0
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-buildDone:
-				return
-			case <-ticker.C:
-				fmt.Fprintf(sess, "\r%s Building environment...", spinner[i%len(spinner)])
-				i++
+	if isPty {
+		spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		go func() {
+			i := 0
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-buildDone:
+					return
+				case <-ticker.C:
+					fmt.Fprintf(sess, "\r%s Building environment...", spinner[i%len(spinner)])
+					i++
+				}
 			}
-		}
-	}()
+		}()
+	}
 	imageTag, err := containers.EnsureUserImage(ctx, s.dockerCli, user.Username, *profile, s.baseTag)
 	close(buildDone)
 	if err != nil {
-		fmt.Fprintf(sess, "\r\x1b[K✗ Building environment failed\r\n")
+		if isPty {
+			fmt.Fprintf(sess, "\r\x1b[K✗ Building environment failed\r\n")
+			fmt.Fprintf(sess, "  %v\r\n", err)
+		} else {
+			fmt.Fprintf(sess.Stderr(), "hopbox: build environment failed: %v\n", err)
+		}
 		slog.Error("build image failed", "component", "session", "err", err)
-		fmt.Fprintf(sess, "  %v\r\n", err)
 		return
 	}
-	fmt.Fprintf(sess, "\r\x1b[K✓ Environment ready!\r\n")
+	if isPty {
+		fmt.Fprintf(sess, "\r\x1b[K✓ Environment ready!\r\n")
+	}
 
 	// Container lifecycle
 	homePath := s.store.HomePath(fp, boxname)
@@ -308,13 +329,31 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	slog.Info("session attached", "component", "session", "user", user.Username, "box", boxname, "container", containerID[:12])
 	metrics.BoxConnectTotal.WithLabelValues(user.Username, boxname).Inc()
 
-	// Get PTY for container exec (wizard already consumed resize events during its run)
-	ptyReq, winCh, isPty := sess.Pty()
+	// Non-interactive path (VSCode remote-ssh, scp, rsync, `ssh host <cmd>`):
+	// run the client's requested command — or a login shell if none was
+	// supplied — inside the container with no TTY and demultiplexed output.
 	if !isPty {
-		slog.Warn("session no PTY", "component", "session", "user", user.Username)
-		fmt.Fprintf(sess, "PTY required. Use: ssh -t ...\r\n")
+		rawCmd := sess.RawCommand()
+		var execCmd []string
+		if rawCmd == "" {
+			execCmd = []string{"/bin/bash", "-l"}
+		} else {
+			execCmd = []string{"/bin/bash", "-lc", rawCmd}
+		}
+		exitCode, err := s.manager.ExecNoTTY(ctx, containerID, execCmd, []string{"TERM=dumb"}, sess, sess, sess.Stderr())
+		if err != nil {
+			slog.Error("non-tty exec failed", "component", "session", "user", user.Username, "err", err)
+			fmt.Fprintf(sess.Stderr(), "hopbox: %v\n", err)
+			sess.Exit(1)
+			return
+		}
+		slog.Info("session disconnect", "component", "session", "user", user.Username, "box", boxname, "exit", exitCode)
+		sess.Exit(exitCode)
 		return
 	}
+
+	// Get PTY for container exec (wizard already consumed resize events during its run)
+	ptyReq, winCh, _ := sess.Pty()
 
 	resizeCh := make(chan [2]uint, 1)
 	resizeCh <- [2]uint{uint(ptyReq.Window.Width), uint(ptyReq.Window.Height)}
