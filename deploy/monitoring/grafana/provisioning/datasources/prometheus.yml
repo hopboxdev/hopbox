@@ -1,4 +1,13 @@
 apiVersion: 1
+
+# Drop any previously-provisioned Prometheus datasource before re-adding it.
+# Needed when upgrading from an install that used an auto-generated UID: the
+# new config below pins uid=prometheus, and Grafana's reconciler fails with
+# "data source not found" if the old record is still in the volume.
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+
 datasources:
   - name: Prometheus
     # Fixed UID so dashboards can reference it by literal rather than the
