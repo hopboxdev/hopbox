@@ -262,12 +262,12 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	imageTag, err := containers.EnsureUserImage(ctx, s.dockerCli, user.Username, *profile, s.baseTag)
 	close(buildDone)
 	if err != nil {
-		fmt.Fprintf(sess, "\r✗ Building environment failed\r\n")
+		fmt.Fprintf(sess, "\r\x1b[K✗ Building environment failed\r\n")
 		log.Printf("[session] build image failed: %v", err)
 		fmt.Fprintf(sess, "  %v\r\n", err)
 		return
 	}
-	fmt.Fprintf(sess, "\r✓ Environment ready!\r\n")
+	fmt.Fprintf(sess, "\r\x1b[K✓ Environment ready!\r\n")
 
 	// Container lifecycle
 	homePath := s.store.HomePath(fp, boxname)
