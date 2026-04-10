@@ -129,6 +129,11 @@ else
   ufw --force default allow outgoing >/dev/null
   ufw allow 22/tcp   >/dev/null
   ufw allow 2222/tcp >/dev/null
+  # Allow Docker bridge networks (172.16.0.0/12 covers docker0 and all
+  # compose-spawned networks) to reach hopboxd's metrics/admin port on
+  # the host. Needed for the bundled Prometheus container to scrape
+  # hopboxd via host.docker.internal. Public access to 8080 stays denied.
+  ufw allow from 172.16.0.0/12 to any port 8080 proto tcp comment 'docker -> hopboxd' >/dev/null
   # Enable non-interactively. On first enable UFW warns about SSH; we've already allowed 22.
   if ufw status | grep -q "Status: active"; then
     ok "ufw already active"
