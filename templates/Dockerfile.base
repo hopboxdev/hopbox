@@ -5,6 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     sudo curl wget git build-essential openssh-client \
     unzip xz-utils ca-certificates \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # Create dev user (remove existing UID 1000 user if present, e.g. ubuntu)

@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/docker/docker/client"
 	"github.com/charmbracelet/ssh"
@@ -18,15 +16,6 @@ import (
 	"github.com/hopboxdev/hopbox/internal/control"
 	"github.com/hopboxdev/hopbox/internal/users"
 )
-
-func RewriteDestination(host, containerIP string) string {
-	switch host {
-	case "localhost", "127.0.0.1", "::1", "0.0.0.0":
-		return containerIP
-	default:
-		return host
-	}
-}
 
 type directTCPIPData struct {
 	DestAddr string
@@ -111,50 +100,50 @@ func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, dockerCli *
 			return
 		}
 
-		containerIP, err := mgr.ContainerIP(context.Background(), containerID)
-		if err != nil {
-			newChan.Reject(gossh.ConnectionFailed, fmt.Sprintf("container IP: %v", err))
-			return
+		// Normalize destination: if the client asked for localhost we want
+		// the container's loopback, not the host's. Keeping it as 127.0.0.1
+		// is correct here because we're about to exec nc inside the container,
+		// so "localhost" refers to the container itself.
+		dest := d.DestAddr
+		switch dest {
+		case "localhost", "0.0.0.0", "::1", "":
+			dest = "127.0.0.1"
 		}
-
-		dest := RewriteDestination(d.DestAddr, containerIP)
-		addr := net.JoinHostPort(dest, fmt.Sprintf("%d", d.DestPort))
 
 		slog.Info("tunnel forward",
 			"component", "tunnel",
 			"dest_addr", d.DestAddr,
 			"dest_port", d.DestPort,
-			"target", addr,
+			"target", fmt.Sprintf("%s:%d", dest, d.DestPort),
 			"container", containerID[:12])
-
-		var dialer net.Dialer
-		conn2, err := dialer.DialContext(context.Background(), "tcp", addr)
-		if err != nil {
-			slog.Error("tunnel dial failed", "component", "tunnel", "target", addr, "err", err)
-			newChan.Reject(gossh.ConnectionFailed, fmt.Sprintf("dial %s: %v", addr, err))
-			return
-		}
 
 		ch, reqs, err := newChan.Accept()
 		if err != nil {
-			conn2.Close()
 			return
 		}
 		go gossh.DiscardRequests(reqs)
 
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			io.Copy(ch, conn2)
-			ch.CloseWrite()
-		}()
-		go func() {
-			defer wg.Done()
-			io.Copy(conn2, ch)
-			conn2.Close()
-		}()
-		wg.Wait()
+		// Reach the destination from inside the container by execing nc and
+		// wiring its stdin/stdout to the ssh channel. This is the only way
+		// to hit services bound to the container's loopback (e.g. the VSCode
+		// remote server, which listens on 127.0.0.1 by design).
+		//
+		// -N closes the TCP connection after stdin EOF so half-close is
+		// propagated; -w caps the connect timeout.
+		ncCmd := []string{
+			"nc",
+			"-N",
+			"-w", "10",
+			dest,
+			fmt.Sprintf("%d", d.DestPort),
+		}
+
+		exitCode, err := mgr.ExecNoTTY(context.Background(), containerID, ncCmd, nil, ch, ch, io.Discard)
+		if err != nil {
+			slog.Error("tunnel exec failed", "component", "tunnel", "target", dest, "port", d.DestPort, "err", err)
+		} else if exitCode != 0 {
+			slog.Debug("tunnel nc non-zero exit", "component", "tunnel", "code", exitCode, "target", dest, "port", d.DestPort)
+		}
 		ch.Close()
 	}
 }
