@@ -8,8 +8,10 @@ port = 2222
 # Public hostname of this server (used in tunnel instructions)
 hostname = ""
 
-# Data directory for user profiles, box data, and host key
-data_dir = "./data"
+# Data directory for user profiles, box data, and host key.
+# Use an absolute path in production. "./data" is fine for local development
+# (resolved against the working directory).
+data_dir = "/var/lib/hopbox"
 
 # Path to SSH host key. Empty = auto-generate to <data_dir>/host_key
 host_key_path = ""
