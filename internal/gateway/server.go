@@ -382,9 +382,9 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	var muxCmd string
 	switch profile.Multiplexer.Tool {
 	case "zellij":
-		muxCmd = "zellij attach --create default"
+		muxCmd = fmt.Sprintf("zellij attach --create %s", boxname)
 	case "tmux":
-		muxCmd = "tmux new-session -As default"
+		muxCmd = fmt.Sprintf("tmux new-session -As %s", boxname)
 	default:
 		muxCmd = shellBin
 	}
