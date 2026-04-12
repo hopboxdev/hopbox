@@ -11,17 +11,17 @@ type SSHCmd struct {
 	Box string `help:"Box to connect to (overrides default)." short:"b"`
 }
 
-func (c *SSHCmd) Run(cfg ...*hopConfig) error {
-	conf, err := resolveConfig(cfg)
+func (c *SSHCmd) Run() error {
+	cfg, err := resolveConfig()
 	if err != nil {
 		return err
 	}
 
-	sshUser := conf.sshUserWithBox(c.Box)
+	sshUser := cfg.sshUserWithBox(c.Box)
 
 	args := []string{
-		"-p", strconv.Itoa(conf.Port),
-		sshUser + "@" + conf.Server,
+		"-p", strconv.Itoa(cfg.Port),
+		sshUser + "@" + cfg.Server,
 	}
 
 	cmd := exec.Command("ssh", args...)
@@ -31,16 +31,13 @@ func (c *SSHCmd) Run(cfg ...*hopConfig) error {
 	return cmd.Run()
 }
 
-func resolveConfig(passed []*hopConfig) (*hopConfig, error) {
-	if len(passed) > 0 && passed[0] != nil {
-		return passed[0], nil
-	}
+func resolveConfig() (*hopConfig, error) {
 	cfg, err := loadConfig(configPath())
 	if err != nil {
 		return nil, err
 	}
 	cfg.applyEnv()
-	if cfg.Server == "" || cfg.User == "" {
+	if cfg.Server == "" {
 		return nil, fmt.Errorf("not configured — run `hop init` first")
 	}
 	return &cfg, nil

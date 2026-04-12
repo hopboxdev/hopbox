@@ -12,7 +12,6 @@ func TestLoadConfigFromFile(t *testing.T) {
 	os.WriteFile(path, []byte(`
 server = "hopbox.dev"
 port = 2222
-user = "gandalf"
 default_box = "main"
 `), 0644)
 
@@ -25,9 +24,6 @@ default_box = "main"
 	}
 	if cfg.Port != 2222 {
 		t.Errorf("port = %d, want %d", cfg.Port, 2222)
-	}
-	if cfg.User != "gandalf" {
-		t.Errorf("user = %q, want %q", cfg.User, "gandalf")
 	}
 	if cfg.DefaultBox != "main" {
 		t.Errorf("default_box = %q, want %q", cfg.DefaultBox, "main")
@@ -50,7 +46,6 @@ func TestEnvOverridesFile(t *testing.T) {
 	os.WriteFile(path, []byte(`
 server = "hopbox.dev"
 port = 2222
-user = "gandalf"
 default_box = "main"
 `), 0644)
 
@@ -69,21 +64,25 @@ default_box = "main"
 	if cfg.DefaultBox != "work" {
 		t.Errorf("default_box = %q, want %q", cfg.DefaultBox, "work")
 	}
-	if cfg.User != "gandalf" {
-		t.Errorf("user should stay %q from file, got %q", "gandalf", cfg.User)
-	}
 }
 
 func TestSSHUser(t *testing.T) {
-	cfg := hopConfig{User: "gandalf", DefaultBox: "main"}
-	if got := cfg.sshUser(); got != "gandalf+main" {
-		t.Errorf("sshUser() = %q, want %q", got, "gandalf+main")
+	cfg := hopConfig{DefaultBox: "main"}
+	if got := cfg.sshUser(); got != "hop+main" {
+		t.Errorf("sshUser() = %q, want %q", got, "hop+main")
 	}
 }
 
 func TestSSHUserNoBox(t *testing.T) {
-	cfg := hopConfig{User: "gandalf"}
-	if got := cfg.sshUser(); got != "gandalf" {
-		t.Errorf("sshUser() = %q, want %q", got, "gandalf")
+	cfg := hopConfig{}
+	if got := cfg.sshUser(); got != "hop" {
+		t.Errorf("sshUser() = %q, want %q", got, "hop")
+	}
+}
+
+func TestSSHUserWithBoxOverride(t *testing.T) {
+	cfg := hopConfig{DefaultBox: "main"}
+	if got := cfg.sshUserWithBox("work"); got != "hop+work" {
+		t.Errorf("sshUserWithBox(\"work\") = %q, want %q", got, "hop+work")
 	}
 }

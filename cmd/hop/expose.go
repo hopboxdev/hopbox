@@ -15,7 +15,7 @@ type ExposeCmd struct {
 }
 
 func (c *ExposeCmd) Run() error {
-	cfg, err := resolveConfig(nil)
+	cfg, err := resolveConfig()
 	if err != nil {
 		return err
 	}

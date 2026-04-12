@@ -36,15 +36,6 @@ func (c *InitCmd) Run() error {
 		}
 	}
 
-	fmt.Print("Username: ")
-	if existing.User != "" {
-		fmt.Printf("[%s]: ", existing.User)
-	}
-	user := readLine(reader)
-	if user == "" {
-		user = existing.User
-	}
-
 	fmt.Print("Default box: ")
 	if existing.DefaultBox != "" {
 		fmt.Printf("[%s]: ", existing.DefaultBox)
@@ -57,7 +48,6 @@ func (c *InitCmd) Run() error {
 	cfg := hopConfig{
 		Server:     server,
 		Port:       port,
-		User:       user,
 		DefaultBox: box,
 	}
 

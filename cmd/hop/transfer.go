@@ -27,7 +27,7 @@ func parseTransferTarget(input string) (local, remote string) {
 }
 
 func (c *TransferCmd) Run() error {
-	cfg, err := resolveConfig(nil)
+	cfg, err := resolveConfig()
 	if err != nil {
 		return err
 	}

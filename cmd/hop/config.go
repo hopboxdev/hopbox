@@ -11,12 +11,11 @@ import (
 type hopConfig struct {
 	Server     string `toml:"server"`
 	Port       int    `toml:"port"`
-	User       string `toml:"user"`
 	DefaultBox string `toml:"default_box"`
 }
 
 func defaultConfig() hopConfig {
-	return hopConfig{Port: 2222}
+	return hopConfig{Server: "hopbox.dev", Port: 2222, DefaultBox: "default"}
 }
 
 func loadConfig(path string) (hopConfig, error) {
@@ -46,29 +45,28 @@ func (c *hopConfig) applyEnv() {
 			c.Port = p
 		}
 	}
-	if v := os.Getenv("HOP_USER"); v != "" {
-		c.User = v
-	}
 	if v := os.Getenv("HOP_BOX"); v != "" {
 		c.DefaultBox = v
 	}
 }
 
+// sshUser returns the SSH username for the connection.
+// Always "hop" with optional "+boxname" for routing.
 func (c *hopConfig) sshUser() string {
 	if c.DefaultBox != "" {
-		return c.User + "+" + c.DefaultBox
+		return "hop+" + c.DefaultBox
 	}
-	return c.User
+	return "hop"
 }
 
 func (c *hopConfig) sshUserWithBox(box string) string {
 	if box != "" {
-		return c.User + "+" + box
+		return "hop+" + box
 	}
 	return c.sshUser()
 }
 
 func configPath() string {
 	home, _ := os.UserHomeDir()
-	return home + "/.config/hop/config.toml"
+	return home + "/.config/hopbox/config.toml"
 }

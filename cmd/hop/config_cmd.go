@@ -22,9 +22,6 @@ func (c *ConfigCmd) Run() error {
 	if os.Getenv("HOP_PORT") != "" {
 		overrides = append(overrides, "HOP_PORT")
 	}
-	if os.Getenv("HOP_USER") != "" {
-		overrides = append(overrides, "HOP_USER")
-	}
 	if os.Getenv("HOP_BOX") != "" {
 		overrides = append(overrides, "HOP_BOX")
 	}
@@ -33,8 +30,8 @@ func (c *ConfigCmd) Run() error {
 
 	fmt.Printf("server:      %s\n", cfg.Server)
 	fmt.Printf("port:        %d\n", cfg.Port)
-	fmt.Printf("user:        %s\n", cfg.User)
 	fmt.Printf("default_box: %s\n", cfg.DefaultBox)
+	fmt.Printf("ssh_user:    %s\n", cfg.sshUser())
 
 	source := path
 	if _, err := os.Stat(path); os.IsNotExist(err) {
