@@ -90,9 +90,45 @@ Key options:
 
 See [config.example.toml](config.example.toml) for the full annotated config.
 
-## Usage
+## Client CLI
 
-### Connecting
+The `hop` CLI wraps SSH/SCP so you don't have to remember flags and ports.
+
+### Install
+
+```bash
+# Homebrew (macOS / Linux)
+brew tap hopboxdev/tap
+brew install hop
+
+# Or with Go
+go install github.com/hopboxdev/hopbox/cmd/hop@latest
+
+# Or download from GitHub releases
+curl -L https://github.com/hopboxdev/hopbox/releases/latest/download/hop-darwin-arm64 -o hop
+chmod +x hop && sudo mv hop /usr/local/bin/
+```
+
+### Setup
+
+```bash
+hop init
+# Server hostname: [hopbox.dev]:
+# SSH port [2222]:
+# Default box: [default]:
+```
+
+### Commands
+
+```bash
+hop                    # SSH into your default box
+hop -b work            # SSH into a specific box
+hop expose 3000        # forward box:3000 to localhost:3000
+hop transfer file.txt  # upload a file to ~/
+hop config             # show resolved configuration
+```
+
+### Raw SSH (without the CLI)
 
 ```bash
 # Default box
@@ -129,13 +165,13 @@ Each user's tunnels are isolated — no port collisions.
 
 ### In-Container CLI
 
-Inside your container, the `hopbox` command is available:
+Inside your container, the `hop` command is available:
 
 ```bash
-hopbox status          # show box info (user, box, container, resources)
-hopbox expose 3000     # print the SSH tunnel command for a local port
-hopbox link            # generate a one-time code to add another SSH key to this box
-hopbox destroy         # destroy this box (with confirmation)
+hop status          # show box info (user, box, container, resources)
+hop expose 3000     # print the SSH tunnel command for a local port
+hop link            # generate a one-time code to add another SSH key to this box
+hop destroy         # destroy this box (with confirmation)
 ```
 
 ### Sharing a box across devices
@@ -143,7 +179,7 @@ hopbox destroy         # destroy this box (with confirmation)
 From inside a box on your first device:
 
 ```bash
-hopbox link
+hop link
 # → code: ABCD-1234 (valid 5 min)
 ```
 

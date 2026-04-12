@@ -46,9 +46,40 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build-hop:
+    name: Build hop client (${{ matrix.os }}/${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [linux, darwin]
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          check-latest: true
+
+      - name: Build hop client
+        run: |
+          CGO_ENABLED=0 GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
+            go build -o hop-${{ matrix.os }}-${{ matrix.arch }} ./cmd/hop/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hop-${{ matrix.os }}-${{ matrix.arch }}
+          path: hop-${{ matrix.os }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 7
+
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, build-hop]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -60,12 +91,100 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          find artifacts -type f -name '*.tar.gz' -exec cp {} dist/ \;
+          find artifacts -type f \( -name '*.tar.gz' -o -name 'hop-*' \) -exec cp {} dist/ \;
           ls -la dist/
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.tar.gz
+          files: dist/*
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+  update-homebrew:
+    name: Update Homebrew Tap
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+        with:
+          repository: hopboxdev/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+
+      - name: Download hop binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: binaries
+          pattern: hop-*
+
+      - name: Update formula
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          SHA_DARWIN_ARM64=$(sha256sum binaries/hop-darwin-arm64/hop-darwin-arm64 | cut -d' ' -f1)
+          SHA_DARWIN_AMD64=$(sha256sum binaries/hop-darwin-amd64/hop-darwin-amd64 | cut -d' ' -f1)
+          SHA_LINUX_ARM64=$(sha256sum binaries/hop-linux-arm64/hop-linux-arm64 | cut -d' ' -f1)
+          SHA_LINUX_AMD64=$(sha256sum binaries/hop-linux-amd64/hop-linux-amd64 | cut -d' ' -f1)
+
+          cat > Formula/hop.rb << EOF
+          class Hop < Formula
+            desc "CLI client for Hopbox — SSH into your dev containers"
+            homepage "https://github.com/hopboxdev/hopbox"
+            license "MIT"
+            version "${VERSION}"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/hopboxdev/hopbox/releases/download/v${VERSION}/hop-darwin-arm64"
+                sha256 "${SHA_DARWIN_ARM64}"
+
+                def install
+                  bin.install "hop-darwin-arm64" => "hop"
+                end
+              end
+
+              on_intel do
+                url "https://github.com/hopboxdev/hopbox/releases/download/v${VERSION}/hop-darwin-amd64"
+                sha256 "${SHA_DARWIN_AMD64}"
+
+                def install
+                  bin.install "hop-darwin-amd64" => "hop"
+                end
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "https://github.com/hopboxdev/hopbox/releases/download/v${VERSION}/hop-linux-arm64"
+                sha256 "${SHA_LINUX_ARM64}"
+
+                def install
+                  bin.install "hop-linux-arm64" => "hop"
+                end
+              end
+
+              on_intel do
+                url "https://github.com/hopboxdev/hopbox/releases/download/v${VERSION}/hop-linux-amd64"
+                sha256 "${SHA_LINUX_AMD64}"
+
+                def install
+                  bin.install "hop-linux-amd64" => "hop"
+                end
+              end
+            end
+
+            test do
+              assert_match "hop", shell_output("#{bin}/hop --help")
+            end
+          end
+          EOF
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/hop.rb
+          git commit -m "hop ${GITHUB_REF_NAME}"
+          git push

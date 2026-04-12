@@ -28,8 +28,11 @@ help:
 build: ## Development: Build hopboxd binary
 	go build -o hopboxd ./cmd/hopboxd/
 
-build-cli: ## Development: Cross-compile in-container hopbox CLI for linux
+build-cli: ## Development: Cross-compile in-container hop CLI for linux
 	./scripts/build-cli.sh
+
+build-hop: ## Development: Build hop client CLI
+	go build -o hop ./cmd/hop/
 
 run: build build-cli ## Development: Build and run hopboxd (uses config.toml if present)
 	./hopboxd
@@ -38,7 +41,7 @@ test: ## Development: Run all tests
 	go test ./...
 
 clean: ## Development: Remove build artifacts
-	rm -f hopboxd templates/hop
+	rm -f hopboxd hop templates/hop
 	rm -rf dist/
 
 # Release
