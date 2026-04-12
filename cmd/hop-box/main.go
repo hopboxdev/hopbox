@@ -33,7 +33,7 @@ type DestroyCmd struct{}
 
 func main() {
 	var cli CLI
-	ctx := kong.Parse(&cli, kong.Name("hopbox"), kong.Description("Hopbox dev environment CLI"))
+	ctx := kong.Parse(&cli, kong.Name("hop"), kong.Description("Hopbox dev environment CLI"))
 	switch ctx.Command() {
 	case "status":
 		doStatus(cli.Status.JSON)

@@ -26,8 +26,8 @@ RUN mkdir -p /opt/mise/config && chown -R dev:dev /opt/mise
 # Activate mise in all bash sessions
 RUN echo 'eval "$(/usr/local/bin/mise activate bash)"' >> /etc/bash.bashrc
 
-# In-container hopbox CLI
-COPY hopbox /usr/local/bin/hopbox
+# In-container hop CLI
+COPY hop /usr/local/bin/hop
 
 USER dev
 WORKDIR /home/dev

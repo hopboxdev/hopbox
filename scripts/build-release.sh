@@ -38,11 +38,11 @@ GOOS="${OS}" GOARCH="${ARCH}" CGO_ENABLED=0 \
   go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
   -o "${STAGE_DIR}/hopboxd" ./cmd/hopboxd
 
-# Build in-container hopbox CLI
-echo "    building hopbox CLI..."
+# Build in-container hop CLI
+echo "    building hop CLI..."
 GOOS="${OS}" GOARCH="${ARCH}" CGO_ENABLED=0 \
   go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
-  -o "${STAGE_DIR}/templates/hopbox" ./cmd/hopbox
+  -o "${STAGE_DIR}/templates/hop" ./cmd/hop-box
 
 # Copy templates
 cp templates/Dockerfile.base "${STAGE_DIR}/templates/Dockerfile.base"

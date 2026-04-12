@@ -38,7 +38,7 @@ test: ## Development: Run all tests
 	go test ./...
 
 clean: ## Development: Remove build artifacts
-	rm -f hopboxd hopbox templates/hopbox
+	rm -f hopboxd templates/hop
 	rm -rf dist/
 
 # Release
