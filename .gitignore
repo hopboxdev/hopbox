@@ -3,8 +3,12 @@ data/
 config.toml
 /hopboxd
 /hopbox
+/hop
+/hop-box
 templates/hopbox
+templates/hop
 *.exe
 *.test
 .superpowers/
+docs/superpowers/
 dist/
