@@ -127,14 +127,28 @@ func main() {
 
 func startTotalsRefresher(ctx context.Context, store *users.Store) {
 	refresh := func() {
-		all := store.ListAll()
-		metrics.UsersTotal.Set(float64(len(all)))
+		// Walk the users dir directly and skip symlinks so alternative-key
+		// links (see Store.LinkKey) don't double-count the same user/boxes.
+		entries, err := os.ReadDir(store.Dir())
+		if err != nil {
+			return
+		}
+		userCount := 0
 		boxes := 0
-		for fp := range all {
-			userDir := filepath.Join(store.Dir(), fp)
+		for _, e := range entries {
+			info, err := os.Lstat(filepath.Join(store.Dir(), e.Name()))
+			if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+				continue
+			}
+			userDir := filepath.Join(store.Dir(), e.Name())
+			if _, err := os.Stat(filepath.Join(userDir, "user.toml")); err != nil {
+				continue
+			}
+			userCount++
 			names, _ := containers.ListBoxes(userDir)
 			boxes += len(names)
 		}
+		metrics.UsersTotal.Set(float64(userCount))
 		metrics.BoxesTotal.Set(float64(boxes))
 	}
 	refresh()
