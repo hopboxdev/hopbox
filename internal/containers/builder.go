@@ -105,6 +105,7 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 	}
 
 	// Extra tools via download
+	hasDocker := false
 	for _, tool := range p.Tools.Extras {
 		switch tool {
 		case "fzf":
@@ -131,7 +132,9 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 				"curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && " +
 				"echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable\" > /etc/apt/sources.list.d/docker.list && " +
 				"apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin && " +
-				"rm -rf /var/lib/apt/lists/*\n")
+				"rm -rf /var/lib/apt/lists/* && " +
+				"usermod -aG docker dev\n")
+			hasDocker = true
 		}
 	}
 
@@ -155,7 +158,15 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 		}
 	}
 
-	b.WriteString("\nCMD [\"sleep\", \"infinity\"]\n")
+	if hasDocker {
+		// Start dockerd in the background before sleeping.
+		// Sysbox provides the isolation needed for nested Docker.
+		b.WriteString("\nUSER root\n")
+		b.WriteString("RUN printf '#!/bin/sh\\ndockerd > /var/log/dockerd.log 2>&1 &\\nsleep 3\\nexec su -s /bin/sh dev -c \"sleep infinity\"\\n' > /usr/local/bin/hopbox-entry.sh && chmod +x /usr/local/bin/hopbox-entry.sh\n")
+		b.WriteString("CMD [\"/usr/local/bin/hopbox-entry.sh\"]\n")
+	} else {
+		b.WriteString("\nCMD [\"sleep\", \"infinity\"]\n")
+	}
 
 	return b.String()
 }
