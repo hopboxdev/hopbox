@@ -166,9 +166,9 @@ fi
 # ---------- monitoring ----------
 MON_DIR="${INSTALL_ROOT}/monitoring"
 
-# Always refresh dashboards and provisioning if monitoring is already installed
+# Always refresh dashboards and provisioning if monitoring is already installed.
+# compose.yml and prometheus.yml are user config — never overwrite them.
 if [[ -d "$MON_DIR" ]]; then
-  cp "${VERSION_DIR}/deploy/monitoring/compose.yml" "$MON_DIR/compose.yml"
   rm -rf "$MON_DIR/grafana/provisioning"
   cp -R "${VERSION_DIR}/deploy/monitoring/grafana/provisioning" "$MON_DIR/grafana/provisioning"
   rm -rf "$MON_DIR/grafana/dashboards"
