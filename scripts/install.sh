@@ -163,26 +163,27 @@ else
   warn "hopboxd is not active — check: journalctl -u hopboxd -n 50"
 fi
 
-# ---------- monitoring (optional) ----------
-if [[ $WITH_MONITORING -eq 1 ]]; then
+# ---------- monitoring ----------
+MON_DIR="${INSTALL_ROOT}/monitoring"
+
+# Always refresh dashboards and provisioning if monitoring is already installed
+if [[ -d "$MON_DIR" ]]; then
+  cp "${VERSION_DIR}/deploy/monitoring/compose.yml" "$MON_DIR/compose.yml"
+  rm -rf "$MON_DIR/grafana/provisioning"
+  cp -R "${VERSION_DIR}/deploy/monitoring/grafana/provisioning" "$MON_DIR/grafana/provisioning"
+  rm -rf "$MON_DIR/grafana/dashboards"
+  cp -R "${VERSION_DIR}/deploy/monitoring/grafana/dashboards" "$MON_DIR/grafana/dashboards"
+  ok "refreshed monitoring dashboards and provisioning"
+
+  (cd "$MON_DIR" && docker compose up -d)
+  ok "monitoring stack is up"
+fi
+
+# First-time monitoring install (only with --with-monitoring)
+if [[ $WITH_MONITORING -eq 1 ]] && [[ ! -d "$MON_DIR" ]]; then
   info "Installing monitoring stack"
-  MON_DIR="${INSTALL_ROOT}/monitoring"
-  if [[ ! -d "$MON_DIR" ]]; then
-    cp -R "${VERSION_DIR}/deploy/monitoring" "$MON_DIR"
-    ok "copied monitoring stack to ${MON_DIR}"
-  else
-    # compose.yml and the grafana provisioning files are shipped code, not
-    # user config — always refresh them on upgrade so new defaults land
-    # (env vars, ports, datasource pinning, etc.). prometheus.yml and the
-    # named docker volumes (grafana-data, prometheus-data) are preserved.
-    cp "${VERSION_DIR}/deploy/monitoring/compose.yml" "$MON_DIR/compose.yml"
-    rm -rf "$MON_DIR/grafana/provisioning"
-    cp -R "${VERSION_DIR}/deploy/monitoring/grafana/provisioning" "$MON_DIR/grafana/provisioning"
-    rm -rf "$MON_DIR/grafana/dashboards"
-    cp -R "${VERSION_DIR}/deploy/monitoring/grafana/dashboards" "$MON_DIR/grafana/dashboards"
-    ok "refreshed ${MON_DIR} (compose.yml + grafana provisioning/dashboards)"
-    ok "preserved prometheus.yml and docker volumes"
-  fi
+  cp -R "${VERSION_DIR}/deploy/monitoring" "$MON_DIR"
+  ok "copied monitoring stack to ${MON_DIR}"
 
   (cd "$MON_DIR" && docker compose up -d)
   ok "monitoring stack is up"
