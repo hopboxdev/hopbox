@@ -1,10 +1,12 @@
 package gateway
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -144,6 +146,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	userDir := filepath.Join(s.store.Dir(), fp)
 	var user users.User
 	var profile *users.Profile
+	isNewBox := false
 
 	if !needsReg {
 		var ok bool
@@ -155,6 +158,12 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		}
 
 		slog.Info("session connect", "component", "session", "user", user.Username, "box", boxname)
+
+		// Check if this box has its own profile (not just the user-level fallback)
+		boxProfilePath := filepath.Join(userDir, "boxes", boxname, "profile.toml")
+		if _, err := os.Stat(boxProfilePath); os.IsNotExist(err) {
+			isNewBox = true
+		}
 
 		var err error
 		profile, err = users.ResolveProfile(userDir, boxname)
@@ -171,14 +180,15 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	_, _, isPty := sess.Pty()
 
 	// First-time setup requires an interactive session — the wizard is a TUI.
-	if !isPty && (needsReg || profile == nil) {
+	needsWizard := needsReg || profile == nil || isNewBox
+	if !isPty && needsWizard {
 		fmt.Fprintf(sess.Stderr(), "hopbox: first-time setup requires an interactive session. Run: ssh hop@<server>\n")
 		sess.Exit(1)
 		return
 	}
 
-	// Run wizard if new user or no profile exists
-	if needsReg || profile == nil {
+	// Run wizard for new users, new boxes, or missing profiles
+	if needsWizard {
 		defaults := users.DefaultProfile()
 		if !needsReg {
 			// Pre-fill with user's default for new box
@@ -299,14 +309,6 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		fmt.Fprintf(sess, "Failed to create home directory: %v\r\n", err)
 		return
 	}
-	// The home dir is bind-mounted into the container as /home/dev (UID 1000),
-	// but hopboxd runs as a system user whose UID doesn't match. Chown the
-	// entire home tree to UID/GID 1000 so the in-container dev user can write
-	// to subdirectories (e.g. .config/zellij/).
-	if err := chownRecursive(homePath, 1000, 1000); err != nil {
-		slog.Warn("chown home dir failed", "component", "session", "err", err)
-	}
-
 	profileHash := profile.Hash()
 	boxInfo := control.BoxInfo{
 		BoxName:     boxname,
@@ -323,6 +325,17 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		fmt.Fprintf(sess, "Failed to start container: %v\r\n", err)
 		return
 	}
+
+	// Fix home dir ownership inside the container (as root) so the dev user
+	// can write to all subdirectories. This runs inside the container where
+	// root has full access, unlike the host-side chown which fails on
+	// restricted directories like .copilot or .vscode-server.
+	go func() {
+		chownCmd := []string{"chown", "-R", "dev:dev", "/home/dev"}
+		if _, err := s.manager.ExecNoTTY(context.Background(), containerID, chownCmd, nil, nil, io.Discard, io.Discard); err != nil {
+			slog.Warn("container chown failed", "component", "session", "err", err)
+		}
+	}()
 	ctx.SetValue("container_id", containerID)
 	s.manager.SessionConnect(containerID, user.Username, boxname)
 	defer s.manager.SessionDisconnect(containerID, user.Username, boxname)
@@ -518,20 +531,4 @@ func generateAndSaveHostKey(path string) (gossh.Signer, error) {
 		return nil, err
 	}
 	return signer, nil
-}
-
-// chownRecursive changes ownership of a path and all its contents to the given uid/gid.
-func chownRecursive(path string, uid, gid int) error {
-	return filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return err
-		}
-		if err := os.Chown(name, uid, gid); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		return nil
-	})
 }
