@@ -382,7 +382,11 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	var muxCmd string
 	switch profile.Multiplexer.Tool {
 	case "zellij":
-		muxCmd = fmt.Sprintf("zellij attach --create %s", boxname)
+		// Ensure default config exists (passthrough for notifications, no tips)
+		muxCmd = fmt.Sprintf(
+			`mkdir -p ~/.config/zellij && `+
+				`test -f ~/.config/zellij/config.kdl || printf 'show_startup_tips false\nallow_passthrough true\n' > ~/.config/zellij/config.kdl && `+
+				`zellij attach --create %s`, boxname)
 	case "tmux":
 		muxCmd = fmt.Sprintf("tmux new-session -As %s", boxname)
 	default:

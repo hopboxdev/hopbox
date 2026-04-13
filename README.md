@@ -145,6 +145,28 @@ ssh -p 2222 hop@server
 ssh -p 2222 hop+myproject@server
 ```
 
+### SSH Config
+
+Add this to `~/.ssh/config` to avoid typing the port and hostname every time:
+
+```
+Host hop
+    HostName hopbox.dev
+    User hop
+    Port 22
+
+Host hop-*
+    HostName hopbox.dev
+    Port 22
+```
+
+Then connect with:
+
+```bash
+ssh hop                    # default box
+ssh -o User=hop+work hop   # named box
+```
+
 ### First Connection
 
 New SSH keys trigger registration:

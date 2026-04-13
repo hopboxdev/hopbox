@@ -160,6 +160,7 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 				Options(
 					huh.NewOption("zellij", "zellij"),
 					huh.NewOption("tmux", "tmux"),
+					huh.NewOption("none", "none"),
 				).Value(&m.data.Profile.Multiplexer.Tool),
 		))
 	case stepEditor:
