@@ -301,6 +301,7 @@ func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, en
 	execCfg := container.ExecOptions{
 		Cmd:          cmd,
 		Env:          env,
+		User:         "dev",
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -355,6 +356,7 @@ func (m *Manager) ExecNoTTY(ctx context.Context, containerID string, cmd []strin
 	execCfg := container.ExecOptions{
 		Cmd:          cmd,
 		Env:          env,
+		User:         "dev",
 		AttachStdin:  stdin != nil,
 		AttachStdout: true,
 		AttachStderr: true,
