@@ -229,6 +229,18 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 		return "", fmt.Errorf("start container: %w", err)
 	}
 
+	// Fix home dir ownership so the dev user can write to all subdirectories.
+	// Only runs on container creation, not every reconnect.
+	chownExec, err := m.cli.ContainerExecCreate(ctx, resp.ID, container.ExecOptions{
+		Cmd:  []string{"chown", "-R", "dev:dev", "/home/dev"},
+		User: "root",
+	})
+	if err == nil {
+		if err := m.cli.ContainerExecStart(ctx, chownExec.ID, container.ExecStartOptions{}); err != nil {
+			slog.Warn("container chown failed", "component", "container", "err", err)
+		}
+	}
+
 	// Start control socket
 	boxDir := filepath.Dir(homePath)
 	info.ContainerID = resp.ID
