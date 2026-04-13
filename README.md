@@ -309,6 +309,72 @@ ssh-keygen -t ed25519 -f /etc/hopbox/host_key -N ""
 
 Then set `host_key_path = "/etc/hopbox/host_key"` in your config.
 
+## FAQ
+
+### Running hopboxd on port 22
+
+By default hopboxd listens on port 2222 so it doesn't conflict with your server's OpenSSH. If you want users to connect with `ssh hop@server` (no `-p` flag), you can move hopboxd to port 22.
+
+**What's involved:**
+
+1. Move OpenSSH to a different port (e.g., 2222) so port 22 is free
+2. Grant hopboxd permission to bind a privileged port (below 1024)
+3. Update firewall rules
+
+**Step by step:**
+
+```bash
+# 1. Move OpenSSH to port 2222
+sudo sed -i 's/^#Port 22$/Port 2222/' /etc/ssh/sshd_config
+# Or if Port 22 is already uncommented:
+sudo sed -i 's/^Port 22$/Port 2222/' /etc/ssh/sshd_config
+
+# 2. Allow the new port in UFW
+sudo ufw allow 2222/tcp comment 'admin SSH'
+
+# 3. Restart OpenSSH
+sudo systemctl restart sshd
+
+# 4. TEST admin SSH on the new port (from a NEW terminal, keep current session open!)
+ssh -p 2222 user@server
+# ⚠️ Only proceed if this works. If it doesn't, fix it using your existing session.
+
+# 5. Stop hopboxd, change its port to 22
+sudo systemctl stop hopboxd
+sudo sed -i 's/^port = 2222$/port = 22/' /etc/hopbox/config.toml
+
+# 6. Grant hopboxd the capability to bind privileged ports
+sudo systemctl edit hopboxd
+# Add these two lines in the editor:
+#   [Service]
+#   AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# 7. Reload and start
+sudo systemctl daemon-reload
+sudo systemctl start hopboxd
+
+# 8. Verify
+sudo ss -tlnp | grep ':22 '
+# Should show hopboxd listening on :22
+```
+
+**Update your SSH config for admin access:**
+
+```
+# ~/.ssh/config
+Host myserver-admin
+    HostName your-server-ip
+    User debian
+    Port 2222
+```
+
+**Update `hop` client config:**
+
+```bash
+hop init
+# SSH port [2222]: 22
+```
+
 ## Architecture
 
 Hopbox is a single Go binary (`hopboxd`) that runs an SSH server using [charmbracelet/ssh](https://github.com/charmbracelet/ssh). Users authenticate by SSH public key. Each user gets Docker containers created from a shared base image (Ubuntu 24.04 + mise) with per-user tool layers built from their profile.
