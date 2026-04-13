@@ -204,9 +204,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 
 	cfg := &container.Config{
 		Image:      imageTag,
-		User:       "dev",
 		WorkingDir: "/home/dev",
-		Cmd:        []string{"sleep", "infinity"},
 		Labels:     map[string]string{profileHashLabelKey: profileHash},
 	}
 	hostCfg := &container.HostConfig{
