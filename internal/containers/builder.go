@@ -138,6 +138,13 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 		}
 	}
 
+	// Install nvm if requested (before switching to dev user)
+	if p.Runtimes.Node == "nvm" {
+		b.WriteString("ENV NVM_DIR=/opt/nvm\n")
+		b.WriteString("RUN mkdir -p /opt/nvm && curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash && chown -R dev:dev /opt/nvm\n")
+		b.WriteString("RUN echo 'export NVM_DIR=/opt/nvm && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"' >> /etc/bash.bashrc\n")
+	}
+
 	// Switch to dev user for runtime installs via mise
 	b.WriteString("\nUSER dev\nWORKDIR /home/dev\n\n")
 
@@ -146,7 +153,6 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 		version string
 	}
 	runtimes := []rt{
-		{"node", p.Runtimes.Node},
 		{"python", p.Runtimes.Python},
 		{"go", p.Runtimes.Go},
 		{"rust", p.Runtimes.Rust},

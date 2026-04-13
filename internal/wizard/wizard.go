@@ -186,10 +186,9 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 	case stepNode:
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
-				Title("Node.js").
+				Title("Node.js (nvm)").
 				Options(
-					huh.NewOption("LTS", "lts"),
-					huh.NewOption("Latest", "latest"),
+					huh.NewOption("Install nvm", "nvm"),
 					huh.NewOption("None", "none"),
 				).Value(&m.data.Profile.Runtimes.Node),
 		))
