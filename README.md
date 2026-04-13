@@ -124,7 +124,9 @@ hop init
 hop                    # SSH into your default box
 hop -b work            # SSH into a specific box
 hop expose 3000        # forward box:3000 to localhost:3000
-hop transfer file.txt  # upload a file to ~/
+hop transfer file.txt          # upload to ~/
+hop transfer file.txt :~/dir/  # upload to specific path
+hop transfer :~/file.txt .     # download to current dir
 hop config             # show resolved configuration
 ```
 

@@ -11,7 +11,7 @@ type CLI struct {
 	SSH      SSHCmd      `cmd:"" default:"withargs" help:"SSH into your box (default command)."`
 	Init     InitCmd     `cmd:"" help:"Set up hop configuration."`
 	Expose   ExposeCmd   `cmd:"" help:"Forward a port from your box to localhost."`
-	Transfer TransferCmd `cmd:"" help:"Upload a file to your box."`
+	Transfer TransferCmd `cmd:"" help:"Transfer files to/from your box."`
 	Config   ConfigCmd   `cmd:"" help:"Print resolved configuration."`
 }
 

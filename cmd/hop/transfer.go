@@ -9,21 +9,9 @@ import (
 )
 
 type TransferCmd struct {
-	File string `arg:"" help:"Local file to upload. Append :/remote/path to set destination."`
-	Box  string `help:"Box to upload to (overrides default)." short:"b"`
-}
-
-func parseTransferTarget(input string) (local, remote string) {
-	i := strings.LastIndex(input, ":")
-	if i < 0 {
-		return input, "~/"
-	}
-	local = input[:i]
-	remote = input[i+1:]
-	if remote == "" {
-		remote = "~/"
-	}
-	return local, remote
+	Source string `arg:"" help:"Source path. Prefix with : for remote (e.g. :~/file.txt)."`
+	Dest   string `arg:"" optional:"" help:"Destination path. Prefix with : for remote. Defaults to ~/ (upload) or ./ (download)."`
+	Box    string `help:"Box to use (overrides default)." short:"b"`
 }
 
 func (c *TransferCmd) Run() error {
@@ -32,23 +20,54 @@ func (c *TransferCmd) Run() error {
 		return err
 	}
 
-	local, remote := parseTransferTarget(c.File)
+	sshUser := cfg.sshUserWithBox(c.Box)
+	portArgs := []string{"-O", "-P", strconv.Itoa(cfg.Port)}
 
+	if strings.HasPrefix(c.Source, ":") {
+		// Download: remote -> local
+		remotePath := c.Source[1:]
+		if remotePath == "" {
+			remotePath = "~/"
+		}
+		localPath := c.Dest
+		if localPath == "" {
+			localPath = "."
+		}
+
+		remote := fmt.Sprintf("%s@%s:%s", sshUser, cfg.Server, remotePath)
+		args := append(portArgs, remote, localPath)
+
+		fmt.Printf("Downloading %s:%s -> %s\n", sshUser, remotePath, localPath)
+
+		cmd := exec.Command("scp", args...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+
+	// Upload: local -> remote
+	local := c.Source
 	if _, err := os.Stat(local); err != nil {
 		return fmt.Errorf("file not found: %s", local)
 	}
 
-	sshUser := cfg.sshUserWithBox(c.Box)
-	dest := fmt.Sprintf("%s@%s:%s", sshUser, cfg.Server, remote)
-
-	args := []string{
-		"-O",
-		"-P", strconv.Itoa(cfg.Port),
-		local,
-		dest,
+	remotePath := "~/"
+	if c.Dest != "" {
+		if strings.HasPrefix(c.Dest, ":") {
+			remotePath = c.Dest[1:]
+		} else {
+			remotePath = c.Dest
+		}
+	}
+	if remotePath == "" {
+		remotePath = "~/"
 	}
 
-	fmt.Printf("Uploading %s -> %s:%s\n", local, cfg.sshUserWithBox(c.Box), remote)
+	remote := fmt.Sprintf("%s@%s:%s", sshUser, cfg.Server, remotePath)
+	args := append(portArgs, local, remote)
+
+	fmt.Printf("Uploading %s -> %s:%s\n", local, sshUser, remotePath)
 
 	cmd := exec.Command("scp", args...)
 	cmd.Stdin = os.Stdin

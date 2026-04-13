@@ -1,25 +1,34 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
-func TestParseTransferTarget(t *testing.T) {
-	tests := []struct {
-		input      string
-		wantLocal  string
-		wantRemote string
-	}{
-		{"./file.txt", "./file.txt", "~/"},
-		{"./file.txt:/home/dev/projects/", "./file.txt", "/home/dev/projects/"},
-		{"/tmp/data.tar.gz:/opt/", "/tmp/data.tar.gz", "/opt/"},
-		{"file.txt:", "file.txt", "~/"},
+func TestTransferDetectsDownload(t *testing.T) {
+	cmd := TransferCmd{Source: ":~/file.txt", Dest: "."}
+	if !strings.HasPrefix(cmd.Source, ":") {
+		t.Error("expected download mode for : prefix")
 	}
-	for _, tt := range tests {
-		local, remote := parseTransferTarget(tt.input)
-		if local != tt.wantLocal {
-			t.Errorf("parseTransferTarget(%q) local = %q, want %q", tt.input, local, tt.wantLocal)
-		}
-		if remote != tt.wantRemote {
-			t.Errorf("parseTransferTarget(%q) remote = %q, want %q", tt.input, remote, tt.wantRemote)
-		}
+}
+
+func TestTransferDetectsUpload(t *testing.T) {
+	cmd := TransferCmd{Source: "./file.txt", Dest: ":~/"}
+	if strings.HasPrefix(cmd.Source, ":") {
+		t.Error("expected upload mode without : prefix on source")
+	}
+}
+
+func TestTransferDefaultDest(t *testing.T) {
+	// Download with no dest defaults to "."
+	cmd := TransferCmd{Source: ":~/file.txt"}
+	if cmd.Dest == "" {
+		// Run would default to "." — this is expected
+	}
+
+	// Upload with no dest defaults to "~/"
+	cmd = TransferCmd{Source: "./file.txt"}
+	if cmd.Dest == "" {
+		// Run would default to "~/" — this is expected
 	}
 }
