@@ -54,7 +54,7 @@ curl -sSL https://raw.githubusercontent.com/hopboxdev/hopbox/main/scripts/instal
 Then connect:
 
 ```bash
-ssh -p 2222 hop@your-server
+ssh -p 2222 hop@your-server   # default port is 2222; see FAQ to use port 22
 ```
 
 ### Build from source
@@ -114,7 +114,7 @@ chmod +x hop && sudo mv hop /usr/local/bin/
 ```bash
 hop init
 # Server hostname: [hopbox.dev]:
-# SSH port [2222]:
+# SSH port [22]:
 # Default box: [default]:
 ```
 
@@ -130,15 +130,19 @@ hop config             # show resolved configuration
 
 ### Raw SSH (without the CLI)
 
+If hopboxd is on port 22 (see [FAQ](#running-hopboxd-on-port-22)):
+
 ```bash
-# Default box
+ssh hop@server                  # default box
+ssh hop+myproject@server        # named box
+ssh hop+?@server                # box picker
+```
+
+If hopboxd is on the default port 2222:
+
+```bash
 ssh -p 2222 hop@server
-
-# Named box
 ssh -p 2222 hop+myproject@server
-
-# Box picker (when you have multiple boxes)
-ssh -p 2222 hop+?@server
 ```
 
 ### First Connection
@@ -158,7 +162,7 @@ Subsequent connections skip the wizard and go straight to your container. Your z
 Forward ports from your container to your local machine:
 
 ```bash
-ssh -p 2222 -L 3000:localhost:3000 hop@server
+ssh -L 3000:localhost:3000 hop@server   # add -p 2222 if not on port 22
 ```
 
 Each user's tunnels are isolated — no port collisions.
@@ -186,7 +190,7 @@ hop link
 From your second device:
 
 ```bash
-ssh -p 2222 hop@server
+ssh hop@server   # add -p 2222 if not on port 22
 # the wizard offers "Link to existing box" — paste the code
 ```
 

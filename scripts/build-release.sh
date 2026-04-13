@@ -64,10 +64,6 @@ rm -f "${STAGE_DIR}/deploy/monitoring/README.md"
 mkdir -p "${STAGE_DIR}/deploy/caddy"
 cp deploy/caddy/Caddyfile.example "${STAGE_DIR}/deploy/caddy/Caddyfile.example"
 
-# Copy landing page
-mkdir -p "${STAGE_DIR}/web"
-cp -R web/landing "${STAGE_DIR}/web/landing"
-
 # VERSION file
 echo "${VERSION}" > "${STAGE_DIR}/VERSION"
 
