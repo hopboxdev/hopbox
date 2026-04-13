@@ -252,18 +252,9 @@
           "refId": "A",
           "format": "table",
           "instant": true
-        },
-        {
-          "expr": "hopbox_box_active_sessions",
-          "refId": "B",
-          "format": "table",
-          "instant": true
         }
       ],
       "transformations": [
-        {
-          "id": "merge"
-        },
         {
           "id": "organize",
           "options": {
@@ -272,10 +263,7 @@
               "__name__": true,
               "job": true,
               "instance": true,
-              "Value #A": true
-            },
-            "renameByName": {
-              "Value #B": "sessions"
+              "Value": true
             }
           }
         }
