@@ -248,19 +248,27 @@
       },
       "targets": [
         {
-          "expr": "sum by (user, box, container_id) (hopbox_box_cpu_percent)",
-          "refId": "A",
+          "expr": "hopbox_box_cpu_percent",
+          "refId": "containers",
           "format": "table",
           "instant": true
         },
         {
           "expr": "sum by (user, box, container_id) (hopbox_box_active_sessions) or sum by (user, box, container_id) (hopbox_box_cpu_percent * 0)",
-          "refId": "B",
+          "refId": "sessions",
           "format": "table",
           "instant": true
         }
       ],
       "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "pattern": "^(box|container_id|user|Value.*)$"
+            }
+          }
+        },
         {
           "id": "merge"
         },
@@ -268,11 +276,16 @@
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true,
-              "Value #A": true
+              "Value #containers": true
             },
             "renameByName": {
-              "Value #B": "sessions"
+              "Value #sessions": "sessions"
+            },
+            "indexByName": {
+              "box": 0,
+              "container_id": 1,
+              "user": 2,
+              "sessions": 3
             }
           }
         }
