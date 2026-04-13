@@ -56,8 +56,9 @@ func NewServer(cfg config.Config, store *users.Store, manager *containers.Manage
 			return true
 		},
 		ChannelHandlers: map[string]ssh.ChannelHandler{
-			"session":      ssh.DefaultSessionHandler,
-			"direct-tcpip": DirectTCPIPHandler(s.manager, s.store, s.dockerCli, s.baseTag, s.cfg.Hostname, s.cfg.Port),
+			"session":                          ssh.DefaultSessionHandler,
+			"direct-tcpip":                     DirectTCPIPHandler(s.manager, s.store, s.dockerCli, s.baseTag, s.cfg.Hostname, s.cfg.Port),
+			"direct-streamlocal@openssh.com":   DirectStreamLocalHandler(s.manager, s.store, s.dockerCli, s.baseTag, s.cfg.Hostname, s.cfg.Port),
 		},
 	}
 

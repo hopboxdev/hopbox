@@ -85,6 +85,62 @@ func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *user
 	return containerID, nil
 }
 
+type directStreamLocalData struct {
+	SocketPath string
+	Reserved0  string
+	Reserved1  uint32
+}
+
+// DirectStreamLocalHandler handles direct-streamlocal@openssh.com channels,
+// used by VSCode Remote SSH to forward a local TCP port to a Unix socket
+// inside the container (e.g. the VSCode server socket).
+func DirectStreamLocalHandler(mgr *containers.Manager, store *users.Store, dockerCli *client.Client, baseTag string, hostname string, sshPort int) ssh.ChannelHandler {
+	return func(srv *ssh.Server, conn *gossh.ServerConn, newChan gossh.NewChannel, sshCtx ssh.Context) {
+		var d directStreamLocalData
+		if err := gossh.Unmarshal(newChan.ExtraData(), &d); err != nil {
+			newChan.Reject(gossh.ConnectionFailed, "failed to parse streamlocal data")
+			return
+		}
+
+		containerID, err := resolveContainerID(sshCtx, mgr, store, dockerCli, baseTag, hostname, sshPort)
+		if err != nil {
+			slog.Error("streamlocal resolve container failed", "component", "tunnel", "err", err)
+			newChan.Reject(gossh.ConnectionFailed, fmt.Sprintf("resolve container: %v", err))
+			return
+		}
+
+		slog.Info("streamlocal forward",
+			"component", "tunnel",
+			"socket", d.SocketPath,
+			"container", containerID[:12])
+
+		ch, reqs, err := newChan.Accept()
+		if err != nil {
+			return
+		}
+		go gossh.DiscardRequests(reqs)
+
+		// Connect to the Unix socket inside the container using socat.
+		// socat is more reliable than nc -U for bidirectional Unix socket I/O.
+		// Fall back to nc -U if socat isn't available.
+		cmd := []string{
+			"sh", "-c",
+			fmt.Sprintf(
+				`if command -v socat >/dev/null 2>&1; then socat - UNIX-CONNECT:%s; else nc -U %s; fi`,
+				d.SocketPath, d.SocketPath,
+			),
+		}
+
+		exitCode, err := mgr.ExecNoTTY(sshCtx, containerID, cmd, nil, ch, ch, io.Discard)
+		if err != nil {
+			slog.Error("streamlocal exec failed", "component", "tunnel", "socket", d.SocketPath, "err", err)
+		} else if exitCode != 0 {
+			slog.Debug("streamlocal non-zero exit", "component", "tunnel", "code", exitCode, "socket", d.SocketPath)
+		}
+		ch.Close()
+	}
+}
+
 func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, dockerCli *client.Client, baseTag string, hostname string, sshPort int) ssh.ChannelHandler {
 	return func(srv *ssh.Server, conn *gossh.ServerConn, newChan gossh.NewChannel, sshCtx ssh.Context) {
 		var d directTCPIPData

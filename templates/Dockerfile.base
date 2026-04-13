@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     sudo curl wget git build-essential openssh-client \
     unzip xz-utils ca-certificates \
-    netcat-openbsd ncurses-term \
+    netcat-openbsd socat ncurses-term \
     && rm -rf /var/lib/apt/lists/*
 
 # Ghostty terminal support (xterm-ghostty terminfo)
