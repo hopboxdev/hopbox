@@ -252,6 +252,12 @@
           "refId": "A",
           "format": "table",
           "instant": true
+        },
+        {
+          "expr": "hopbox_box_active_sessions",
+          "refId": "B",
+          "format": "table",
+          "instant": true
         }
       ],
       "transformations": [
@@ -260,10 +266,48 @@
           "options": {
             "excludeByName": {
               "Time": true,
+              "Time 1": true,
+              "Time 2": true,
               "__name__": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
               "job": true,
+              "job 1": true,
+              "job 2": true,
               "instance": true,
-              "Value": true
+              "instance 1": true,
+              "instance 2": true,
+              "Value #A": true
+            },
+            "renameByName": {
+              "Value #B": "sessions"
+            },
+            "indexByName": {
+              "box": 0,
+              "container_id": 1,
+              "user": 2,
+              "sessions": 3
+            }
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "box": { "aggregations": [], "operation": "groupby" },
+              "container_id": { "aggregations": ["first"], "operation": "aggregate" },
+              "user": { "aggregations": ["first"], "operation": "aggregate" },
+              "sessions": { "aggregations": ["first"], "operation": "aggregate" }
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "container_id (first)": "container_id",
+              "user (first)": "user",
+              "sessions (first)": "sessions"
             }
           }
         }
