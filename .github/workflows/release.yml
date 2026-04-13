@@ -132,7 +132,7 @@ jobs:
           class Hop < Formula
             desc "CLI client for Hopbox — SSH into your dev containers"
             homepage "https://github.com/hopboxdev/hopbox"
-            license "MIT"
+            license "Elastic-2.0"
             version "${VERSION}"
 
             on_macos do
