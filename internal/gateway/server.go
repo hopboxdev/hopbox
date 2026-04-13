@@ -524,8 +524,14 @@ func generateAndSaveHostKey(path string) (gossh.Signer, error) {
 func chownRecursive(path string, uid, gid int) error {
 	return filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
 		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
 			return err
 		}
-		return os.Chown(name, uid, gid)
+		if err := os.Chown(name, uid, gid); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
 	})
 }
