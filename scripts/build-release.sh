@@ -46,6 +46,7 @@ GOOS="${OS}" GOARCH="${ARCH}" CGO_ENABLED=0 \
 
 # Copy templates
 cp templates/Dockerfile.base "${STAGE_DIR}/templates/Dockerfile.base"
+cp templates/ghostty.terminfo "${STAGE_DIR}/templates/ghostty.terminfo"
 
 # Copy top-level config example
 cp config.example.toml "${STAGE_DIR}/config.example.toml"
