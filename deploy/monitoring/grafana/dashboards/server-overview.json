@@ -248,7 +248,7 @@
       },
       "targets": [
         {
-          "expr": "hopbox_box_cpu_percent",
+          "expr": "sum by (user, box, container_id) (hopbox_box_cpu_percent)",
           "refId": "A",
           "format": "table",
           "instant": true
@@ -269,9 +269,6 @@
           "options": {
             "excludeByName": {
               "Time": true,
-              "__name__": true,
-              "job": true,
-              "instance": true,
               "Value #A": true
             },
             "renameByName": {
