@@ -299,11 +299,11 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		return
 	}
 	// The home dir is bind-mounted into the container as /home/dev (UID 1000),
-	// but hopboxd runs as a system user whose UID doesn't match. Widen the
-	// mode so the in-container dev user can write to its own home. The dir
-	// lives under a per-user, per-box sandbox so 0777 is acceptable.
-	if err := os.Chmod(homePath, 0777); err != nil {
-		slog.Warn("chmod home dir failed", "component", "session", "err", err)
+	// but hopboxd runs as a system user whose UID doesn't match. Chown the
+	// entire home tree to UID/GID 1000 so the in-container dev user can write
+	// to subdirectories (e.g. .config/zellij/).
+	if err := chownRecursive(homePath, 1000, 1000); err != nil {
+		slog.Warn("chown home dir failed", "component", "session", "err", err)
 	}
 
 	profileHash := profile.Hash()
@@ -517,4 +517,14 @@ func generateAndSaveHostKey(path string) (gossh.Signer, error) {
 		return nil, err
 	}
 	return signer, nil
+}
+
+// chownRecursive changes ownership of a path and all its contents to the given uid/gid.
+func chownRecursive(path string, uid, gid int) error {
+	return filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chown(name, uid, gid)
+	})
 }
