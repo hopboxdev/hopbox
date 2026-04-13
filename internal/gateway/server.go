@@ -327,15 +327,12 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	}
 
 	// Fix home dir ownership inside the container (as root) so the dev user
-	// can write to all subdirectories. This runs inside the container where
-	// root has full access, unlike the host-side chown which fails on
-	// restricted directories like .copilot or .vscode-server.
-	go func() {
-		chownCmd := []string{"chown", "-R", "dev:dev", "/home/dev"}
-		if _, err := s.manager.ExecNoTTY(context.Background(), containerID, chownCmd, nil, nil, io.Discard, io.Discard); err != nil {
-			slog.Warn("container chown failed", "component", "session", "err", err)
-		}
-	}()
+	// can write to all subdirectories. Runs synchronously before the session
+	// starts so tools like zellij and mise don't hit permission errors.
+	chownCmd := []string{"chown", "-R", "dev:dev", "/home/dev"}
+	if _, err := s.manager.ExecNoTTY(context.Background(), containerID, chownCmd, nil, nil, io.Discard, io.Discard); err != nil {
+		slog.Warn("container chown failed", "component", "session", "err", err)
+	}
 	ctx.SetValue("container_id", containerID)
 	s.manager.SessionConnect(containerID, user.Username, boxname)
 	defer s.manager.SessionDisconnect(containerID, user.Username, boxname)
