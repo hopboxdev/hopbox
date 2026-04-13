@@ -254,7 +254,7 @@
           "instant": true
         },
         {
-          "expr": "hopbox_box_active_sessions or (hopbox_box_cpu_percent * 0)",
+          "expr": "sum by (user, box, container_id) (hopbox_box_active_sessions) or sum by (user, box, container_id) (hopbox_box_cpu_percent * 0)",
           "refId": "B",
           "format": "table",
           "instant": true
