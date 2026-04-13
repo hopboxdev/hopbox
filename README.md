@@ -394,4 +394,4 @@ Data is stored on the filesystem under `data_dir`:
 
 ## License
 
-MIT
+[Elastic License 2.0 (ELv2)](LICENSE) — free to use, modify, and self-host. You may not offer Hopbox as a hosted or managed service.
