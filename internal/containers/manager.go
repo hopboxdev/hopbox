@@ -40,13 +40,14 @@ type containerState struct {
 }
 
 type Manager struct {
-	cli         *client.Client
-	sockets     map[string]*control.SocketServer // containerID -> socket server
-	states      map[string]*containerState
-	mu          sync.Mutex
-	idleTimeout time.Duration
-	resources   config.ResourcesConfig
-	linkStore   *control.LinkStore
+	cli              *client.Client
+	sockets          map[string]*control.SocketServer // containerID -> socket server
+	states           map[string]*containerState
+	mu               sync.Mutex
+	idleTimeout      time.Duration
+	resources        config.ResourcesConfig
+	containerRuntime string
+	linkStore        *control.LinkStore
 }
 
 // SetLinkStore sets the LinkStore used for generating link codes in control sockets.
@@ -60,11 +61,12 @@ func NewManager(cli *client.Client, cfg config.Config) *Manager {
 		timeout = time.Duration(cfg.IdleTimeoutHours) * time.Hour
 	}
 	return &Manager{
-		cli:         cli,
-		sockets:     make(map[string]*control.SocketServer),
-		states:      make(map[string]*containerState),
-		idleTimeout: timeout,
-		resources:   cfg.Resources,
+		cli:              cli,
+		sockets:          make(map[string]*control.SocketServer),
+		states:           make(map[string]*containerState),
+		idleTimeout:      timeout,
+		resources:        cfg.Resources,
+		containerRuntime: cfg.ContainerRuntime,
 	}
 }
 
@@ -212,6 +214,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 			fmt.Sprintf("%s:/home/dev", homePath),
 			fmt.Sprintf("%s:/var/run/hopbox", socketDir),
 		},
+		Runtime:   m.containerRuntime,
 		Resources: m.resourceLimits(),
 	}
 

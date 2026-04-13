@@ -232,6 +232,7 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 					huh.NewOption("bat", "bat"),
 					huh.NewOption("lazygit", "lazygit"),
 					huh.NewOption("direnv", "direnv"),
+					huh.NewOption("docker", "docker"),
 				).Value(&m.data.Profile.Tools.Extras),
 		))
 	default:

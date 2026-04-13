@@ -32,6 +32,7 @@ type Config struct {
 	IdleTimeoutHours int             `toml:"idle_timeout_hours"`
 	LogFormat        string          `toml:"log_format"`
 	LogLevel         string          `toml:"log_level"`
+	ContainerRuntime string          `toml:"container_runtime"`
 	Resources        ResourcesConfig `toml:"resources"`
 	Admin            AdminConfig     `toml:"admin"`
 }

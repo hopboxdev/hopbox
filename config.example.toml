@@ -28,6 +28,10 @@ log_format = "text"   # "text" or "json"
 # Minimum log level: "debug" | "info" | "warn" | "error"
 log_level  = "info"   # "debug" | "info" | "warn" | "error"
 
+# Container runtime. Set to "sysbox-runc" to enable Docker-in-Docker
+# per box (requires Sysbox installed on the host). Empty = default runc.
+container_runtime = ""
+
 # Resource limits applied to each container
 [resources]
 cpu_cores = 2       # CPU cores (0 = unlimited)
