@@ -79,7 +79,7 @@ func (m *Manager) SessionConnect(containerID, user, box string) {
 	}
 	s.sessions++
 	metrics.ActiveSessionsTotal.Inc()
-	metrics.BoxActiveSessions.WithLabelValues(user, box).Inc()
+	metrics.BoxActiveSessions.WithLabelValues(user, box, containerID).Inc()
 
 	if s.idleTimer != nil {
 		s.idleTimer.Stop()
@@ -101,7 +101,7 @@ func (m *Manager) SessionDisconnect(containerID, user, box string) {
 		s.sessions = 0
 	}
 	metrics.ActiveSessionsTotal.Dec()
-	metrics.BoxActiveSessions.WithLabelValues(user, box).Dec()
+	metrics.BoxActiveSessions.WithLabelValues(user, box, containerID).Dec()
 
 	if s.sessions == 0 && m.idleTimeout > 0 {
 		slog.Info("idle timer started", "component", "idle", "timeout", m.idleTimeout, "container", containerID[:12])

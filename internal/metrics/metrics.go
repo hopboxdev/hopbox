@@ -30,7 +30,7 @@ var (
 	BoxActiveSessions = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "hopbox_box_active_sessions",
 		Help: "Current number of active SSH sessions per box.",
-	}, []string{"user", "box"})
+	}, boxLabels)
 
 	BoxConnectTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "hopbox_box_connect_total",
@@ -94,4 +94,5 @@ func DeleteBoxMetrics(user, box, containerID string) {
 	BoxNetworkTxBytes.DeleteLabelValues(user, box, containerID)
 	BoxBlockReadBytes.DeleteLabelValues(user, box, containerID)
 	BoxBlockWriteBytes.DeleteLabelValues(user, box, containerID)
+	BoxActiveSessions.DeleteLabelValues(user, box, containerID)
 }
