@@ -48,7 +48,7 @@ func TestSessionTracking(t *testing.T) {
 		states: make(map[string]*containerState),
 	}
 
-	m.SessionConnect("container-1234567890ab")
+	m.SessionConnect("container-1234567890ab", "gandalf", "default")
 	m.mu.Lock()
 	s := m.states["container-1234567890ab"]
 	m.mu.Unlock()
@@ -56,7 +56,7 @@ func TestSessionTracking(t *testing.T) {
 		t.Fatalf("expected 1 session, got %v", s)
 	}
 
-	m.SessionConnect("container-1234567890ab")
+	m.SessionConnect("container-1234567890ab", "gandalf", "default")
 	m.mu.Lock()
 	s = m.states["container-1234567890ab"]
 	m.mu.Unlock()
@@ -64,7 +64,7 @@ func TestSessionTracking(t *testing.T) {
 		t.Errorf("expected 2 sessions, got %d", s.sessions)
 	}
 
-	m.SessionDisconnect("container-1234567890ab")
+	m.SessionDisconnect("container-1234567890ab", "gandalf", "default")
 	m.mu.Lock()
 	s = m.states["container-1234567890ab"]
 	m.mu.Unlock()
@@ -72,7 +72,7 @@ func TestSessionTracking(t *testing.T) {
 		t.Errorf("expected 1 session, got %d", s.sessions)
 	}
 
-	m.SessionDisconnect("container-1234567890ab")
+	m.SessionDisconnect("container-1234567890ab", "gandalf", "default")
 	m.mu.Lock()
 	s = m.states["container-1234567890ab"]
 	m.mu.Unlock()
@@ -87,8 +87,8 @@ func TestSessionConnectCancelsIdleTimer(t *testing.T) {
 		idleTimeout: 1 * time.Hour,
 	}
 
-	m.SessionConnect("container-1234567890ab")
-	m.SessionDisconnect("container-1234567890ab")
+	m.SessionConnect("container-1234567890ab", "gandalf", "default")
+	m.SessionDisconnect("container-1234567890ab", "gandalf", "default")
 
 	m.mu.Lock()
 	s := m.states["container-1234567890ab"]
@@ -98,7 +98,7 @@ func TestSessionConnectCancelsIdleTimer(t *testing.T) {
 		t.Error("expected idle timer to be set")
 	}
 
-	m.SessionConnect("container-1234567890ab")
+	m.SessionConnect("container-1234567890ab", "gandalf", "default")
 	m.mu.Lock()
 	s = m.states["container-1234567890ab"]
 	hasTimer = s.idleTimer != nil

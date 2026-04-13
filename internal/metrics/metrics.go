@@ -27,6 +27,11 @@ var (
 		Help: "Current number of active SSH sessions.",
 	})
 
+	BoxActiveSessions = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "hopbox_box_active_sessions",
+		Help: "Current number of active SSH sessions per box.",
+	}, []string{"user", "box"})
+
 	BoxConnectTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "hopbox_box_connect_total",
 		Help: "Total number of successful box connect events.",

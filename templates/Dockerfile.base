@@ -30,6 +30,10 @@ RUN mkdir -p /opt/mise/config && chown -R dev:dev /opt/mise
 # Activate mise in all bash sessions
 RUN echo 'eval "$(/usr/local/bin/mise activate bash)"' >> /etc/bash.bashrc
 
+# Default zellij config (allow-passthrough for notifications, no startup tips)
+RUN mkdir -p /etc/zellij && printf 'allow_passthrough true\nshow_startup_tips false\n' > /etc/zellij/config.kdl
+ENV ZELLIJ_CONFIG_DIR=/etc/zellij
+
 # In-container hop CLI
 COPY hop /usr/local/bin/hop
 

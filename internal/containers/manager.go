@@ -35,6 +35,8 @@ func ShouldRecreate(containerLabel, wantHash string) bool {
 type containerState struct {
 	sessions  int
 	idleTimer *time.Timer
+	user      string
+	box       string
 }
 
 type Manager struct {
@@ -66,17 +68,18 @@ func NewManager(cli *client.Client, cfg config.Config) *Manager {
 	}
 }
 
-func (m *Manager) SessionConnect(containerID string) {
+func (m *Manager) SessionConnect(containerID, user, box string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	s, ok := m.states[containerID]
 	if !ok {
-		s = &containerState{}
+		s = &containerState{user: user, box: box}
 		m.states[containerID] = s
 	}
 	s.sessions++
 	metrics.ActiveSessionsTotal.Inc()
+	metrics.BoxActiveSessions.WithLabelValues(user, box).Inc()
 
 	if s.idleTimer != nil {
 		s.idleTimer.Stop()
@@ -85,7 +88,7 @@ func (m *Manager) SessionConnect(containerID string) {
 	}
 }
 
-func (m *Manager) SessionDisconnect(containerID string) {
+func (m *Manager) SessionDisconnect(containerID, user, box string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -98,6 +101,7 @@ func (m *Manager) SessionDisconnect(containerID string) {
 		s.sessions = 0
 	}
 	metrics.ActiveSessionsTotal.Dec()
+	metrics.BoxActiveSessions.WithLabelValues(user, box).Dec()
 
 	if s.sessions == 0 && m.idleTimeout > 0 {
 		slog.Info("idle timer started", "component", "idle", "timeout", m.idleTimeout, "container", containerID[:12])

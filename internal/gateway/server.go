@@ -323,8 +323,8 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		return
 	}
 	ctx.SetValue("container_id", containerID)
-	s.manager.SessionConnect(containerID)
-	defer s.manager.SessionDisconnect(containerID)
+	s.manager.SessionConnect(containerID, user.Username, boxname)
+	defer s.manager.SessionDisconnect(containerID, user.Username, boxname)
 
 	slog.Info("session attached", "component", "session", "user", user.Username, "box", boxname, "container", containerID[:12])
 	metrics.BoxConnectTotal.WithLabelValues(user.Username, boxname).Inc()
