@@ -15,7 +15,7 @@ type hopConfig struct {
 }
 
 func defaultConfig() hopConfig {
-	return hopConfig{Server: "hopbox.dev", Port: 2222, DefaultBox: "default"}
+	return hopConfig{Server: "hopbox.dev", Port: 22, DefaultBox: "default"}
 }
 
 func loadConfig(path string) (hopConfig, error) {

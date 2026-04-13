@@ -35,8 +35,8 @@ func TestLoadConfigMissingFile(t *testing.T) {
 	if err != nil {
 		t.Fatal("missing file should not error, just return defaults")
 	}
-	if cfg.Port != 2222 {
-		t.Errorf("default port = %d, want 2222", cfg.Port)
+	if cfg.Port != 22 {
+		t.Errorf("default port = %d, want 22", cfg.Port)
 	}
 }
 
