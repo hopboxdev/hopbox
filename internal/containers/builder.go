@@ -3,6 +3,8 @@ package containers
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -21,8 +23,12 @@ import (
 )
 
 // UserImageTag returns the Docker image tag for a user's personalized image.
-func UserImageTag(username, profileHash string) string {
-	return fmt.Sprintf("hopbox-%s:%s", username, profileHash)
+// Includes the base tag hash so base image changes invalidate user images.
+func UserImageTag(username, profileHash, baseTag string) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "%s:%s", profileHash, baseTag)
+	combined := hex.EncodeToString(h.Sum(nil))[:12]
+	return fmt.Sprintf("hopbox-%s:%s", username, combined)
 }
 
 // GenerateDockerfile produces Dockerfile content for a user profile layered on the base image.
@@ -149,7 +155,7 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 
 // EnsureUserImage checks if the per-user image exists and builds it if not.
 func EnsureUserImage(ctx context.Context, cli *client.Client, username string, p users.Profile, baseTag string) (string, error) {
-	tag := UserImageTag(username, p.Hash())
+	tag := UserImageTag(username, p.Hash(), baseTag)
 
 	// Check if image already exists
 	images, err := cli.ImageList(ctx, image.ListOptions{})

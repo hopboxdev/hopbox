@@ -69,8 +69,18 @@ func TestGenerateDockerfileMinimal(t *testing.T) {
 }
 
 func TestUserImageTag(t *testing.T) {
-	tag := UserImageTag("gandalf", "abc123def456")
-	if tag != "hopbox-gandalf:abc123def456" {
-		t.Errorf("got %q", tag)
+	tag := UserImageTag("gandalf", "abc123def456", "hopbox-base:xyz789")
+	if !strings.HasPrefix(tag, "hopbox-gandalf:") {
+		t.Errorf("got %q, want prefix hopbox-gandalf:", tag)
+	}
+	// Same inputs produce same tag
+	tag2 := UserImageTag("gandalf", "abc123def456", "hopbox-base:xyz789")
+	if tag != tag2 {
+		t.Errorf("not deterministic: %q != %q", tag, tag2)
+	}
+	// Different base tag produces different user tag
+	tag3 := UserImageTag("gandalf", "abc123def456", "hopbox-base:different")
+	if tag == tag3 {
+		t.Error("different base tag should produce different user tag")
 	}
 }
