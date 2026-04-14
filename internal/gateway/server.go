@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/client"
@@ -177,10 +178,30 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	// separate path that skips the wizard, the spinner, and docker exec's TTY.
 	_, _, isPty := sess.Pty()
 
+	// Non-interactive link command: `ssh hop@server link XXXX-XXXX`.
+	// Lets clients that can't run the TUI wizard (e.g. Termius mobile) link
+	// a new key to an existing account without going through huh forms.
+	rawCmd := strings.TrimSpace(sess.RawCommand())
+	if strings.HasPrefix(rawCmd, "link ") {
+		if !needsReg {
+			fmt.Fprintf(sess.Stderr(), "hopbox: this key is already registered to %q — nothing to link.\n", user.Username)
+			sess.Exit(1)
+			return
+		}
+		code := strings.TrimSpace(strings.TrimPrefix(rawCmd, "link"))
+		linkedUser, _, _, linkErr := s.handleLinkFlow(sess, fp, code)
+		if linkErr != nil {
+			return
+		}
+		fmt.Fprintf(sess, "Linked to account %q. You can now connect normally.\r\n", linkedUser.Username)
+		sess.Exit(0)
+		return
+	}
+
 	// First-time setup requires an interactive session — the wizard is a TUI.
 	needsWizard := needsReg || profile == nil || isNewBox
 	if !isPty && needsWizard {
-		fmt.Fprintf(sess.Stderr(), "hopbox: first-time setup requires an interactive session. Run: ssh hop@<server>\n")
+		fmt.Fprintf(sess.Stderr(), "hopbox: first-time setup requires an interactive session.\nTo link this key to an existing account, run: ssh hop@<server> link XXXX-XXXX\n")
 		sess.Exit(1)
 		return
 	}
