@@ -127,7 +127,19 @@ func (c *Collector) updateOne(ctx context.Context, id, user, box string) error {
 	cpuPct := calcCPUPercent(&s)
 	BoxCPUPercent.WithLabelValues(user, box, id).Set(cpuPct)
 	BoxMemoryBytes.WithLabelValues(user, box, id).Set(float64(s.MemoryStats.Usage))
-	BoxMemoryLimitBytes.WithLabelValues(user, box, id).Set(float64(s.MemoryStats.Limit))
+
+	// Sysbox virtualizes /sys/fs/cgroup and docker stats' memory_stats.limit
+	// ends up reading the host cgroup root — so it reports host RAM instead
+	// of the container's limit. Read the limit from HostConfig.Memory via
+	// ContainerInspect; fall back to the stats value when no limit is set
+	// (HostConfig.Memory == 0).
+	limit := s.MemoryStats.Limit
+	if info, err := c.cli.ContainerInspect(ctx, id); err == nil {
+		if info.HostConfig != nil && info.HostConfig.Memory > 0 {
+			limit = uint64(info.HostConfig.Memory)
+		}
+	}
+	BoxMemoryLimitBytes.WithLabelValues(user, box, id).Set(float64(limit))
 
 	var rx, tx uint64
 	for _, n := range s.Networks {
