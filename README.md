@@ -175,11 +175,31 @@ New SSH keys trigger registration:
 1. Choose a username
 2. Select your tools (multiplexer, editor, shell, runtimes, CLI tools)
 3. Wait for your environment to build
-4. Land in your dev container running zellij (or tmux)
+4. Land in your dev container at a login shell
 
 ### Reconnecting
 
-Subsequent connections skip the wizard and go straight to your container. Your zellij/tmux session persists — disconnect and reconnect without losing state.
+Subsequent connections skip the wizard and go straight to your container shell.
+
+### Auto-launching a multiplexer
+
+The gateway installs your chosen multiplexer but won't start it for you — drop you in a login shell and leave the rest to your rc file. Opt in with a snippet in your own `~/.zshrc` / `~/.bashrc` / `~/.config/fish/config.fish`:
+
+```bash
+# zsh / bash
+if [[ -z "$ZELLIJ" && $- == *i* ]]; then
+  exec zellij attach --create main
+fi
+```
+
+```fish
+# fish
+if status is-interactive; and not set -q ZELLIJ
+  exec zellij attach --create main
+end
+```
+
+Replace `zellij attach --create main` with `tmux new-session -As main` for tmux. Because it's in your rc (not the gateway), detaching drops you back to the shell instead of disconnecting SSH — handy for paste-hostile TUIs or anything that doesn't play well inside the multiplexer. Run `zellij attach` (or `tmux attach`) from the shell to jump back in.
 
 ### Port Forwarding
 

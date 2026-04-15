@@ -381,19 +381,12 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		shellBin = "/usr/bin/fish"
 	}
 
-	var muxCmd string
-	switch profile.Multiplexer.Tool {
-	case "zellij":
-		muxCmd = fmt.Sprintf("zellij attach --create %s", boxname)
-	case "tmux":
-		muxCmd = fmt.Sprintf("tmux new-session -As %s", boxname)
-	default:
-		muxCmd = shellBin
-	}
-
+	// Always hand the user a login shell. If they want a multiplexer
+	// auto-attached they can opt in from their own rc file — the gateway
+	// doesn't make that choice for them.
 	shellCmd := fmt.Sprintf(
-		`if ! infocmp %s >/dev/null 2>&1; then export TERM=xterm-256color; else export TERM=%s; fi; export SHELL=%s; exec %s`,
-		term, term, shellBin, muxCmd,
+		`if ! infocmp %s >/dev/null 2>&1; then export TERM=xterm-256color; else export TERM=%s; fi; export SHELL=%s; exec %s -l`,
+		term, term, shellBin, shellBin,
 	)
 	cmd := []string{"bash", "-c", shellCmd}
 	env := []string{fmt.Sprintf("TERM=%s", term), fmt.Sprintf("SHELL=%s", shellBin)}
