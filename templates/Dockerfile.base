@@ -30,6 +30,12 @@ RUN mkdir -p /opt/mise/config && chown -R dev:dev /opt/mise
 # Activate mise in all bash sessions
 RUN echo 'eval "$(/usr/local/bin/mise activate bash)"' >> /etc/bash.bashrc
 
+# Home is bind-mounted and may not contain a .profile, so bash login shells
+# (what SSH sessions get) won't source .bashrc via the usual chain. Drop a
+# profile.d snippet so login shells always pull in the user's .bashrc.
+RUN printf '#!/bin/sh\nif [ -n "$BASH" ] && [ -f "$HOME/.bashrc" ]; then\n  . "$HOME/.bashrc"\nfi\n' > /etc/profile.d/hopbox-bashrc.sh \
+    && chmod +x /etc/profile.d/hopbox-bashrc.sh
+
 # In-container hop CLI
 COPY hop /usr/local/bin/hop
 

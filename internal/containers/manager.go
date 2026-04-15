@@ -159,8 +159,16 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 
 	if len(containers) > 0 {
 		c := containers[0]
-		if ShouldRecreate(c.Labels[profileHashLabelKey], profileHash) {
-			slog.Info("profile hash mismatch, recreating container", "component", "container", "name", name)
+		// Recreate if either the profile has changed OR the underlying
+		// image tag has changed. imageTag already hashes in the base tag,
+		// so a base-image rebuild (e.g. Dockerfile.base or in-container
+		// hop CLI changes) will propagate to users without manual work.
+		if ShouldRecreate(c.Labels[profileHashLabelKey], profileHash) || c.Image != imageTag {
+			reason := "profile hash mismatch"
+			if c.Image != imageTag {
+				reason = fmt.Sprintf("image tag changed (%s -> %s)", c.Image, imageTag)
+			}
+			slog.Info("recreating container", "component", "container", "name", name, "reason", reason)
 			_ = m.cli.ContainerStop(ctx, c.ID, container.StopOptions{})
 			if err := m.cli.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true}); err != nil {
 				return "", fmt.Errorf("remove container: %w", err)
