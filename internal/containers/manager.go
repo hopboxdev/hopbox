@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -305,6 +306,40 @@ func (m *Manager) DestroyBox(ctx context.Context, username, boxname, boxDir stri
 	return nil
 }
 
+// terminateExec best-effort tears down an in-flight exec: detach from the
+// hijacked stream, then send SIGHUP to the process group so the shell and any
+// children (zellij clients, backgrounded jobs) unwind cleanly. Errors are
+// logged and swallowed — this runs on the cancellation path where the caller
+// has already given up.
+func (m *Manager) terminateExec(containerID, execID string, attach types.HijackedResponse) {
+	attach.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	inspect, err := m.cli.ContainerExecInspect(ctx, execID)
+	if err != nil {
+		slog.Warn("exec inspect during cancel", "component", "exec-cleanup", "exec", execID[:12], "err", err)
+		return
+	}
+	if !inspect.Running || inspect.Pid <= 0 {
+		return
+	}
+
+	killCfg := container.ExecOptions{
+		Cmd:  []string{"kill", "-HUP", "--", fmt.Sprintf("-%d", inspect.Pid)},
+		User: "root",
+	}
+	killID, err := m.cli.ContainerExecCreate(ctx, containerID, killCfg)
+	if err != nil {
+		slog.Warn("kill exec create", "component", "exec-cleanup", "pid", inspect.Pid, "err", err)
+		return
+	}
+	if err := m.cli.ContainerExecStart(ctx, killID.ID, container.ExecStartOptions{}); err != nil {
+		slog.Warn("kill exec start", "component", "exec-cleanup", "pid", inspect.Pid, "err", err)
+	}
+}
+
 func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, env []string, stdin io.Reader, stdout io.Writer, resizeCh <-chan [2]uint) error {
 	execCfg := container.ExecOptions{
 		Cmd:          cmd,
@@ -327,6 +362,12 @@ func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, en
 	}
 	defer attachResp.Close()
 
+	doneCh := make(chan struct{})
+	defer close(doneCh)
+	go watchExecCancel(ctx, doneCh, func() {
+		m.terminateExec(containerID, execResp.ID, attachResp)
+	})
+
 	go func() {
 		for size := range resizeCh {
 			_ = m.cli.ContainerExecResize(ctx, execResp.ID, container.ResizeOptions{
@@ -336,17 +377,15 @@ func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, en
 		}
 	}()
 
-	// stdin -> container (background; will unblock when we close attachResp)
+	// stdin -> container (background; will unblock when attachResp is closed)
 	go func() {
 		io.Copy(attachResp.Conn, stdin)
 	}()
 
-	// container -> stdout (blocks until process exits)
+	// container -> stdout (blocks until exec exits or attach is closed on cancel)
 	io.Copy(stdout, attachResp.Reader)
 
-	// Process exited — close connection to unblock stdin goroutine
 	attachResp.Close()
-
 	return nil
 }
 
