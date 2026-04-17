@@ -84,3 +84,20 @@ func TestUserImageTag(t *testing.T) {
 		t.Error("different base tag should produce different user tag")
 	}
 }
+
+func TestGenerateDockerfileGH(t *testing.T) {
+	p := users.Profile{
+		Multiplexer: users.MultiplexerConfig{Tool: "none"},
+		Editor:      users.EditorConfig{Tool: "none"},
+		Shell:       users.ShellConfig{Tool: "bash"},
+		Runtimes:    users.RuntimesConfig{Node: "none", Python: "none", Go: "none", Rust: "none"},
+		Tools:       users.ToolsConfig{Extras: []string{"gh"}},
+	}
+	df := GenerateDockerfile(p, "hopbox-base:abc")
+	if !strings.Contains(df, "cli.github.com/packages") {
+		t.Error("gh selected: Dockerfile should reference cli.github.com/packages")
+	}
+	if !strings.Contains(df, "apt-get install -y gh") {
+		t.Error("gh selected: Dockerfile should apt-get install gh")
+	}
+}
