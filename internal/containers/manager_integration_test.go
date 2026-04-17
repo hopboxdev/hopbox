@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"strings"
 	"testing"
 	"time"
 
@@ -135,7 +134,8 @@ func TestExecNoTTY_TerminatesOnContextCancel(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatalf("ExecNoTTY did not return within 5s after ctx cancel")
 	}
-
-	// Unused to keep compiler happy if buffers were unreferenced.
-	_ = strings.TrimSpace(stdout.String())
+	// We only assert that ExecNoTTY unwinds. The in-container process may
+	// keep running because non-TTY execs aren't process-group leaders — see
+	// terminateExec doc comment. Short-lived non-TTY callers (VSCode
+	// bootstrap, scp, rsync) exit on their own.
 }

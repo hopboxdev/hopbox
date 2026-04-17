@@ -311,6 +311,14 @@ func (m *Manager) DestroyBox(ctx context.Context, username, boxname, boxDir stri
 // children (zellij clients, backgrounded jobs) unwind cleanly. Errors are
 // logged and swallowed — this runs on the cancellation path where the caller
 // has already given up.
+//
+// Process-group kill is reliable for TTY execs (Docker wraps them with setsid,
+// so the exec'd PID equals the PGID). For non-TTY execs the exec'd process is
+// not a group leader and the pgid-form kill will ESRCH — the attach close is
+// still effective at unwinding our own goroutines, but the in-container
+// process may keep running until it exits on its own. Acceptable because all
+// non-TTY callers (VSCode bootstrap, scp, rsync, one-shot commands) are
+// short-lived.
 func (m *Manager) terminateExec(containerID, execID string, attach types.HijackedResponse) {
 	attach.Close()
 
@@ -385,7 +393,6 @@ func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string, en
 	// container -> stdout (blocks until exec exits or attach is closed on cancel)
 	io.Copy(stdout, attachResp.Reader)
 
-	attachResp.Close()
 	return nil
 }
 
