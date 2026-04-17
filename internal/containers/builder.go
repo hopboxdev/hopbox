@@ -141,6 +141,13 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 				"chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && " +
 				"echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" > /etc/apt/sources.list.d/github-cli.list && " +
 				"apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*\n")
+		case "atuin":
+			fmt.Fprintf(&b,
+				"RUN ATUIN_VERSION=$(curl -s https://api.github.com/repos/atuinsh/atuin/releases/latest | grep tag_name | cut -d '\"' -f4 | tr -d 'v') && "+
+					"curl -fsSL \"https://github.com/atuinsh/atuin/releases/download/v${ATUIN_VERSION}/atuin-%s-unknown-linux-gnu.tar.gz\" | "+
+					"tar -xz --strip-components=1 -C /usr/local/bin/ atuin-%s-unknown-linux-gnu/atuin\n",
+				linuxArch, linuxArch,
+			)
 		}
 	}
 

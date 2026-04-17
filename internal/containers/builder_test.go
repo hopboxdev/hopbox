@@ -101,3 +101,20 @@ func TestGenerateDockerfileGH(t *testing.T) {
 		t.Error("gh selected: Dockerfile should apt-get install gh")
 	}
 }
+
+func TestGenerateDockerfileAtuin(t *testing.T) {
+	p := users.Profile{
+		Multiplexer: users.MultiplexerConfig{Tool: "none"},
+		Editor:      users.EditorConfig{Tool: "none"},
+		Shell:       users.ShellConfig{Tool: "bash"},
+		Runtimes:    users.RuntimesConfig{Node: "none", Python: "none", Go: "none", Rust: "none"},
+		Tools:       users.ToolsConfig{Extras: []string{"atuin"}},
+	}
+	df := GenerateDockerfile(p, "hopbox-base:abc")
+	if !strings.Contains(df, "atuinsh/atuin") {
+		t.Error("atuin selected: Dockerfile should reference atuinsh/atuin release")
+	}
+	if !strings.Contains(df, "unknown-linux-gnu") {
+		t.Error("atuin selected: Dockerfile should fetch the musl-gnu release tarball")
+	}
+}
