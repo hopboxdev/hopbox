@@ -404,6 +404,17 @@ func (m *Manager) ExecNoTTY(ctx context.Context, containerID string, cmd []strin
 	return inspect.ExitCode, nil
 }
 
+// watchExecCancel blocks until ctx is cancelled or done is closed.
+// On cancellation, it calls onCancel exactly once. If done is closed
+// first (the normal-return path), onCancel is never called.
+func watchExecCancel(ctx context.Context, done <-chan struct{}, onCancel func()) {
+	select {
+	case <-ctx.Done():
+		onCancel()
+	case <-done:
+	}
+}
+
 // Shutdown cleans up all socket servers and cancels all idle timers.
 func (m *Manager) Shutdown() {
 	m.mu.Lock()
