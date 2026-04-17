@@ -115,7 +115,7 @@ func TestGenerateDockerfileAtuin(t *testing.T) {
 		t.Error("atuin selected: Dockerfile should reference atuinsh/atuin release")
 	}
 	if !strings.Contains(df, "unknown-linux-gnu") {
-		t.Error("atuin selected: Dockerfile should fetch the musl-gnu release tarball")
+		t.Error("atuin selected: Dockerfile should fetch the linux-gnu release tarball")
 	}
 }
 

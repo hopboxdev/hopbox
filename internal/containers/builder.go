@@ -177,7 +177,7 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 		}
 		if needNode {
 			b.WriteString("RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && " +
-				"apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*\n")
+				"apt-get update && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*\n")
 			fmt.Fprintf(&b, "RUN npm install -g %s\n", strings.Join(npmPkgs, " "))
 		}
 	}
