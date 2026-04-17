@@ -12,3 +12,4 @@ templates/hop
 .superpowers/
 docs/superpowers/
 dist/
+.worktrees/
