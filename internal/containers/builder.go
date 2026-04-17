@@ -135,6 +135,19 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 				"rm -rf /var/lib/apt/lists/* && " +
 				"usermod -aG docker dev\n")
 			hasDocker = true
+		case "gh":
+			b.WriteString("RUN mkdir -p /etc/apt/keyrings && " +
+				"curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg && " +
+				"chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && " +
+				"echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" > /etc/apt/sources.list.d/github-cli.list && " +
+				"apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*\n")
+		case "atuin":
+			fmt.Fprintf(&b,
+				"RUN ATUIN_VERSION=$(curl -s https://api.github.com/repos/atuinsh/atuin/releases/latest | grep tag_name | cut -d '\"' -f4 | tr -d 'v') && "+
+					"curl -fsSL \"https://github.com/atuinsh/atuin/releases/download/v${ATUIN_VERSION}/atuin-%s-unknown-linux-gnu.tar.gz\" | "+
+					"tar -xz --strip-components=1 -C /usr/local/bin/ atuin-%s-unknown-linux-gnu/atuin\n",
+				linuxArch, linuxArch,
+			)
 		}
 	}
 
@@ -143,6 +156,30 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 		b.WriteString("ENV NVM_DIR=/opt/nvm\n")
 		b.WriteString("RUN mkdir -p /opt/nvm && curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash && chown -R dev:dev /opt/nvm\n")
 		b.WriteString("RUN echo 'export NVM_DIR=/opt/nvm && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"' >> /etc/bash.bashrc\n")
+	}
+
+	// AI tools (run as root, install to /usr/local/bin so bind-mounted /home/dev doesn't hide them)
+	if len(p.Tools.AI) > 0 {
+		needNode := false
+		var npmPkgs []string
+		for _, tool := range p.Tools.AI {
+			switch tool {
+			case "claude-code":
+				b.WriteString("RUN curl -fsSL https://claude.ai/install.sh | bash && " +
+					"mv /root/.local/bin/claude /usr/local/bin/claude\n")
+			case "codex":
+				needNode = true
+				npmPkgs = append(npmPkgs, "@openai/codex")
+			case "gemini-cli":
+				needNode = true
+				npmPkgs = append(npmPkgs, "@google/gemini-cli")
+			}
+		}
+		if needNode {
+			b.WriteString("RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && " +
+				"apt-get update && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*\n")
+			fmt.Fprintf(&b, "RUN npm install -g %s\n", strings.Join(npmPkgs, " "))
+		}
 	}
 
 	// Switch to dev user for runtime installs via mise

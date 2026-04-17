@@ -84,3 +84,91 @@ func TestUserImageTag(t *testing.T) {
 		t.Error("different base tag should produce different user tag")
 	}
 }
+
+func TestGenerateDockerfileGH(t *testing.T) {
+	p := users.Profile{
+		Multiplexer: users.MultiplexerConfig{Tool: "none"},
+		Editor:      users.EditorConfig{Tool: "none"},
+		Shell:       users.ShellConfig{Tool: "bash"},
+		Runtimes:    users.RuntimesConfig{Node: "none", Python: "none", Go: "none", Rust: "none"},
+		Tools:       users.ToolsConfig{Extras: []string{"gh"}},
+	}
+	df := GenerateDockerfile(p, "hopbox-base:abc")
+	if !strings.Contains(df, "cli.github.com/packages") {
+		t.Error("gh selected: Dockerfile should reference cli.github.com/packages")
+	}
+	if !strings.Contains(df, "apt-get install -y gh") {
+		t.Error("gh selected: Dockerfile should apt-get install gh")
+	}
+}
+
+func TestGenerateDockerfileAtuin(t *testing.T) {
+	p := users.Profile{
+		Multiplexer: users.MultiplexerConfig{Tool: "none"},
+		Editor:      users.EditorConfig{Tool: "none"},
+		Shell:       users.ShellConfig{Tool: "bash"},
+		Runtimes:    users.RuntimesConfig{Node: "none", Python: "none", Go: "none", Rust: "none"},
+		Tools:       users.ToolsConfig{Extras: []string{"atuin"}},
+	}
+	df := GenerateDockerfile(p, "hopbox-base:abc")
+	if !strings.Contains(df, "atuinsh/atuin") {
+		t.Error("atuin selected: Dockerfile should reference atuinsh/atuin release")
+	}
+	if !strings.Contains(df, "unknown-linux-gnu") {
+		t.Error("atuin selected: Dockerfile should fetch the linux-gnu release tarball")
+	}
+}
+
+func TestGenerateDockerfileClaudeCodeOnly(t *testing.T) {
+	p := users.Profile{
+		Multiplexer: users.MultiplexerConfig{Tool: "none"},
+		Editor:      users.EditorConfig{Tool: "none"},
+		Shell:       users.ShellConfig{Tool: "bash"},
+		Runtimes:    users.RuntimesConfig{Node: "none", Python: "none", Go: "none", Rust: "none"},
+		Tools:       users.ToolsConfig{AI: []string{"claude-code"}},
+	}
+	df := GenerateDockerfile(p, "hopbox-base:abc")
+	if !strings.Contains(df, "claude.ai/install.sh") {
+		t.Error("claude-code selected: Dockerfile should run claude.ai installer")
+	}
+	if !strings.Contains(df, "mv /root/.local/bin/claude /usr/local/bin/claude") {
+		t.Error("claude-code selected: Dockerfile should relocate claude binary to /usr/local/bin")
+	}
+	if strings.Contains(df, "deb.nodesource.com") {
+		t.Error("claude-code only: Dockerfile must not install NodeSource")
+	}
+}
+
+func TestGenerateDockerfileCodexAndGemini(t *testing.T) {
+	p := users.Profile{
+		Multiplexer: users.MultiplexerConfig{Tool: "none"},
+		Editor:      users.EditorConfig{Tool: "none"},
+		Shell:       users.ShellConfig{Tool: "bash"},
+		Runtimes:    users.RuntimesConfig{Node: "none", Python: "none", Go: "none", Rust: "none"},
+		Tools:       users.ToolsConfig{AI: []string{"codex", "gemini-cli"}},
+	}
+	df := GenerateDockerfile(p, "hopbox-base:abc")
+	if !strings.Contains(df, "deb.nodesource.com/setup_lts.x") {
+		t.Error("codex/gemini selected: Dockerfile should install NodeSource LTS")
+	}
+	if !strings.Contains(df, "@openai/codex") {
+		t.Error("codex selected: Dockerfile should npm install @openai/codex")
+	}
+	if !strings.Contains(df, "@google/gemini-cli") {
+		t.Error("gemini-cli selected: Dockerfile should npm install @google/gemini-cli")
+	}
+}
+
+func TestGenerateDockerfileNoAI(t *testing.T) {
+	p := users.DefaultProfile()
+	df := GenerateDockerfile(p, "hopbox-base:abc")
+	if strings.Contains(df, "claude.ai/install.sh") {
+		t.Error("default profile: should not install Claude Code")
+	}
+	if strings.Contains(df, "deb.nodesource.com") {
+		t.Error("default profile: should not install NodeSource")
+	}
+	if strings.Contains(df, "@openai/codex") {
+		t.Error("default profile: should not install codex")
+	}
+}
