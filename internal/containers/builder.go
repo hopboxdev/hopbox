@@ -158,6 +158,30 @@ func GenerateDockerfile(p users.Profile, baseTag string) string {
 		b.WriteString("RUN echo 'export NVM_DIR=/opt/nvm && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"' >> /etc/bash.bashrc\n")
 	}
 
+	// AI tools (run as root, install to /usr/local/bin so bind-mounted /home/dev doesn't hide them)
+	if len(p.Tools.AI) > 0 {
+		needNode := false
+		var npmPkgs []string
+		for _, tool := range p.Tools.AI {
+			switch tool {
+			case "claude-code":
+				b.WriteString("RUN curl -fsSL https://claude.ai/install.sh | bash && " +
+					"mv /root/.local/bin/claude /usr/local/bin/claude\n")
+			case "codex":
+				needNode = true
+				npmPkgs = append(npmPkgs, "@openai/codex")
+			case "gemini-cli":
+				needNode = true
+				npmPkgs = append(npmPkgs, "@google/gemini-cli")
+			}
+		}
+		if needNode {
+			b.WriteString("RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && " +
+				"apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*\n")
+			fmt.Fprintf(&b, "RUN npm install -g %s\n", strings.Join(npmPkgs, " "))
+		}
+	}
+
 	// Switch to dev user for runtime installs via mise
 	b.WriteString("\nUSER dev\nWORKDIR /home/dev\n\n")
 
