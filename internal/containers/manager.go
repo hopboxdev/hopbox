@@ -421,6 +421,12 @@ func (m *Manager) ExecNoTTY(ctx context.Context, containerID string, cmd []strin
 	}
 	defer attachResp.Close()
 
+	doneCh := make(chan struct{})
+	defer close(doneCh)
+	go watchExecCancel(ctx, doneCh, func() {
+		m.terminateExec(containerID, execResp.ID, attachResp)
+	})
+
 	// stdin -> container; close the write side on EOF so the remote process
 	// sees EOF on its own stdin (bootstrap scripts wait for this).
 	if stdin != nil {
