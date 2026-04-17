@@ -25,6 +25,7 @@ const (
 	stepGo
 	stepRust
 	stepTools
+	stepAI
 	stepDone
 )
 
@@ -235,6 +236,16 @@ func (m wizardModel) buildForm(s step) *huh.Form {
 					huh.NewOption("gh (GitHub CLI)", "gh"),
 					huh.NewOption("atuin", "atuin"),
 				).Value(&m.data.Profile.Tools.Extras),
+		))
+	case stepAI:
+		return huh.NewForm(huh.NewGroup(
+			huh.NewMultiSelect[string]().
+				Title("AI Tools").
+				Options(
+					huh.NewOption("Claude Code", "claude-code"),
+					huh.NewOption("Codex", "codex"),
+					huh.NewOption("Gemini CLI", "gemini-cli"),
+				).Value(&m.data.Profile.Tools.AI),
 		))
 	default:
 		return huh.NewForm(huh.NewGroup())
