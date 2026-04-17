@@ -32,6 +32,7 @@ type RuntimesConfig struct {
 
 type ToolsConfig struct {
 	Extras []string `toml:"extras"`
+	AI     []string `toml:"ai"`
 }
 
 type Profile struct {
