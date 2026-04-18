@@ -10,13 +10,16 @@ func TestHashTemplates(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create fake template files
-	if err := os.MkdirAll(filepath.Join(dir, "stacks"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "base-devcontainer"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "Dockerfile.base"), []byte("FROM ubuntu:24.04"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "base-devcontainer", "Dockerfile"), []byte("FROM ubuntu:24.04"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "stacks", "tools.sh"), []byte("apt install stuff"), 0644); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "builder"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "builder", "tools.sh"), []byte("apt install stuff"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -38,7 +41,7 @@ func TestHashTemplates(t *testing.T) {
 	}
 
 	// Change content = different hash
-	if err := os.WriteFile(filepath.Join(dir, "stacks", "tools.sh"), []byte("apt install different"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "builder", "tools.sh"), []byte("apt install different"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	hash3, err := HashTemplates(dir)

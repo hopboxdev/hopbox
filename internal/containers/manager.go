@@ -161,7 +161,7 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 		c := containers[0]
 		// Recreate if either the profile has changed OR the underlying
 		// image tag has changed. imageTag already hashes in the base tag,
-		// so a base-image rebuild (e.g. Dockerfile.base or in-container
+		// so a base-image rebuild (e.g. base-devcontainer/Dockerfile or in-container
 		// hop CLI changes) will propagate to users without manual work.
 		if ShouldRecreate(c.Labels[profileHashLabelKey], profileHash) || c.Image != imageTag {
 			reason := "profile hash mismatch"

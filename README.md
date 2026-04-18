@@ -2,6 +2,12 @@
 
 Self-hosted SSH gateway that drops users into isolated Docker-based dev containers. Connect via SSH, pick your tools, and land in a persistent environment with zellij, your editor, and your runtimes.
 
+## Breaking Changes (v0.3.0)
+
+Starting with Phase 1, Hopbox uses **`.devcontainer/devcontainer.json`** for per-box configuration instead of profile-based TOML files. Existing boxes are NOT automatically migrated — on the next SSH connect, the wizard will create a fresh default box. New base image: `ghcr.io/hopboxdev/devcontainer-base`; new builder image: `ghcr.io/hopboxdev/builder`.
+
+For local development: `make base-image builder-image` to build them into the host's Docker daemon.
+
 ## Features
 
 - **SSH-native** — `ssh hop@server` is all you need. No VPN, no browser.
@@ -425,7 +431,7 @@ hop init
 
 ## Architecture
 
-Hopbox is a single Go binary (`hopboxd`) that runs an SSH server using [charmbracelet/ssh](https://github.com/charmbracelet/ssh). Users authenticate by SSH public key. Each user gets Docker containers created from a shared base image (Ubuntu 24.04 + mise) with per-user tool layers built from their profile.
+Hopbox is a single Go binary (`hopboxd`) that runs an SSH server using [charmbracelet/ssh](https://github.com/charmbracelet/ssh). Users authenticate by SSH public key. Each user gets Docker containers created from a shared base image (Ubuntu 24.04 + devcontainer) with per-box tool layers built from their devcontainer configuration.
 
 ```
 SSH Client → hopboxd (auth, wizard, container lifecycle) → Docker containers
@@ -436,8 +442,7 @@ SSH Client → hopboxd (auth, wizard, container lifecycle) → Docker containers
 
 Data is stored on the filesystem under `data_dir`:
 - `users/<fingerprint>/user.toml` — username and key info
-- `users/<fingerprint>/profile.toml` — default tool profile
-- `users/<fingerprint>/boxes/<boxname>/profile.toml` — per-box profile override
+- `users/<fingerprint>/boxes/<boxname>/.devcontainer/devcontainer.json` — per-box configuration
 - `users/<fingerprint>/boxes/<boxname>/home/` — bind-mounted as `/home/dev`
 
 ## License

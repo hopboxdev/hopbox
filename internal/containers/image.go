@@ -89,7 +89,7 @@ func EnsureBaseImage(ctx context.Context, cli *client.Client, templatesDir strin
 	defer buildCtx.Close()
 
 	resp, err := cli.ImageBuild(ctx, buildCtx, build.ImageBuildOptions{
-		Dockerfile: "Dockerfile.base",
+		Dockerfile: "base-devcontainer/Dockerfile",
 		Tags:       []string{tag},
 		Remove:     true,
 	})
