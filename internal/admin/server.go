@@ -148,8 +148,6 @@ type boxInfo struct {
 	Name            string
 	Username        string
 	ContainerStatus string
-	Shell           string
-	Multiplexer     string
 }
 
 // dashboardData holds data for the dashboard template.

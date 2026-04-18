@@ -28,18 +28,16 @@ type Server struct {
 	store     *users.Store
 	manager   *containers.Manager
 	dockerCli *client.Client
-	baseTag   string
 	linkStore *control.LinkStore
 	sshSrv    *ssh.Server
 }
 
-func NewServer(cfg config.Config, store *users.Store, manager *containers.Manager, dockerCli *client.Client, baseTag string, linkStore *control.LinkStore) (*Server, error) {
+func NewServer(cfg config.Config, store *users.Store, manager *containers.Manager, dockerCli *client.Client, linkStore *control.LinkStore) (*Server, error) {
 	s := &Server{
 		cfg:       cfg,
 		store:     store,
 		manager:   manager,
 		dockerCli: dockerCli,
-		baseTag:   baseTag,
 		linkStore: linkStore,
 	}
 
@@ -57,8 +55,8 @@ func NewServer(cfg config.Config, store *users.Store, manager *containers.Manage
 		},
 		ChannelHandlers: map[string]ssh.ChannelHandler{
 			"session":                          ssh.DefaultSessionHandler,
-			"direct-tcpip":                     DirectTCPIPHandler(s.manager, s.store, s.dockerCli, s.baseTag, s.cfg.Hostname, s.cfg.Port),
-			"direct-streamlocal@openssh.com":   DirectStreamLocalHandler(s.manager, s.store, s.dockerCli, s.baseTag, s.cfg.Hostname, s.cfg.Port),
+			"direct-tcpip":                     DirectTCPIPHandler(s.manager, s.store, s.dockerCli, s.cfg.Hostname, s.cfg.Port),
+			"direct-streamlocal@openssh.com":   DirectStreamLocalHandler(s.manager, s.store, s.dockerCli, s.cfg.Hostname, s.cfg.Port),
 		},
 	}
 
@@ -140,12 +138,8 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		}
 	}
 
-	// Resolve user and profile
-	userDir := filepath.Join(s.store.Dir(), fp)
+	// Resolve user
 	var user users.User
-	var profile *users.Profile
-	isNewBox := false
-
 	if !needsReg {
 		var ok bool
 		user, ok = s.store.LookupByFingerprint(fp)
@@ -156,20 +150,13 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		}
 
 		slog.Info("session connect", "component", "session", "user", user.Username, "box", boxname)
+	}
 
-		// Check if this box has its own profile (not just the user-level fallback)
-		boxProfilePath := filepath.Join(userDir, "boxes", boxname, "profile.toml")
-		if _, err := os.Stat(boxProfilePath); os.IsNotExist(err) {
-			isNewBox = true
-		}
-
-		var err error
-		profile, err = users.ResolveProfile(userDir, boxname)
-		if err != nil {
-			slog.Error("resolve profile failed", "component", "session", "err", err)
-			fmt.Fprintf(sess, "Failed to load profile: %v\r\n", err)
-			return
-		}
+	// Check if this box has a devcontainer.json (file-based existence check)
+	devcontainerPath := filepath.Join(s.store.HomePath(fp, boxname), ".devcontainer", "devcontainer.json")
+	boxExists := false
+	if _, err := os.Stat(devcontainerPath); err == nil {
+		boxExists = true
 	}
 
 	// Detect whether the client requested a PTY up front. Non-PTY sessions
@@ -178,23 +165,15 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	_, _, isPty := sess.Pty()
 
 	// First-time setup requires an interactive session — the wizard is a TUI.
-	needsWizard := needsReg || profile == nil || isNewBox
+	needsWizard := needsReg || !boxExists
 	if !isPty && needsWizard {
 		fmt.Fprintf(sess.Stderr(), "hopbox: first-time setup requires an interactive session. Run: ssh hop@<server>\n")
 		sess.Exit(1)
 		return
 	}
 
-	// Run wizard for new users, new boxes, or missing profiles
-	if needsWizard {
-		defaults := users.DefaultProfile()
-		if !needsReg {
-			// Pre-fill with user's default for new box
-			if userDefault, err := users.ResolveProfile(userDir, "__nonexistent__"); err == nil && userDefault != nil {
-				defaults = *userDefault
-			}
-		}
-
+	// Run wizard for new users; seed directly for existing users with a new box
+	if needsReg {
 		validateUsername := func(name string) error {
 			if err := users.ValidateUsername(name); err != nil {
 				return err
@@ -205,7 +184,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			return nil
 		}
 
-		result, err := wizard.RunSetup(defaults, sess, needsReg, validateUsername)
+		result, err := wizard.RunSetup(sess, true, validateUsername)
 		if err != nil {
 			slog.Warn("setup cancelled", "component", "session", "err", err)
 			sess.Exit(0)
@@ -214,16 +193,14 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 
 		// Handle link mode — user chose to link their key to an existing account
 		if result.LinkMode {
-			linkedUser, linkedBox, linkedProfile, linkErr := s.handleLinkFlow(sess, fp, result.LinkCode)
+			linkedUser, linkedBox, linkErr := s.handleLinkFlow(sess, fp, result.LinkCode)
 			if linkErr != nil {
 				return // error already printed to session
 			}
 			user = linkedUser
 			boxname = linkedBox
-			profile = linkedProfile
-			userDir = filepath.Join(s.store.Dir(), fp)
-		} else if needsReg {
-			// Save user if new registration
+		} else {
+			// Save user for new registration
 			u := users.User{
 				Username:     result.Username,
 				KeyType:      ctx.Value("key_type").(string),
@@ -237,32 +214,44 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			user = u
 			slog.Info("user registered", "component", "session", "user", user.Username, "fp", fp[:20])
 
-			// Save as user-level default
-			if err := users.SaveProfile(filepath.Join(userDir, "profile.toml"), result.Profile); err != nil {
-				slog.Error("save user profile failed", "component", "session", "err", err)
+			// Seed default devcontainer.json for new boxes
+			homePath := s.store.HomePath(fp, boxname)
+			devcontainerDir := filepath.Join(homePath, ".devcontainer")
+			if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+				slog.Error("create .devcontainer dir", "component", "session", "err", err)
+				fmt.Fprintf(sess, "Failed to seed box config: %v\r\n", err)
+				return
 			}
-
-			// Save box-level profile
-			boxDir := filepath.Join(userDir, "boxes", boxname)
-			if err := os.MkdirAll(boxDir, 0755); err != nil {
-				slog.Error("create box dir failed", "component", "session", "err", err)
+			dcPath := filepath.Join(devcontainerDir, "devcontainer.json")
+			if _, err := os.Stat(dcPath); os.IsNotExist(err) {
+				if err := os.WriteFile(dcPath, containers.DefaultDevcontainer(), 0o644); err != nil {
+					slog.Error("write devcontainer.json", "component", "session", "err", err)
+					fmt.Fprintf(sess, "Failed to seed box config: %v\r\n", err)
+					return
+				}
 			}
-			if err := users.SaveProfile(filepath.Join(boxDir, "profile.toml"), result.Profile); err != nil {
-				slog.Error("save box profile failed", "component", "session", "err", err)
+		}
+	} else if !boxExists {
+		// Existing user, new box — seed default devcontainer.json directly (no wizard needed)
+		homePath := s.store.HomePath(fp, boxname)
+		devcontainerDir := filepath.Join(homePath, ".devcontainer")
+		if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+			slog.Error("create .devcontainer dir", "component", "session", "err", err)
+			fmt.Fprintf(sess, "Failed to seed box config: %v\r\n", err)
+			return
+		}
+		dcPath := filepath.Join(devcontainerDir, "devcontainer.json")
+		if _, err := os.Stat(dcPath); os.IsNotExist(err) {
+			if err := os.WriteFile(dcPath, containers.DefaultDevcontainer(), 0o644); err != nil {
+				slog.Error("write devcontainer.json", "component", "session", "err", err)
+				fmt.Fprintf(sess, "Failed to seed box config: %v\r\n", err)
+				return
 			}
-			profile = &result.Profile
-		} else {
-			// Existing user, new box — save box-level profile
-			boxDir := filepath.Join(userDir, "boxes", boxname)
-			if err := os.MkdirAll(boxDir, 0755); err != nil {
-				slog.Error("create box dir failed", "component", "session", "err", err)
-			}
-			if err := users.SaveProfile(filepath.Join(boxDir, "profile.toml"), result.Profile); err != nil {
-				slog.Error("save box profile failed", "component", "session", "err", err)
-			}
-			profile = &result.Profile
 		}
 	}
+
+	// Recalculate devcontainerPath in case boxname was updated by the link flow
+	devcontainerPath = filepath.Join(s.store.HomePath(fp, boxname), ".devcontainer", "devcontainer.json")
 
 	// Ensure per-user image exists (spinner only for interactive sessions;
 	// non-PTY sessions like VSCode remote-ssh want a clean stdout).
@@ -284,7 +273,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			}
 		}()
 	}
-	imageTag, err := containers.EnsureUserImage(ctx, s.dockerCli, user.Username, *profile, s.baseTag)
+	imageTag, err := containers.EnsureUserImage(ctx, s.dockerCli, user.Username, boxname, devcontainerPath)
 	close(buildDone)
 	if err != nil {
 		if isPty {
@@ -307,12 +296,15 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		fmt.Fprintf(sess, "Failed to create home directory: %v\r\n", err)
 		return
 	}
-	profileHash := profile.Hash()
+	profileHash, err := containers.DevcontainerHash(devcontainerPath)
+	if err != nil {
+		slog.Error("read devcontainer for hash", "component", "session", "err", err)
+		fmt.Fprintf(sess, "Failed to read devcontainer.json: %v\r\n", err)
+		return
+	}
 	boxInfo := control.BoxInfo{
 		BoxName:     boxname,
 		Username:    user.Username,
-		Shell:       profile.Shell.Tool,
-		Multiplexer: profile.Multiplexer.Tool,
 		Hostname:    s.cfg.Hostname,
 		SSHPort:     s.cfg.Port,
 		Fingerprint: fp,
@@ -367,19 +359,13 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		close(resizeCh)
 	}()
 
-	// Adaptive exec based on profile
+	// Adaptive exec based on terminal type
 	term := ptyReq.Term
 	if term == "" {
 		term = "xterm-256color"
 	}
 
 	shellBin := "/bin/bash"
-	switch profile.Shell.Tool {
-	case "zsh":
-		shellBin = "/usr/bin/zsh"
-	case "fish":
-		shellBin = "/usr/bin/fish"
-	}
 
 	// Always hand the user a login shell. If they want a multiplexer
 	// auto-attached they can opt in from their own rc file — the gateway
@@ -400,27 +386,27 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	sess.Exit(0)
 }
 
-func (s *Server) handleLinkFlow(sess ssh.Session, fp, code string) (users.User, string, *users.Profile, error) {
+func (s *Server) handleLinkFlow(sess ssh.Session, fp, code string) (users.User, string, error) {
 	originalFP, err := s.linkStore.ValidateCode(code)
 	if err != nil {
 		slog.Warn("link code validation failed", "component", "session", "err", err)
 		fmt.Fprintf(sess, "Invalid or expired link code.\r\n")
 		sess.Exit(1)
-		return users.User{}, "", nil, err
+		return users.User{}, "", err
 	}
 
 	if err := s.store.LinkKey(fp, originalFP); err != nil {
 		slog.Error("link key failed", "component", "session", "err", err)
 		fmt.Fprintf(sess, "Failed to link key: %v\r\n", err)
 		sess.Exit(1)
-		return users.User{}, "", nil, err
+		return users.User{}, "", err
 	}
 
 	user, ok := s.store.LookupByFingerprint(fp)
 	if !ok {
 		fmt.Fprintf(sess, "User not found after linking\r\n")
 		sess.Exit(1)
-		return users.User{}, "", nil, fmt.Errorf("user not found after linking")
+		return users.User{}, "", fmt.Errorf("user not found after linking")
 	}
 	slog.Info("key linked", "component", "session", "fp", fp[:20], "user", user.Username)
 
@@ -429,7 +415,7 @@ func (s *Server) handleLinkFlow(sess ssh.Session, fp, code string) (users.User, 
 	if err != nil {
 		fmt.Fprintf(sess, "Failed to list boxes: %v\r\n", err)
 		sess.Exit(1)
-		return users.User{}, "", nil, err
+		return users.User{}, "", err
 	}
 
 	var boxname string
@@ -442,22 +428,12 @@ func (s *Server) handleLinkFlow(sess ssh.Session, fp, code string) (users.User, 
 		if err != nil {
 			slog.Warn("picker cancelled", "component", "session", "user", user.Username, "err", err)
 			sess.Exit(0)
-			return users.User{}, "", nil, err
+			return users.User{}, "", err
 		}
 		boxname = chosen
 	}
 
-	profile, err := users.ResolveProfile(userDir, boxname)
-	if err != nil {
-		fmt.Fprintf(sess, "Failed to load profile: %v\r\n", err)
-		return users.User{}, "", nil, err
-	}
-	if profile == nil {
-		p := users.DefaultProfile()
-		profile = &p
-	}
-
-	return user, boxname, profile, nil
+	return user, boxname, nil
 }
 
 func (s *Server) loadOrGenerateHostKey() (gossh.Signer, error) {

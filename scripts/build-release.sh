@@ -44,9 +44,9 @@ GOOS="${OS}" GOARCH="${ARCH}" CGO_ENABLED=0 \
   go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
   -o "${STAGE_DIR}/templates/hop" ./cmd/hop-box
 
-# Copy templates
-cp templates/Dockerfile.base "${STAGE_DIR}/templates/Dockerfile.base"
-cp templates/ghostty.terminfo "${STAGE_DIR}/templates/ghostty.terminfo"
+# Copy templates (directories and individual files)
+cp -r templates/base-devcontainer "${STAGE_DIR}/templates/"
+cp -r templates/builder "${STAGE_DIR}/templates/"
 
 # Copy top-level config example
 cp config.example.toml "${STAGE_DIR}/config.example.toml"

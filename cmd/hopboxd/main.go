@@ -65,14 +65,6 @@ func main() {
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	defer rootCancel()
 
-	// Ensure base image is built
-	templatesDir := findTemplatesDir()
-	imageTag, err := containers.EnsureBaseImage(ctx, cli, templatesDir)
-	if err != nil {
-		log.Fatalf("ensure base image: %v", err)
-	}
-	slog.Info("base image ready", "image", imageTag)
-
 	// Initialize user store
 	store := users.NewStore(usersDir)
 
@@ -103,7 +95,7 @@ func main() {
 	}
 
 	// Start SSH server
-	srv, err := gateway.NewServer(cfg, store, mgr, cli, imageTag, linkStore)
+	srv, err := gateway.NewServer(cfg, store, mgr, cli, linkStore)
 	if err != nil {
 		log.Fatalf("create server: %v", err)
 	}
@@ -190,19 +182,3 @@ func initLogger(cfg config.Config) {
 	slog.SetDefault(slog.New(handler))
 }
 
-func findTemplatesDir() string {
-	if info, err := os.Stat("templates"); err == nil && info.IsDir() {
-		return "templates"
-	}
-
-	exe, err := os.Executable()
-	if err == nil {
-		dir := filepath.Join(filepath.Dir(exe), "templates")
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
-			return dir
-		}
-	}
-
-	log.Fatal("templates directory not found")
-	return ""
-}

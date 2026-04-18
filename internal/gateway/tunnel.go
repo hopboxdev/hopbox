@@ -27,7 +27,7 @@ type directTCPIPData struct {
 // resolveContainerID returns the container ID for the current SSH connection.
 // If the session handler already set it, use that. Otherwise (e.g. ssh -N -L),
 // look up the user by fingerprint and ensure their container is running.
-func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *users.Store, dockerCli *client.Client, baseTag string, hostname string, sshPort int) (string, error) {
+func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *users.Store, dockerCli *client.Client, hostname string, sshPort int) (string, error) {
 	if id, ok := sshCtx.Value("container_id").(string); ok && id != "" {
 		return id, nil
 	}
@@ -43,38 +43,29 @@ func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *user
 	}
 
 	_, boxname := ParseUsername(sshCtx.User())
-	userDir := filepath.Join(store.Dir(), fp)
-
-	profile, err := users.ResolveProfile(userDir, boxname)
-	if err != nil {
-		return "", fmt.Errorf("resolve profile: %w", err)
-	}
-	if profile == nil {
-		p := users.DefaultProfile()
-		profile = &p
-	}
-
-	imageTag, err := containers.EnsureUserImage(context.Background(), dockerCli, user.Username, *profile, baseTag)
-	if err != nil {
-		return "", fmt.Errorf("ensure image: %w", err)
-	}
 
 	homePath := store.HomePath(fp, boxname)
 	if err := os.MkdirAll(homePath, 0755); err != nil {
 		return "", fmt.Errorf("create home dir: %w", err)
 	}
 
-	profileHash := profile.Hash()
+	devcontainerPath := filepath.Join(homePath, ".devcontainer", "devcontainer.json")
+
+	imageTag, err := containers.EnsureUserImage(context.Background(), dockerCli, user.Username, boxname, devcontainerPath)
+	if err != nil {
+		return "", fmt.Errorf("ensure image: %w", err)
+	}
+
+	profileHash, err := containers.DevcontainerHash(devcontainerPath)
+	if err != nil {
+		return "", fmt.Errorf("devcontainer hash: %w", err)
+	}
 	boxInfo := control.BoxInfo{
 		BoxName:     boxname,
 		Username:    user.Username,
 		Hostname:    hostname,
 		SSHPort:     sshPort,
 		Fingerprint: fp,
-	}
-	if profile != nil {
-		boxInfo.Shell = profile.Shell.Tool
-		boxInfo.Multiplexer = profile.Multiplexer.Tool
 	}
 	containerID, err := mgr.EnsureRunning(context.Background(), user.Username, boxname, imageTag, profileHash, homePath, boxInfo)
 	if err != nil {
@@ -94,7 +85,7 @@ type directStreamLocalData struct {
 // DirectStreamLocalHandler handles direct-streamlocal@openssh.com channels,
 // used by VSCode Remote SSH to forward a local TCP port to a Unix socket
 // inside the container (e.g. the VSCode server socket).
-func DirectStreamLocalHandler(mgr *containers.Manager, store *users.Store, dockerCli *client.Client, baseTag string, hostname string, sshPort int) ssh.ChannelHandler {
+func DirectStreamLocalHandler(mgr *containers.Manager, store *users.Store, dockerCli *client.Client, hostname string, sshPort int) ssh.ChannelHandler {
 	return func(srv *ssh.Server, conn *gossh.ServerConn, newChan gossh.NewChannel, sshCtx ssh.Context) {
 		var d directStreamLocalData
 		if err := gossh.Unmarshal(newChan.ExtraData(), &d); err != nil {
@@ -102,7 +93,7 @@ func DirectStreamLocalHandler(mgr *containers.Manager, store *users.Store, docke
 			return
 		}
 
-		containerID, err := resolveContainerID(sshCtx, mgr, store, dockerCli, baseTag, hostname, sshPort)
+		containerID, err := resolveContainerID(sshCtx, mgr, store, dockerCli, hostname, sshPort)
 		if err != nil {
 			slog.Error("streamlocal resolve container failed", "component", "tunnel", "err", err)
 			newChan.Reject(gossh.ConnectionFailed, fmt.Sprintf("resolve container: %v", err))
@@ -141,7 +132,7 @@ func DirectStreamLocalHandler(mgr *containers.Manager, store *users.Store, docke
 	}
 }
 
-func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, dockerCli *client.Client, baseTag string, hostname string, sshPort int) ssh.ChannelHandler {
+func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, dockerCli *client.Client, hostname string, sshPort int) ssh.ChannelHandler {
 	return func(srv *ssh.Server, conn *gossh.ServerConn, newChan gossh.NewChannel, sshCtx ssh.Context) {
 		var d directTCPIPData
 		if err := gossh.Unmarshal(newChan.ExtraData(), &d); err != nil {
@@ -149,7 +140,7 @@ func DirectTCPIPHandler(mgr *containers.Manager, store *users.Store, dockerCli *
 			return
 		}
 
-		containerID, err := resolveContainerID(sshCtx, mgr, store, dockerCli, baseTag, hostname, sshPort)
+		containerID, err := resolveContainerID(sshCtx, mgr, store, dockerCli, hostname, sshPort)
 		if err != nil {
 			slog.Error("tunnel resolve container failed", "component", "tunnel", "err", err)
 			newChan.Reject(gossh.ConnectionFailed, fmt.Sprintf("resolve container: %v", err))
