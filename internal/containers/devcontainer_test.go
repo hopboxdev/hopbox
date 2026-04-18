@@ -87,3 +87,25 @@ func TestReadDevcontainer_Present(t *testing.T) {
 		t.Errorf("content mismatch: got %s, want %s", got, want)
 	}
 }
+
+func TestDevcontainerHash_MissingFile(t *testing.T) {
+	_, err := DevcontainerHash(filepath.Join(t.TempDir(), "nope.json"))
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("expected fs.ErrNotExist, got %v", err)
+	}
+}
+
+func TestDevcontainerHash_Valid(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "devcontainer.json")
+	if err := os.WriteFile(path, []byte(`{"name":"a"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h, err := DevcontainerHash(path)
+	if err != nil {
+		t.Fatalf("hash: %v", err)
+	}
+	if len(h) != 12 {
+		t.Errorf("hash length: got %d, want 12", len(h))
+	}
+}
