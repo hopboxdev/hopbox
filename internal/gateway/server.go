@@ -174,8 +174,8 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		return
 	}
 
-	// Run wizard for new users or new boxes
-	if needsWizard {
+	// Run wizard for new users; seed directly for existing users with a new box
+	if needsReg {
 		validateUsername := func(name string) error {
 			if err := users.ValidateUsername(name); err != nil {
 				return err
@@ -186,7 +186,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			return nil
 		}
 
-		result, err := wizard.RunSetup(sess, needsReg, validateUsername)
+		result, err := wizard.RunSetup(sess, true, validateUsername)
 		if err != nil {
 			slog.Warn("setup cancelled", "component", "session", "err", err)
 			sess.Exit(0)
@@ -201,8 +201,8 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			}
 			user = linkedUser
 			boxname = linkedBox
-		} else if needsReg {
-			// Save user if new registration
+		} else {
+			// Save user for new registration
 			u := users.User{
 				Username:     result.Username,
 				KeyType:      ctx.Value("key_type").(string),
@@ -232,25 +232,28 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 					return
 				}
 			}
-		} else {
-			// Existing user, new box — seed default devcontainer.json
-			homePath := s.store.HomePath(fp, boxname)
-			devcontainerDir := filepath.Join(homePath, ".devcontainer")
-			if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
-				slog.Error("create .devcontainer dir", "component", "session", "err", err)
+		}
+	} else if !boxExists {
+		// Existing user, new box — seed default devcontainer.json directly (no wizard needed)
+		homePath := s.store.HomePath(fp, boxname)
+		devcontainerDir := filepath.Join(homePath, ".devcontainer")
+		if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+			slog.Error("create .devcontainer dir", "component", "session", "err", err)
+			fmt.Fprintf(sess, "Failed to seed box config: %v\r\n", err)
+			return
+		}
+		dcPath := filepath.Join(devcontainerDir, "devcontainer.json")
+		if _, err := os.Stat(dcPath); os.IsNotExist(err) {
+			if err := os.WriteFile(dcPath, containers.DefaultDevcontainer(), 0o644); err != nil {
+				slog.Error("write devcontainer.json", "component", "session", "err", err)
 				fmt.Fprintf(sess, "Failed to seed box config: %v\r\n", err)
 				return
 			}
-			dcPath := filepath.Join(devcontainerDir, "devcontainer.json")
-			if _, err := os.Stat(dcPath); os.IsNotExist(err) {
-				if err := os.WriteFile(dcPath, containers.DefaultDevcontainer(), 0o644); err != nil {
-					slog.Error("write devcontainer.json", "component", "session", "err", err)
-					fmt.Fprintf(sess, "Failed to seed box config: %v\r\n", err)
-					return
-				}
-			}
 		}
 	}
+
+	// Recalculate devcontainerPath in case boxname was updated by the link flow
+	devcontainerPath = filepath.Join(s.store.HomePath(fp, boxname), ".devcontainer", "devcontainer.json")
 
 	// Ensure per-user image exists (spinner only for interactive sessions;
 	// non-PTY sessions like VSCode remote-ssh want a clean stdout).
@@ -359,7 +362,6 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	}()
 
 	// Adaptive exec based on terminal type
-	// TODO Task 7 cleanup: shell selection will come from devcontainer config
 	term := ptyReq.Term
 	if term == "" {
 		term = "xterm-256color"
