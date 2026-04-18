@@ -43,38 +43,29 @@ func resolveContainerID(sshCtx ssh.Context, mgr *containers.Manager, store *user
 	}
 
 	_, boxname := ParseUsername(sshCtx.User())
-	userDir := filepath.Join(store.Dir(), fp)
-
-	profile, err := users.ResolveProfile(userDir, boxname)
-	if err != nil {
-		return "", fmt.Errorf("resolve profile: %w", err)
-	}
-	if profile == nil {
-		p := users.DefaultProfile()
-		profile = &p
-	}
-
-	imageTag, err := containers.EnsureUserImage(context.Background(), dockerCli, user.Username, *profile, baseTag)
-	if err != nil {
-		return "", fmt.Errorf("ensure image: %w", err)
-	}
 
 	homePath := store.HomePath(fp, boxname)
 	if err := os.MkdirAll(homePath, 0755); err != nil {
 		return "", fmt.Errorf("create home dir: %w", err)
 	}
 
-	profileHash := profile.Hash()
+	devcontainerPath := filepath.Join(homePath, ".devcontainer", "devcontainer.json")
+
+	imageTag, err := containers.EnsureUserImage(context.Background(), dockerCli, user.Username, boxname, devcontainerPath)
+	if err != nil {
+		return "", fmt.Errorf("ensure image: %w", err)
+	}
+
+	profileHash, err := containers.DevcontainerHash(devcontainerPath)
+	if err != nil {
+		return "", fmt.Errorf("devcontainer hash: %w", err)
+	}
 	boxInfo := control.BoxInfo{
 		BoxName:     boxname,
 		Username:    user.Username,
 		Hostname:    hostname,
 		SSHPort:     sshPort,
 		Fingerprint: fp,
-	}
-	if profile != nil {
-		boxInfo.Shell = profile.Shell.Tool
-		boxInfo.Multiplexer = profile.Multiplexer.Tool
 	}
 	containerID, err := mgr.EnsureRunning(context.Background(), user.Username, boxname, imageTag, profileHash, homePath, boxInfo)
 	if err != nil {

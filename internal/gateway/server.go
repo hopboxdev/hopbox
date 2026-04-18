@@ -140,11 +140,12 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		}
 	}
 
-	// Resolve user and profile
+	// Resolve user
 	userDir := filepath.Join(s.store.Dir(), fp)
 	var user users.User
+	// TODO Task 7 cleanup: profile will be removed; held for wizard path until Task 7
 	var profile *users.Profile
-	isNewBox := false
+	_ = profile
 
 	if !needsReg {
 		var ok bool
@@ -156,20 +157,13 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		}
 
 		slog.Info("session connect", "component", "session", "user", user.Username, "box", boxname)
+	}
 
-		// Check if this box has its own profile (not just the user-level fallback)
-		boxProfilePath := filepath.Join(userDir, "boxes", boxname, "profile.toml")
-		if _, err := os.Stat(boxProfilePath); os.IsNotExist(err) {
-			isNewBox = true
-		}
-
-		var err error
-		profile, err = users.ResolveProfile(userDir, boxname)
-		if err != nil {
-			slog.Error("resolve profile failed", "component", "session", "err", err)
-			fmt.Fprintf(sess, "Failed to load profile: %v\r\n", err)
-			return
-		}
+	// Check if this box has a devcontainer.json (file-based existence check)
+	devcontainerPath := filepath.Join(s.store.HomePath(fp, boxname), ".devcontainer", "devcontainer.json")
+	boxExists := false
+	if _, err := os.Stat(devcontainerPath); err == nil {
+		boxExists = true
 	}
 
 	// Detect whether the client requested a PTY up front. Non-PTY sessions
@@ -178,7 +172,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	_, _, isPty := sess.Pty()
 
 	// First-time setup requires an interactive session — the wizard is a TUI.
-	needsWizard := needsReg || profile == nil || isNewBox
+	needsWizard := needsReg || !boxExists
 	if !isPty && needsWizard {
 		fmt.Fprintf(sess.Stderr(), "hopbox: first-time setup requires an interactive session. Run: ssh hop@<server>\n")
 		sess.Exit(1)
@@ -188,12 +182,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 	// Run wizard for new users, new boxes, or missing profiles
 	if needsWizard {
 		defaults := users.DefaultProfile()
-		if !needsReg {
-			// Pre-fill with user's default for new box
-			if userDefault, err := users.ResolveProfile(userDir, "__nonexistent__"); err == nil && userDefault != nil {
-				defaults = *userDefault
-			}
-		}
+		_ = defaults // TODO Task 7 cleanup: wizard rewrite will consume this
 
 		validateUsername := func(name string) error {
 			if err := users.ValidateUsername(name); err != nil {
@@ -284,7 +273,7 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 			}
 		}()
 	}
-	imageTag, err := containers.EnsureUserImage(ctx, s.dockerCli, user.Username, *profile, s.baseTag)
+	imageTag, err := containers.EnsureUserImage(ctx, s.dockerCli, user.Username, boxname, devcontainerPath)
 	close(buildDone)
 	if err != nil {
 		if isPty {
@@ -307,12 +296,15 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		fmt.Fprintf(sess, "Failed to create home directory: %v\r\n", err)
 		return
 	}
-	profileHash := profile.Hash()
+	profileHash, err := containers.DevcontainerHash(devcontainerPath)
+	if err != nil {
+		slog.Error("read devcontainer for hash", "component", "session", "err", err)
+		fmt.Fprintf(sess, "Failed to read devcontainer.json: %v\r\n", err)
+		return
+	}
 	boxInfo := control.BoxInfo{
 		BoxName:     boxname,
 		Username:    user.Username,
-		Shell:       profile.Shell.Tool,
-		Multiplexer: profile.Multiplexer.Tool,
 		Hostname:    s.cfg.Hostname,
 		SSHPort:     s.cfg.Port,
 		Fingerprint: fp,
@@ -367,19 +359,14 @@ func (s *Server) sessionHandler(sess ssh.Session) {
 		close(resizeCh)
 	}()
 
-	// Adaptive exec based on profile
+	// Adaptive exec based on terminal type
+	// TODO Task 7 cleanup: shell selection will come from devcontainer config
 	term := ptyReq.Term
 	if term == "" {
 		term = "xterm-256color"
 	}
 
 	shellBin := "/bin/bash"
-	switch profile.Shell.Tool {
-	case "zsh":
-		shellBin = "/usr/bin/zsh"
-	case "fish":
-		shellBin = "/usr/bin/fish"
-	}
 
 	// Always hand the user a login shell. If they want a multiplexer
 	// auto-attached they can opt in from their own rc file — the gateway

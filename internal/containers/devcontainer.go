@@ -56,6 +56,16 @@ func ReadDevcontainer(path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
+// DevcontainerHash reads and returns the canonical hash of the devcontainer.json
+// at path. Convenience wrapper over ReadDevcontainer + CanonicalHash.
+func DevcontainerHash(path string) (string, error) {
+	raw, err := ReadDevcontainer(path)
+	if err != nil {
+		return "", err
+	}
+	return CanonicalHash(raw)
+}
+
 // canonicalize walks an arbitrary JSON structure and emits JSON bytes with
 // map keys sorted at every level. Numbers, strings, bools, and nils pass
 // through as standard encoding/json output.
