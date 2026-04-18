@@ -1,4 +1,4 @@
-.PHONY: help build build-cli run test clean release release-local docker-cleanup monitoring-up monitoring-down base-image
+.PHONY: help build build-cli run test clean release release-local docker-cleanup monitoring-up monitoring-down base-image builder-image
 
 # Default target — auto-generated from `## ` comments next to each target.
 # To document a target, put `## <section>: <description>` on the target line.
@@ -82,3 +82,8 @@ base-image: build-cli ## Base image: Build hopbox devcontainer-base image locall
 	cp templates/hop templates/base-devcontainer/hop
 	docker build -t ghcr.io/hopboxdev/devcontainer-base:dev templates/base-devcontainer/
 	rm templates/base-devcontainer/hop
+
+# Builder image
+
+builder-image: ## Builder image: Build devcontainers-cli builder image locally
+	docker build -t ghcr.io/hopboxdev/builder:dev templates/builder/
