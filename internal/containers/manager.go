@@ -181,6 +181,14 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 				}
 			}
 
+			// Re-align bind-mounted home ownership with this container's
+			// user-namespace on every reconnect. Covers drift from host-side
+			// writes made between sessions (e.g. a re-seeded
+			// .devcontainer/devcontainer.json).
+			if err := chownHomeForContainer(ctx, m.cli, homePath, c.ID); err != nil {
+				slog.Warn("chown home for userns failed", "component", "container", "container", c.ID[:12], "err", err)
+			}
+
 			// Ensure socket server is running for existing container
 			m.mu.Lock()
 			_, hasSocket := m.sockets[c.ID]
@@ -236,16 +244,14 @@ func (m *Manager) EnsureRunning(ctx context.Context, username, boxname, imageTag
 		return "", fmt.Errorf("start container: %w", err)
 	}
 
-	// Fix home dir ownership so the dev user can write to all subdirectories.
-	// Only runs on container creation, not every reconnect.
-	chownExec, err := m.cli.ContainerExecCreate(ctx, resp.ID, container.ExecOptions{
-		Cmd:  []string{"chown", "-R", "dev:dev", "/home/dev"},
-		User: "root",
-	})
-	if err == nil {
-		if err := m.cli.ContainerExecStart(ctx, chownExec.ID, container.ExecStartOptions{}); err != nil {
-			slog.Warn("container chown failed", "component", "container", "err", err)
-		}
+	// Fix home dir ownership so the dev user can read/write every file in
+	// the bind mount. Walks the host tree (needs CAP_CHOWN on hopboxd) and
+	// chowns to the host-side uid/gid that maps to the container's `dev`
+	// user via the container's user-namespace. Replaces the old
+	// chown-inside-container exec which could not reach files whose host
+	// uid fell outside the container's user-namespace range.
+	if err := chownHomeForContainer(ctx, m.cli, homePath, resp.ID); err != nil {
+		slog.Warn("chown home for userns failed", "component", "container", "container", resp.ID[:12], "err", err)
 	}
 
 	// Start control socket

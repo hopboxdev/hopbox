@@ -19,5 +19,18 @@ ProtectSystem=strict
 ReadWritePaths=/var/lib/hopbox /tmp
 ReadOnlyPaths=/opt/hopbox /etc/hopbox
 
+# Capabilities needed for bind-mount chown handling:
+#
+# With Sysbox (or any other user-namespace runtime), the bind-mounted per-box
+# home dir must have its contents owned by the host-side uid/gid that
+# corresponds to the container's `dev` user (typically offset+1000). hopboxd
+# resolves that offset at runtime from /proc/<container-pid>/uid_map and
+# chowns the home tree accordingly. That needs CAP_CHOWN (change to any uid),
+# CAP_FOWNER (operate on files regardless of uid matching), and
+# CAP_DAC_{OVERRIDE,READ_SEARCH} (traverse bind-mounted subtrees whose
+# parent dirs may not be owned by the hopbox system user).
+AmbientCapabilities=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH
+
 [Install]
 WantedBy=multi-user.target
