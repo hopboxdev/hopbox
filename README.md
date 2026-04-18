@@ -1,10 +1,10 @@
 # Hopbox
 
-Self-hosted SSH gateway that drops users into isolated Docker-based dev containers. Connect via SSH, pick your tools, and land in a persistent environment with zellij, your editor, and your runtimes.
+Self-hosted SSH gateway that drops users into isolated Docker-based dev containers configured via the [devcontainer spec](https://containers.dev/). Connect via SSH, edit your `.devcontainer/devcontainer.json`, and land in a persistent environment.
 
-## Breaking Changes (v0.3.0)
+## Breaking Changes (v0.7.0)
 
-Starting with Phase 1, Hopbox uses **`.devcontainer/devcontainer.json`** for per-box configuration instead of profile-based TOML files. Existing boxes are NOT automatically migrated — on the next SSH connect, the wizard will create a fresh default box. New base image: `ghcr.io/hopboxdev/devcontainer-base`; new builder image: `ghcr.io/hopboxdev/builder`.
+Hopbox now uses **`.devcontainer/devcontainer.json`** for per-box configuration instead of profile-based TOML files. Existing `profile.toml` files are ignored — on the next SSH connect, a fresh default `devcontainer.json` is seeded for each box while preserving the bind-mounted home directory. Images are built via `@devcontainers/cli` inside a bundled builder container. New base image: `ghcr.io/hopboxdev/devcontainer-base`; new builder image: `ghcr.io/hopboxdev/builder`.
 
 For local development: `make base-image builder-image` to build them into the host's Docker daemon.
 
@@ -12,7 +12,7 @@ For local development: `make base-image builder-image` to build them into the ho
 
 - **SSH-native** — `ssh hop@server` is all you need. No VPN, no browser.
 - **Per-user isolation** — each user gets their own Docker container with a persistent home directory.
-- **Tool selection wizard** — choose your multiplexer, editor, shell, runtimes, and CLI tools on first connect.
+- **Devcontainer-native** — each box's config is a standard `.devcontainer/devcontainer.json`. Use any devcontainer feature from the community catalog.
 - **Multiple devboxes** — `ssh hop+project@server` for separate environments. `ssh hop+?@server` to pick.
 - **Shared boxes across keys** — `hopbox link` lets a second device join an existing box.
 - **TOFU registration** — new SSH keys are auto-registered with an interactive username prompt.
