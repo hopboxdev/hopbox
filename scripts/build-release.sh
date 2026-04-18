@@ -38,15 +38,16 @@ GOOS="${OS}" GOARCH="${ARCH}" CGO_ENABLED=0 \
   go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
   -o "${STAGE_DIR}/hopboxd" ./cmd/hopboxd
 
-# Build in-container hop CLI
-echo "    building hop CLI..."
-GOOS="${OS}" GOARCH="${ARCH}" CGO_ENABLED=0 \
-  go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
-  -o "${STAGE_DIR}/templates/hop" ./cmd/hop-box
-
 # Copy templates (directories and individual files)
 cp -r templates/base-devcontainer "${STAGE_DIR}/templates/"
 cp -r templates/builder "${STAGE_DIR}/templates/"
+
+# Build in-container hop CLI directly into the base-devcontainer build context
+# (the base Dockerfile COPYs ./hop as part of its build).
+echo "    building hop CLI..."
+GOOS="${OS}" GOARCH="${ARCH}" CGO_ENABLED=0 \
+  go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+  -o "${STAGE_DIR}/templates/base-devcontainer/hop" ./cmd/hop-box
 
 # Copy top-level config example
 cp config.example.toml "${STAGE_DIR}/config.example.toml"

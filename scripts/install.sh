@@ -132,6 +132,18 @@ else
   ok "/etc/hopbox/config.toml already exists (preserved)"
 fi
 
+# ---------- devcontainer images ----------
+info "Building devcontainer base and builder images"
+docker build -q -t "ghcr.io/hopboxdev/devcontainer-base:${VERSION}" "${VERSION_DIR}/templates/base-devcontainer/" >/dev/null \
+  || die "failed to build devcontainer-base image"
+docker tag "ghcr.io/hopboxdev/devcontainer-base:${VERSION}" ghcr.io/hopboxdev/devcontainer-base:dev
+ok "built ghcr.io/hopboxdev/devcontainer-base:${VERSION} (also tagged :dev)"
+
+docker build -q -t "ghcr.io/hopboxdev/builder:${VERSION}" "${VERSION_DIR}/templates/builder/" >/dev/null \
+  || die "failed to build builder image"
+docker tag "ghcr.io/hopboxdev/builder:${VERSION}" ghcr.io/hopboxdev/builder:dev
+ok "built ghcr.io/hopboxdev/builder:${VERSION} (also tagged :dev)"
+
 # ---------- systemd ----------
 info "Installing systemd unit"
 install -m 0644 "${VERSION_DIR}/deploy/hopboxd.service" /etc/systemd/system/hopboxd.service
