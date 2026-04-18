@@ -1,6 +1,8 @@
 package containers
 
 import (
+	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -105,5 +107,40 @@ func TestSessionConnectCancelsIdleTimer(t *testing.T) {
 	m.mu.Unlock()
 	if hasTimer {
 		t.Error("expected idle timer to be cancelled on reconnect")
+	}
+}
+
+func TestWatchExecCancel_FiresOnCtxDone(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	var called atomic.Int32
+
+	go watchExecCancel(ctx, done, func() { called.Add(1) })
+
+	cancel()
+
+	// Give the goroutine time to observe the cancel.
+	for i := 0; i < 100 && called.Load() == 0; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if called.Load() != 1 {
+		t.Errorf("onCancel call count: got %d, want 1", called.Load())
+	}
+}
+
+func TestWatchExecCancel_DoesNotFireOnDoneClose(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	var called atomic.Int32
+
+	go watchExecCancel(ctx, done, func() { called.Add(1) })
+
+	close(done)
+	// Wait longer than the goroutine scheduling delay.
+	time.Sleep(50 * time.Millisecond)
+
+	if called.Load() != 0 {
+		t.Errorf("onCancel call count after done: got %d, want 0", called.Load())
 	}
 }
