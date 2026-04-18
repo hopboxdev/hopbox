@@ -131,12 +131,10 @@ func doStatus(jsonOutput bool) {
 		return
 	}
 
-	fmt.Printf("Box:         %s\n", resp.Data["box"])
-	fmt.Printf("User:        %s\n", resp.Data["user"])
-	fmt.Printf("OS:          %s\n", resp.Data["os"])
-	fmt.Printf("Shell:       %s\n", resp.Data["shell"])
-	fmt.Printf("Multiplexer: %s\n", resp.Data["multiplexer"])
-	fmt.Printf("Uptime:      %s\n", resp.Data["uptime"])
+	fmt.Printf("Box:    %s\n", resp.Data["box"])
+	fmt.Printf("User:   %s\n", resp.Data["user"])
+	fmt.Printf("OS:     %s\n", resp.Data["os"])
+	fmt.Printf("Uptime: %s\n", resp.Data["uptime"])
 }
 
 func doDestroy() {

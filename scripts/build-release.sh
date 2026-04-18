@@ -47,7 +47,6 @@ GOOS="${OS}" GOARCH="${ARCH}" CGO_ENABLED=0 \
 # Copy templates (directories and individual files)
 cp -r templates/base-devcontainer "${STAGE_DIR}/templates/"
 cp -r templates/builder "${STAGE_DIR}/templates/"
-cp templates/ghostty.terminfo "${STAGE_DIR}/templates/ghostty.terminfo"
 
 # Copy top-level config example
 cp config.example.toml "${STAGE_DIR}/config.example.toml"

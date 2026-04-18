@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g @devcontainers/cli@latest
+RUN npm install -g @devcontainers/cli@0.75.0
 
 WORKDIR /workspace
 

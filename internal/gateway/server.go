@@ -28,18 +28,16 @@ type Server struct {
 	store     *users.Store
 	manager   *containers.Manager
 	dockerCli *client.Client
-	baseTag   string
 	linkStore *control.LinkStore
 	sshSrv    *ssh.Server
 }
 
-func NewServer(cfg config.Config, store *users.Store, manager *containers.Manager, dockerCli *client.Client, baseTag string, linkStore *control.LinkStore) (*Server, error) {
+func NewServer(cfg config.Config, store *users.Store, manager *containers.Manager, dockerCli *client.Client, linkStore *control.LinkStore) (*Server, error) {
 	s := &Server{
 		cfg:       cfg,
 		store:     store,
 		manager:   manager,
 		dockerCli: dockerCli,
-		baseTag:   baseTag,
 		linkStore: linkStore,
 	}
 
@@ -57,8 +55,8 @@ func NewServer(cfg config.Config, store *users.Store, manager *containers.Manage
 		},
 		ChannelHandlers: map[string]ssh.ChannelHandler{
 			"session":                          ssh.DefaultSessionHandler,
-			"direct-tcpip":                     DirectTCPIPHandler(s.manager, s.store, s.dockerCli, s.baseTag, s.cfg.Hostname, s.cfg.Port),
-			"direct-streamlocal@openssh.com":   DirectStreamLocalHandler(s.manager, s.store, s.dockerCli, s.baseTag, s.cfg.Hostname, s.cfg.Port),
+			"direct-tcpip":                     DirectTCPIPHandler(s.manager, s.store, s.dockerCli, s.cfg.Hostname, s.cfg.Port),
+			"direct-streamlocal@openssh.com":   DirectStreamLocalHandler(s.manager, s.store, s.dockerCli, s.cfg.Hostname, s.cfg.Port),
 		},
 	}
 

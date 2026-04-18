@@ -11,8 +11,6 @@ import (
 type BoxInfo struct {
 	BoxName     string
 	Username    string
-	Shell       string
-	Multiplexer string
 	ContainerID string
 	StartedAt   time.Time
 	Hostname    string
@@ -64,14 +62,12 @@ func handleStatus(info BoxInfo) Response {
 	return Response{
 		OK: true,
 		Data: map[string]string{
-			"box":         info.BoxName,
-			"user":        info.Username,
-			"os":          fmt.Sprintf("Ubuntu 24.04 (%s)", runtime.GOARCH),
-			"shell":       info.Shell,
-			"multiplexer": info.Multiplexer,
-			"uptime":      uptime,
-			"hostname":    info.Hostname,
-			"ssh_port":    sshPort,
+			"box":      info.BoxName,
+			"user":     info.Username,
+			"os":       fmt.Sprintf("Ubuntu 24.04 (%s)", runtime.GOARCH),
+			"uptime":   uptime,
+			"hostname": info.Hostname,
+			"ssh_port": sshPort,
 		},
 	}
 }
