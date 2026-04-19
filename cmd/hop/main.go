@@ -13,6 +13,7 @@ type CLI struct {
 	Expose   ExposeCmd   `cmd:"" help:"Forward a port from your box to localhost."`
 	Transfer TransferCmd `cmd:"" help:"Transfer files to/from your box."`
 	Config   ConfigCmd   `cmd:"" help:"Print resolved configuration."`
+	Edit     EditCmd     `cmd:"" help:"Edit your box devcontainer.json (opens browser config UI)."`
 }
 
 func main() {
