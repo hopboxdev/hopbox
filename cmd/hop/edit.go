@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strconv"
+	"time"
 	"strings"
 	"syscall"
 )
@@ -65,6 +66,9 @@ func (c *EditCmd) runBrowserMode() error {
 		return fmt.Errorf("ssh: %w", err)
 	}
 
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
 	ready := make(chan struct{})
 	go func() {
 		scanner := bufio.NewScanner(stdout)
@@ -79,7 +83,7 @@ func (c *EditCmd) runBrowserMode() error {
 
 	select {
 	case <-ready:
-	case <-waitProcess(cmd):
+	case <-done:
 		return fmt.Errorf("config-server exited before becoming ready")
 	}
 
@@ -95,9 +99,13 @@ func (c *EditCmd) runBrowserMode() error {
 		if cmd.Process != nil {
 			cmd.Process.Signal(syscall.SIGTERM)
 		}
+		time.Sleep(3 * time.Second)
+		if cmd.Process != nil {
+			cmd.Process.Signal(syscall.SIGKILL)
+		}
 	}()
 
-	cmd.Wait()
+	<-done
 	fmt.Println("Config server stopped.")
 	return nil
 }

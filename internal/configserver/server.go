@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
 )
 
@@ -26,11 +27,13 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	defer cancel()
 
 	// Load catalog in background; serve stale/empty in the meantime.
-	var catalog *Catalog
+	var catalog atomic.Pointer[Catalog]
 	catalogReady := make(chan struct{})
 	go func() {
 		cat, _ := LoadOrFetchCatalog(context.Background(), catalogCachePath)
-		catalog = cat
+		if cat != nil {
+			catalog.Store(cat)
+		}
 		close(catalogReady)
 	}()
 
@@ -58,10 +61,11 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		case <-time.After(100 * time.Millisecond):
 		}
 		w.Header().Set("Content-Type", "application/json")
-		if catalog == nil {
-			catalog = &Catalog{Stale: true}
+		c := catalog.Load()
+		if c == nil {
+			c = &Catalog{Stale: true}
 		}
-		json.NewEncoder(w).Encode(catalog)
+		json.NewEncoder(w).Encode(c)
 	})
 
 	mux.HandleFunc("/catalog/refresh", func(w http.ResponseWriter, r *http.Request) {
@@ -70,10 +74,10 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			return
 		}
-		catalog = cat
+		catalog.Store(cat)
 		_ = saveCatalogToDisk(cat, catalogCachePath)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(catalog)
+		json.NewEncoder(w).Encode(cat)
 	})
 
 	// Static files — strip "static/" prefix so "/" serves index.html
