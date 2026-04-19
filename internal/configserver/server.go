@@ -28,6 +28,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 
 	// Load catalog in background; serve stale/empty in the meantime.
 	var catalog atomic.Pointer[Catalog]
+	var catalogRefreshing atomic.Bool
 	catalogReady := make(chan struct{})
 	go func() {
 		cat, _ := LoadOrFetchCatalog(context.Background(), catalogCachePath)
@@ -65,20 +66,25 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		if c == nil {
 			c = &Catalog{Stale: true}
 		}
-		json.NewEncoder(w).Encode(c)
+		json.NewEncoder(w).Encode(struct {
+			*Catalog
+			Refreshing bool `json:"refreshing,omitempty"`
+		}{c, catalogRefreshing.Load()})
 	})
 
 	mux.HandleFunc("/catalog/refresh", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		cat, err := FetchCatalog(r.Context())
-		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
+		if catalogRefreshing.CompareAndSwap(false, true) {
+			go func() {
+				defer catalogRefreshing.Store(false)
+				cat, err := FetchCatalog(context.Background())
+				if err == nil {
+					catalog.Store(cat)
+					_ = saveCatalogToDisk(cat, catalogCachePath)
+				}
+			}()
 		}
-		catalog.Store(cat)
-		_ = saveCatalogToDisk(cat, catalogCachePath)
-		json.NewEncoder(w).Encode(cat)
+		json.NewEncoder(w).Encode(map[string]bool{"refreshing": true})
 	})
 
 	// Static files — strip "static/" prefix so "/" serves index.html

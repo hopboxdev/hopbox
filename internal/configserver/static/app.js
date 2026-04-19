@@ -35,14 +35,28 @@ function loadCatalog() {
 }
 
 function refreshCatalog() {
-  setStatus('Refreshing catalog…');
+  setStatus('Refreshing catalog… (this may take a minute)');
   fetch('/catalog/refresh')
-    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
-    .then(function (res) {
-      if (!res.ok) { setStatus('Catalog refresh failed: ' + (res.data.error || 'unknown error'), true); return; }
-      catalog = res.data; setStatus('Catalog refreshed (' + (res.data.features || []).length + ' features)');
-    })
+    .then(function (r) { return r.json(); })
+    .then(function () { pollCatalogUntilDone(0); })
     .catch(function (e) { setStatus('Catalog refresh failed: ' + e, true); });
+}
+
+function pollCatalogUntilDone(attempts) {
+  if (attempts > 120) { setStatus('Catalog refresh timed out', true); return; }
+  setTimeout(function () {
+    fetch('/catalog')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.refreshing) {
+          pollCatalogUntilDone(attempts + 1);
+        } else {
+          catalog = data;
+          setStatus('Catalog refreshed (' + (data.features || []).length + ' features)');
+        }
+      })
+      .catch(function () { pollCatalogUntilDone(attempts + 1); });
+  }, 2000);
 }
 
 function connectHeartbeat() {
