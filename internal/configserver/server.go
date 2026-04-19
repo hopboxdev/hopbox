@@ -69,14 +69,15 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	})
 
 	mux.HandleFunc("/catalog/refresh", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		cat, err := FetchCatalog(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 		catalog.Store(cat)
 		_ = saveCatalogToDisk(cat, catalogCachePath)
-		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(cat)
 	})
 

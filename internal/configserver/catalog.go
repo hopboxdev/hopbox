@@ -148,7 +148,7 @@ func fetchCollectionFeatures(ctx context.Context, ociRef, registryBase string) (
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)
 	req.Header.Set("Authorization", "Bearer "+tokenBody.Token)
 	req.Header.Set("Accept", "application/vnd.oci.image.manifest.v1+json")
-	mResp, err := http.DefaultClient.Do(req)
+	mResp, err := catalogHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch manifest: %w", err)
 	}
@@ -174,7 +174,7 @@ func fetchCollectionFeatures(ctx context.Context, ociRef, registryBase string) (
 	blobURL := fmt.Sprintf("%s/v2/%s/blobs/%s", base, repoPath, digest)
 	blobReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, blobURL, nil)
 	blobReq.Header.Set("Authorization", "Bearer "+tokenBody.Token)
-	blobResp, err := http.DefaultClient.Do(blobReq)
+	blobResp, err := catalogHTTPClient.Do(blobReq)
 	if err != nil {
 		return nil, fmt.Errorf("fetch blob: %w", err)
 	}

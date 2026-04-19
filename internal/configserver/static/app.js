@@ -37,8 +37,11 @@ function loadCatalog() {
 function refreshCatalog() {
   setStatus('Refreshing catalog…');
   fetch('/catalog/refresh')
-    .then(function (r) { return r.json(); })
-    .then(function (data) { catalog = data; setStatus('Catalog refreshed (' + (data.features || []).length + ' features)'); })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+    .then(function (res) {
+      if (!res.ok) { setStatus('Catalog refresh failed: ' + (res.data.error || 'unknown error'), true); return; }
+      catalog = res.data; setStatus('Catalog refreshed (' + (res.data.features || []).length + ' features)');
+    })
     .catch(function (e) { setStatus('Catalog refresh failed: ' + e, true); });
 }
 
