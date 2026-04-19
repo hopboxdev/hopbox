@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>hopbox config</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1 id="box-title">hopbox config</h1>
+    </div>
+    <div class="subtitle" id="conn-status">connecting...</div>
+  </header>
+
+  <div class="toggle-bar">
+    <button id="btn-guided" class="active" onclick="showMode('guided')">Guided</button>
+    <button id="btn-json" onclick="showMode('json')">JSON</button>
+  </div>
+
+  <!-- Guided view -->
+  <div id="view-guided">
+    <div class="section-label">Metadata</div>
+    <div class="field-grid">
+      <label for="f-name">name</label>
+      <input id="f-name" type="text" oninput="markDirty()">
+      <label for="f-image">image</label>
+      <input id="f-image" type="text" oninput="markDirty()">
+      <label for="f-user">remoteUser</label>
+      <input id="f-user" type="text" oninput="markDirty()">
+    </div>
+
+    <div class="section-label">Features</div>
+    <div class="features-list" id="feature-chips"></div>
+    <div class="search-wrap">
+      <div class="search-row">
+        <input id="feat-search" type="text" placeholder="Search features (go, rust, python, node…)" oninput="onSearch()" onfocus="onSearch()">
+        <button class="refresh-btn" onclick="refreshCatalog()" title="Refresh feature catalog">↻</button>
+      </div>
+      <div class="dropdown" id="feat-dropdown"></div>
+    </div>
+
+    <div class="section-label">Post-Create Command <span style="text-transform:none;font-weight:normal;font-size:10px;color:var(--overlay)">(optional)</span></div>
+    <div class="field-grid">
+      <label for="f-postcreate">command</label>
+      <input id="f-postcreate" type="text" placeholder="e.g. npm install" oninput="markDirty()">
+    </div>
+  </div>
+
+  <!-- JSON view -->
+  <div id="view-json" style="display:none">
+    <div id="monaco-container"></div>
+    <textarea id="json-fallback" style="display:none"></textarea>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-secondary" onclick="discardChanges()">Discard</button>
+    <button class="btn btn-primary" onclick="saveConfig()">Save → rebuild on next connect</button>
+  </div>
+  <div class="status-line" id="status-line"></div>
+</div>
+
+<script src="/app.js"></script>
+<!-- Monaco from CDN — if load fails, app.js falls back to textarea -->
+<script>
+  var require = { paths: { vs: 'https://unpkg.com/monaco-editor@0.52.0/min/vs' } };
+</script>
+<script src="https://unpkg.com/monaco-editor@0.52.0/min/vs/loader.js"
+        onerror="window.__monacoFailed = true; initFallback()"></script>
+</body>
+</html>
