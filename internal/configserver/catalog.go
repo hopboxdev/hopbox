@@ -57,13 +57,11 @@ func catalogIsFresh(c *Catalog, ttl time.Duration) bool {
 const collectionIndexURL = "https://raw.githubusercontent.com/devcontainers/devcontainers.github.io/gh-pages/_data/collection-index.yml"
 const ghcrBaseURL = "https://ghcr.io"
 
-type collectionIndex struct {
-	Collections []struct {
-		SourceInformation struct {
-			OCIReference string `yaml:"ociReference"`
-		} `yaml:"sourceInformation"`
-	} `yaml:"collections"`
+type collectionEntry struct {
+	OCIReference string `yaml:"ociReference"`
 }
+
+type collectionIndex []collectionEntry
 
 type ociManifest struct {
 	Layers []struct {
@@ -98,8 +96,8 @@ func fetchCatalogFrom(ctx context.Context, indexURL, registryBase string) (*Cata
 	}
 
 	var all []Feature
-	for _, col := range idx.Collections {
-		ref := col.SourceInformation.OCIReference
+	for _, col := range idx {
+		ref := col.OCIReference
 		if ref == "" {
 			continue
 		}

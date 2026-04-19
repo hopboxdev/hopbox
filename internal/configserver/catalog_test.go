@@ -96,7 +96,7 @@ func TestFetchCatalog_FromStubs(t *testing.T) {
 	// The ociReference value is the host:port/path without scheme — fetchCollectionFeatures splits on first "/"
 	ghcrHostPort := strings.TrimPrefix(ghcr.URL, "http://")
 	colIdx := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "collections:\n- sourceInformation:\n    ociReference: %s/devcontainers/features\n", ghcrHostPort)
+		fmt.Fprintf(w, "- ociReference: %s/devcontainers/features\n", ghcrHostPort)
 	}))
 	defer colIdx.Close()
 
