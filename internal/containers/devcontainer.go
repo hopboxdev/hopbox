@@ -17,6 +17,10 @@ const DefaultBaseImage = "ghcr.io/hopboxdev/devcontainer-base:dev"
 const BuilderImage = "ghcr.io/hopboxdev/builder:dev"
 
 // DefaultDevcontainer returns the JSON bytes of a minimal default box configuration.
+//
+// The postStartCommand is a safety net for cases where the host-side chown
+// performed by hopboxd misses a file (e.g. a stale existing box home dir
+// with a pre-devcontainer uid). It runs on every container start.
 func DefaultDevcontainer() []byte {
 	return []byte(fmt.Sprintf(`{
   "name": "default",
@@ -29,7 +33,8 @@ func DefaultDevcontainer() []byte {
       "installZsh": false,
       "configureZshAsDefaultShell": false
     }
-  }
+  },
+  "postStartCommand": "sudo chown -R dev:dev /home/dev"
 }
 `, DefaultBaseImage))
 }
