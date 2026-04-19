@@ -95,7 +95,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	// Shutdown on context cancel (WebSocket heartbeat or parent cancellation).
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		srv.Shutdown(shutdownCtx)
 	}()

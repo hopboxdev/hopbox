@@ -222,10 +222,12 @@ func loadOrFetchWith(ctx context.Context, cachePath string, fetchFn func(context
 	return cat, nil
 }
 
+var catalogHTTPClient = &http.Client{Timeout: 15 * time.Second}
+
 func httpGet(ctx context.Context, url string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	return http.DefaultClient.Do(req)
+	return catalogHTTPClient.Do(req)
 }
