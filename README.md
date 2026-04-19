@@ -399,9 +399,15 @@ sudo sed -i 's/^port = 2222$/port = 22/' /etc/hopbox/config.toml
 
 # 6. Grant hopboxd the capability to bind privileged ports
 sudo systemctl edit hopboxd
-# Add these two lines in the editor:
+# Add these lines in the editor:
 #   [Service]
 #   AmbientCapabilities=CAP_NET_BIND_SERVICE
+#   CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH
+#
+# Both lines are required: the base unit pins a CapabilityBoundingSet that
+# excludes CAP_NET_BIND_SERVICE, and ambient caps are filtered by the
+# bounding set — so granting ambient alone is not enough. The bounding-set
+# line above re-lists the base unit's caps so the union stays intact.
 
 # 7. Reload and start
 sudo systemctl daemon-reload
