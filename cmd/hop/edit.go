@@ -49,7 +49,7 @@ func (c *EditCmd) runBrowserMode() error {
 		"-L", forward,
 		"-o", "ExitOnForwardFailure=yes",
 		sshUser + "@" + cfg.Server,
-		"hop-box", "config-server", "--port", strconv.Itoa(remotePort),
+		"hop", "config-server", "--port", strconv.Itoa(remotePort),
 	}
 
 	fmt.Printf("Starting config server for box %q…\n", resolveBox(cfg, c.Box))
