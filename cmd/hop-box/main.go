@@ -13,10 +13,11 @@ import (
 const socketPath = "/var/run/hopbox/control.sock"
 
 type CLI struct {
-	Status  StatusCmd  `cmd:"" help:"Show box info."`
-	Expose  ExposeCmd  `cmd:"" help:"Print SSH tunnel instructions for a port."`
-	Link    LinkCmd    `cmd:"" help:"Generate a link code to connect this account from another device."`
-	Destroy DestroyCmd `cmd:"" help:"Destroy this box."`
+	Status       StatusCmd       `cmd:"" help:"Show box info."`
+	Expose       ExposeCmd       `cmd:"" help:"Print SSH tunnel instructions for a port."`
+	Link         LinkCmd         `cmd:"" help:"Generate a link code to connect this account from another device."`
+	Destroy      DestroyCmd      `cmd:"" help:"Destroy this box."`
+	ConfigServer ConfigServerCmd `cmd:"" name:"config-server" help:"Start the box config HTTP server."`
 }
 
 type ExposeCmd struct {
@@ -43,6 +44,8 @@ func main() {
 		doLink()
 	case "destroy":
 		doDestroy()
+	case "config-server":
+		doConfigServer(cli.ConfigServer.Port)
 	}
 }
 
