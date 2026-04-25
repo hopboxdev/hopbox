@@ -144,10 +144,10 @@ func fetchCollectionFeatures(ctx context.Context, ociRef, registryBase string) (
 	}
 
 	// Fetch manifest
-	manifestURL := fmt.Sprintf("%s/v2/%s/manifests/devcontainer-collection:latest", base, repoPath)
+	manifestURL := fmt.Sprintf("%s/v2/%s/manifests/latest", base, repoPath)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)
 	req.Header.Set("Authorization", "Bearer "+tokenBody.Token)
-	req.Header.Set("Accept", "application/vnd.oci.image.manifest.v1+json")
+	req.Header.Set("Accept", "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json")
 	mResp, err := catalogHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch manifest: %w", err)
@@ -161,7 +161,7 @@ func fetchCollectionFeatures(ctx context.Context, ociRef, registryBase string) (
 
 	var digest string
 	for _, layer := range manifest.Layers {
-		if layer.MediaType == "application/vnd.devcontainers" {
+		if layer.MediaType == "application/vnd.devcontainers.collection.layer.v1+json" {
 			digest = layer.Digest
 			break
 		}

@@ -72,7 +72,7 @@ func TestFetchCatalog_FromStubs(t *testing.T) {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"layers": []map[string]interface{}{
 					{
-						"mediaType": "application/vnd.devcontainers",
+						"mediaType": "application/vnd.devcontainers.collection.layer.v1+json",
 						"digest":    "sha256:abc123",
 						"size":      100,
 					},
