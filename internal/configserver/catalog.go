@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"go.yaml.in/yaml/v2"
@@ -95,19 +96,32 @@ func fetchCatalogFrom(ctx context.Context, indexURL, registryBase string) (*Cata
 		return nil, fmt.Errorf("parse collection index: %w", err)
 	}
 
-	var all []Feature
+	var (
+		mu  sync.Mutex
+		all []Feature
+		wg  sync.WaitGroup
+		sem = make(chan struct{}, 8)
+	)
 	for _, col := range idx {
 		ref := col.OCIReference
 		if ref == "" {
 			continue
 		}
-		features, err := fetchCollectionFeatures(ctx, ref, registryBase)
-		if err != nil {
-			// Non-fatal: skip broken namespaces
-			continue
-		}
-		all = append(all, features...)
+		wg.Add(1)
+		go func(ref string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			features, err := fetchCollectionFeatures(ctx, ref, registryBase)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			all = append(all, features...)
+			mu.Unlock()
+		}(ref)
 	}
+	wg.Wait()
 
 	return &Catalog{Features: all, FetchedAt: time.Now().UTC()}, nil
 }
