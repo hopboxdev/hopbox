@@ -9,11 +9,11 @@ import (
 )
 
 func TestUserImageTag_Deterministic(t *testing.T) {
-	tag1, err := userImageTagFromFile("alice", "default", writeTemp(t, []byte(`{"name":"x"}`)))
+	tag1, err := userImageTag(context.Background(), nil,"alice", "default", writeTemp(t, []byte(`{"name":"x"}`)))
 	if err != nil {
 		t.Fatalf("tag1: %v", err)
 	}
-	tag2, err := userImageTagFromFile("alice", "default", writeTemp(t, []byte(`{"name":"x"}`)))
+	tag2, err := userImageTag(context.Background(), nil,"alice", "default", writeTemp(t, []byte(`{"name":"x"}`)))
 	if err != nil {
 		t.Fatalf("tag2: %v", err)
 	}
@@ -23,15 +23,15 @@ func TestUserImageTag_Deterministic(t *testing.T) {
 }
 
 func TestUserImageTag_DiffersOnContent(t *testing.T) {
-	tag1, _ := userImageTagFromFile("alice", "default", writeTemp(t, []byte(`{"name":"x"}`)))
-	tag2, _ := userImageTagFromFile("alice", "default", writeTemp(t, []byte(`{"name":"y"}`)))
+	tag1, _ := userImageTag(context.Background(), nil,"alice", "default", writeTemp(t, []byte(`{"name":"x"}`)))
+	tag2, _ := userImageTag(context.Background(), nil,"alice", "default", writeTemp(t, []byte(`{"name":"y"}`)))
 	if tag1 == tag2 {
 		t.Errorf("different content should produce different tags, got identical %q", tag1)
 	}
 }
 
 func TestUserImageTag_IncludesUsernameAndBox(t *testing.T) {
-	tag, err := userImageTagFromFile("alice", "myproject", writeTemp(t, []byte(`{"name":"x"}`)))
+	tag, err := userImageTag(context.Background(), nil,"alice", "myproject", writeTemp(t, []byte(`{"name":"x"}`)))
 	if err != nil {
 		t.Fatalf("tag: %v", err)
 	}

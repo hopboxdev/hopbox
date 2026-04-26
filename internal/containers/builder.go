@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -14,9 +15,26 @@ import (
 	"github.com/hopboxdev/hopbox/internal/metrics"
 )
 
-// userImageTagFromFile computes the hopbox-owned image tag for a (username,
-// boxname, devcontainer.json) triple. Pure function on the JSON content.
-func userImageTagFromFile(username, boxname, devcontainerPath string) (string, error) {
+// baseImageShortID returns the first 12 hex chars of the local devcontainer-base
+// image ID, or "" if the image is not found. Used to bust the user image tag
+// cache when the base image is rebuilt (e.g. after a hopbox version upgrade).
+func baseImageShortID(ctx context.Context, cli *client.Client) string {
+	inspect, _, err := cli.ImageInspectWithRaw(ctx, DefaultBaseImage)
+	if err != nil {
+		return ""
+	}
+	id := strings.TrimPrefix(inspect.ID, "sha256:")
+	if len(id) > 12 {
+		id = id[:12]
+	}
+	return id
+}
+
+// userImageTag computes the hopbox-owned image tag for a (username, boxname,
+// devcontainer.json) triple. When cli is non-nil the tag also encodes the
+// local base-image ID, so a base rebuild (new hop binary) invalidates the
+// cached user image on the next SSH connect without any manual action.
+func userImageTag(ctx context.Context, cli *client.Client, username, boxname, devcontainerPath string) (string, error) {
 	raw, err := ReadDevcontainer(devcontainerPath)
 	if err != nil {
 		return "", fmt.Errorf("read devcontainer: %w", err)
@@ -25,6 +43,11 @@ func userImageTagFromFile(username, boxname, devcontainerPath string) (string, e
 	if err != nil {
 		return "", fmt.Errorf("hash devcontainer: %w", err)
 	}
+	if cli != nil {
+		if baseID := baseImageShortID(ctx, cli); baseID != "" {
+			return fmt.Sprintf("hopbox-%s-%s:%s-%s", username, boxname, hash, baseID), nil
+		}
+	}
 	return fmt.Sprintf("hopbox-%s-%s:%s", username, boxname, hash), nil
 }
 
@@ -32,7 +55,7 @@ func userImageTagFromFile(username, boxname, devcontainerPath string) (string, e
 // bundled builder container if it doesn't already exist. The image is derived
 // from .devcontainer/devcontainer.json at the given path.
 func EnsureUserImage(ctx context.Context, cli *client.Client, username, boxname, devcontainerPath string) (string, error) {
-	tag, err := userImageTagFromFile(username, boxname, devcontainerPath)
+	tag, err := userImageTag(ctx, cli, username, boxname, devcontainerPath)
 	if err != nil {
 		return "", err
 	}
