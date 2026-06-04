@@ -69,8 +69,13 @@ func scan(row interface{ Scan(...any) error }) (*workspace.Workspace, error) {
 	}
 	w.Phase = workspace.Phase(phase)
 	w.AgentConnected = connected != 0
-	w.CreatedAt, _ = time.Parse(ts, created)
-	w.UpdatedAt, _ = time.Parse(ts, updated)
+	var err error
+	if w.CreatedAt, err = time.Parse(ts, created); err != nil {
+		return nil, fmt.Errorf("parse created_at %q: %w", created, err)
+	}
+	if w.UpdatedAt, err = time.Parse(ts, updated); err != nil {
+		return nil, fmt.Errorf("parse updated_at %q: %w", updated, err)
+	}
 	return &w, nil
 }
 
