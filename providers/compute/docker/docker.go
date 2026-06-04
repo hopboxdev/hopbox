@@ -70,6 +70,14 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 	}
 
 	name := "mesa-" + r.WorkspaceID
+	// Idempotency: a self-heal re-provision reuses the stable name while the
+	// dead container may still exist in `exited` state holding it. Remove any
+	// stale container of this name before create, else ContainerCreate fails
+	// with a name conflict. Best-effort: ignore not-found.
+	if err := p.cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true}); err != nil && !client.IsErrNotFound(err) {
+		return ports.Instance{}, fmt.Errorf("docker: remove stale container %q: %w", name, err)
+	}
+	// TODO(arch): platform is nil — agent binary is linux/amd64; arch-mismatch on non-amd64 hosts is unhandled in M1.
 	created, err := p.cli.ContainerCreate(ctx, cfg, host, nil, nil, name)
 	if err != nil {
 		return ports.Instance{}, fmt.Errorf("docker: create: %w", err)
