@@ -15,8 +15,8 @@ func TestCanTransition(t *testing.T) {
 		{PhasePending, PhaseRunning, false}, // must provision first
 		{PhaseFailed, PhaseRunning, false},
 		{PhaseDestroying, PhaseRunning, false},
-		{PhaseStopped, PhaseProvisioning, true},  // can resume a stopped workspace
-		{PhaseStopped, PhaseRunning, false},      // must go through Provisioning first
+		{PhaseStopped, PhaseProvisioning, true}, // can resume a stopped workspace
+		{PhaseStopped, PhaseRunning, false},     // must go through Provisioning first
 	}
 	for _, c := range cases {
 		if got := CanTransition(c.from, c.to); got != c.ok {
