@@ -95,6 +95,9 @@ func (h *Hub) OpenShell(ctx context.Context, workspaceID string, hdr agentproto.
 
 // Serve accepts agent dials until ctx is cancelled or the listener closes.
 func (h *Hub) Serve(ctx context.Context, ln net.Listener) error {
+	if h.resolve == nil {
+		return fmt.Errorf("agenthub: Serve requires a TokenResolver (call WithResolver)")
+	}
 	go func() { <-ctx.Done(); _ = ln.Close() }()
 	for {
 		conn, err := ln.Accept()

@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"testing"
-	"time"
 
 	"github.com/hashicorp/yamux"
 
@@ -72,5 +71,4 @@ func TestConnectedReflectsRegistration(t *testing.T) {
 	if hub.Connected("w1") {
 		t.Fatal("should be disconnected after unregister")
 	}
-	_ = time.Second
 }
