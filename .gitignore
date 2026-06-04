@@ -3,5 +3,5 @@
 *.db-shm
 *.db-wal
 
-# Go test crash dumps
-core
+# Go test crash dumps (anchored: must NOT match the internal/core/ tree)
+/core
