@@ -82,13 +82,15 @@ func (r *Reconciler) ReconcileOne(ctx context.Context, id, tenantID string) erro
 		return r.checkComputeAlive(ctx, w)
 	case workspace.PhaseRunning:
 		if !w.AgentConnected {
-			// agent gone: re-provision (self-heal).
-			return r.provision(ctx, w)
+			return r.healIfInstanceDead(ctx, w)
 		}
 		return nil
 	case workspace.PhaseDestroying:
 		return r.destroy(ctx, w)
 	default:
+		// Failed and Stopped are terminal in M1: no auto-retry/backoff loop yet
+		// (Failed->Provisioning is a legal edge but intentionally not driven here;
+		// recovery is `mesa rm` + recreate). Revisit with bounded retry post-M1.
 		return nil
 	}
 }
@@ -121,9 +123,33 @@ func (r *Reconciler) provision(ctx context.Context, w *workspace.Workspace) erro
 	w.HomeMount = mount.Source
 	w.InstanceRef = inst.Ref
 	w.AgentConnected = false
+	if !workspace.CanTransition(w.Phase, workspace.PhaseProvisioning) {
+		return r.fail(ctx, w, fmt.Errorf("illegal transition %s->Provisioning", w.Phase))
+	}
 	w.Phase = workspace.PhaseProvisioning
 	w.Message = "provisioned, awaiting agent"
 	return r.store.UpdateWorkspace(ctx, w)
+}
+
+// healIfInstanceDead handles a Running workspace reporting no agent. The agent
+// may merely be mid-reconnect (a transient yamux blip), so we re-provision ONLY
+// if the compute instance is actually gone/failed. If the container is still
+// alive, we leave the workspace Running and let the agent redial — this avoids
+// destroying a live workspace on every network hiccup.
+func (r *Reconciler) healIfInstanceDead(ctx context.Context, w *workspace.Workspace) error {
+	if w.InstanceRef == "" {
+		return r.provision(ctx, w) // never provisioned a box; do it now
+	}
+	inst, err := r.compute.Status(ctx, w.InstanceRef)
+	if err != nil {
+		return fmt.Errorf("status %s: %w", w.InstanceRef, err) // transient; retry next tick
+	}
+	if inst.Phase == ports.InstanceGone || inst.Phase == ports.InstanceFailed {
+		// container really died: self-heal by re-provisioning.
+		return r.provision(ctx, w)
+	}
+	// container still alive; agent is mid-reconnect. Leave it.
+	return nil
 }
 
 func (r *Reconciler) checkComputeAlive(ctx context.Context, w *workspace.Workspace) error {

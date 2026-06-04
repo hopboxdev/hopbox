@@ -122,6 +122,33 @@ func TestRunningWithDeadAgentReprovisions(t *testing.T) {
 	}
 }
 
+func TestRunningWithBlippedAgentDoesNotReprovision(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	comp := &fakeCompute{phase: ports.InstanceRunning} // container still alive
+	r := reconciler.New(st, comp, &fakeStorage{}, reconciler.Config{})
+
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	w.Phase = workspace.PhaseRunning
+	w.InstanceRef = "c-live"
+	w.AgentConnected = false // transient blip: hub momentarily reported disconnected
+	_ = st.CreateWorkspace(ctx, w)
+
+	if err := r.ReconcileOne(ctx, w.ID, "default"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.GetWorkspace(ctx, "default", w.ID)
+	if got.Phase != workspace.PhaseRunning {
+		t.Fatalf("phase=%s want Running (no destructive re-provision on blip)", got.Phase)
+	}
+	if comp.provisioned != 0 {
+		t.Fatalf("expected NO re-provision of a live workspace, got provisioned=%d", comp.provisioned)
+	}
+	if comp.destroyed != 0 {
+		t.Fatalf("expected NO destroy of a live workspace, got destroyed=%d", comp.destroyed)
+	}
+}
+
 func TestDestroyingRemoves(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
