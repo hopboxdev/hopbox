@@ -50,8 +50,8 @@ func pump(stream shellStream, stdin io.Reader, stdout io.Writer) int {
 			if d := msg.GetData(); d != nil {
 				_, _ = stdout.Write(d)
 			}
-			if ec := msg.GetExitCode(); ec != 0 || msg.GetData() == nil {
-				code = int(ec)
+			if _, ok := msg.Msg.(*mesav1.ShellServerMsg_ExitCode); ok {
+				code = int(msg.GetExitCode())
 			}
 		}
 	}()
@@ -85,17 +85,12 @@ func newShellCmd(dial func() (mesav1.WorkspaceServiceClient, func(), error)) *co
 			}
 
 			// raw mode so keystrokes pass straight through
-			var restore func()
 			if term.IsTerminal(int(os.Stdin.Fd())) {
-				old, err := term.MakeRaw(int(os.Stdin.Fd()))
-				if err == nil {
-					restore = func() { _ = term.Restore(int(os.Stdin.Fd()), old) }
+				if old, err := term.MakeRaw(int(os.Stdin.Fd())); err == nil {
+					defer func() { _ = term.Restore(int(os.Stdin.Fd()), old) }()
 				}
 			}
 			code := pump(stream, os.Stdin, os.Stdout)
-			if restore != nil {
-				restore()
-			}
 			if code != 0 {
 				return errors.New("shell exited non-zero")
 			}
