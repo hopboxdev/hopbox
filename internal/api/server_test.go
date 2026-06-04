@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
 	mesav1 "github.com/mesadev/mesa/gen/mesa/v1"
@@ -77,6 +79,16 @@ func TestCreateGetListDelete(t *testing.T) {
 	}
 	if _, err := c.DeleteWorkspace(ctx, &mesav1.DeleteWorkspaceRequest{NameOrId: "proj"}); err != nil {
 		t.Fatalf("delete: %v", err)
+	}
+}
+
+func TestGetWorkspaceNotFound(t *testing.T) {
+	ctx := context.Background()
+	c, done := dialer(t)
+	defer done()
+	_, err := c.GetWorkspace(ctx, &mesav1.GetWorkspaceRequest{NameOrId: "ghost"})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("want NotFound, got %v (code=%s)", err, status.Code(err))
 	}
 }
 

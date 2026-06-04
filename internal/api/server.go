@@ -44,14 +44,21 @@ func toProto(w *workspace.Workspace) *mesav1.Workspace {
 }
 
 func (s *Server) resolve(ctx context.Context, nameOrID string) (*workspace.Workspace, error) {
-	if w, err := s.store.GetWorkspace(ctx, s.tenant, nameOrID); err == nil {
+	w, err := s.store.GetWorkspace(ctx, s.tenant, nameOrID)
+	if err == nil {
 		return w, nil
 	}
-	w, err := s.store.GetByName(ctx, s.tenant, nameOrID)
+	if !errors.Is(err, store.ErrNotFound) {
+		return nil, status.Errorf(codes.Internal, "resolve %q: %v", nameOrID, err)
+	}
+	w, err = s.store.GetByName(ctx, s.tenant, nameOrID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "workspace %q not found", nameOrID)
 	}
-	return w, err
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "resolve %q: %v", nameOrID, err)
+	}
+	return w, nil
 }
 
 func (s *Server) CreateWorkspace(ctx context.Context, r *mesav1.CreateWorkspaceRequest) (*mesav1.Workspace, error) {
@@ -94,6 +101,9 @@ func (s *Server) DeleteWorkspace(ctx context.Context, r *mesav1.DeleteWorkspaceR
 	// declarative delete: flag Destroying; the reconciler tears down + removes.
 	w.Phase = workspace.PhaseDestroying
 	if err := s.store.UpdateWorkspace(ctx, w); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Errorf(codes.NotFound, "workspace %q not found", r.NameOrId)
+		}
 		return nil, status.Errorf(codes.Internal, "delete: %v", err)
 	}
 	return &emptypb.Empty{}, nil
