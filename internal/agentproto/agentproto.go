@@ -20,7 +20,7 @@ type Handshake struct {
 // ShellHeader is the first frame mesad writes on each new yamux stream; after
 // it, the stream is a raw bidirectional pty byte pipe.
 type ShellHeader struct {
-	Cmd  string `json:"cmd"`  // "" => agent default ("/bin/bash")
+	Cmd  string `json:"cmd"` // "" => agent default ("/bin/bash")
 	Cols uint16 `json:"cols"`
 	Rows uint16 `json:"rows"`
 }
