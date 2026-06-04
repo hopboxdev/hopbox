@@ -83,6 +83,13 @@ func handleStream(stream io.ReadWriteCloser) {
 	go func() { _, _ = io.Copy(f, stream) }() // controller -> pty
 	_, _ = io.Copy(stream, f)                 // pty -> controller
 	_ = cmd.Wait()
+
+	// The shell has exited. Force the controller->pty copy goroutine to
+	// unblock: yamux treats our local Close() as "read normally" (not EOF),
+	// so a parked Read only returns on a remote FIN or a forced deadline.
+	if d, ok := stream.(interface{ SetReadDeadline(time.Time) error }); ok {
+		_ = d.SetReadDeadline(time.Now())
+	}
 }
 
 func buildCommand(spec string) *exec.Cmd {
@@ -90,10 +97,12 @@ func buildCommand(spec string) *exec.Cmd {
 		spec = "/bin/bash"
 	}
 	// M1: support a bare program or a "/bin/sh -c '...'" form via sh.
-	if strings.ContainsAny(spec, " ") {
-		return exec.Command("/bin/sh", "-c", spec)
+	var c *exec.Cmd
+	if strings.Contains(spec, " ") {
+		c = exec.Command("/bin/sh", "-c", spec)
+	} else {
+		c = exec.Command(spec)
 	}
-	c := exec.Command(spec)
 	c.Env = append(os.Environ(), "TERM=xterm-256color")
 	return c
 }
