@@ -25,16 +25,22 @@ func TestCoreHasNoProviderSDKImports(t *testing.T) {
 		if err != nil {
 			t.Fatalf("import %s: %v", rel, err)
 		}
-		// include test imports too, EXCEPT we allow the store/sqlite package itself
-		// to import the sqlite driver (it is the driver's home; it imports no docker/yamux/pty).
-		imports := append([]string{}, pkg.Imports...)
+		// Check production AND test imports (in-package _test.go via TestImports,
+		// external _test package via XTestImports). The only allowed banned import
+		// is the sqlite driver inside store/sqlite (it is the driver's home).
+		var imports []string
+		imports = append(imports, pkg.Imports...)
+		imports = append(imports, pkg.TestImports...)
+		imports = append(imports, pkg.XTestImports...)
 		for _, imp := range imports {
 			for _, b := range banned {
-				if strings.HasPrefix(imp, b) {
+				// match the exact module path or a subpackage of it, so a
+				// hypothetical "modernc.org/sqlitexyz" can't false-positive.
+				if imp == b || strings.HasPrefix(imp, b+"/") {
 					if rel == "store/sqlite" && b == "modernc.org/sqlite" {
 						continue // the driver lives here by design
 					}
-					t.Errorf("internal/core/%s imports banned provider SDK %q", rel, imp)
+					t.Errorf("internal/core/%s imports banned provider SDK %q (in prod or test)", rel, imp)
 				}
 			}
 		}
