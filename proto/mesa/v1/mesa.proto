@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package mesa.v1;
+
+import "google/protobuf/empty.proto";
+
+// The public Mesa control-plane API. M1 = CRUD + interactive shell.
+service WorkspaceService {
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (Workspace);
+  rpc GetWorkspace(GetWorkspaceRequest) returns (Workspace);
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse);
+  rpc DeleteWorkspace(DeleteWorkspaceRequest) returns (google.protobuf.Empty);
+  rpc Shell(stream ShellClientMsg) returns (stream ShellServerMsg);
+}
+
+message Workspace {
+  string id = 1;
+  string tenant_id = 2;
+  string owner = 3;
+  string name = 4;
+  string image_ref = 5;
+  int64  mem_mb = 6;
+  string phase = 7;
+  bool   agent_connected = 8;
+  string message = 9;
+}
+
+message CreateWorkspaceRequest {
+  string name = 1;
+  string image_ref = 2;
+  int64  mem_mb = 3;
+}
+message GetWorkspaceRequest { string name_or_id = 1; }
+message ListWorkspacesRequest {}
+message ListWorkspacesResponse { repeated Workspace workspaces = 1; }
+message DeleteWorkspaceRequest { string name_or_id = 1; }
+
+// Shell bidi stream. First client msg MUST be `open`. Then `data`/`resize`.
+message ShellClientMsg {
+  oneof msg {
+    OpenShell open = 1;
+    bytes     data = 2;
+    Resize    resize = 3;
+  }
+}
+message OpenShell {
+  string name_or_id = 1;
+  uint32 cols = 2;
+  uint32 rows = 3;
+  string cmd = 4; // optional; "" => agent default shell
+}
+message Resize { uint32 cols = 1; uint32 rows = 2; }
+
+message ShellServerMsg {
+  oneof msg {
+    bytes data = 1;
+    int32 exit_code = 2;
+  }
+}
