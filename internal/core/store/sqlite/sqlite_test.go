@@ -1,0 +1,96 @@
+package sqlite_test
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+
+	"github.com/mesadev/mesa/internal/core/store"
+	"github.com/mesadev/mesa/internal/core/store/sqlite"
+	"github.com/mesadev/mesa/internal/core/workspace"
+)
+
+func newTestStore(t *testing.T) store.Store {
+	t.Helper()
+	db := filepath.Join(t.TempDir(), "test.db")
+	s, err := sqlite.Open(db)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+func TestCreateGetRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	w.BootstrapToken = "tok123"
+	if err := s.CreateWorkspace(ctx, w); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	got, err := s.GetWorkspace(ctx, "default", w.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Name != "proj" || got.ImageRef != "ubuntu:24.04" || got.Phase != workspace.PhasePending {
+		t.Fatalf("roundtrip mismatch: %+v", got)
+	}
+}
+
+func TestGetByNameAndToken(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	w.BootstrapToken = "tok-abc"
+	if err := s.CreateWorkspace(ctx, w); err != nil {
+		t.Fatal(err)
+	}
+	byName, err := s.GetByName(ctx, "default", "proj")
+	if err != nil || byName.ID != w.ID {
+		t.Fatalf("byname: %+v err=%v", byName, err)
+	}
+	byTok, err := s.GetByToken(ctx, "tok-abc")
+	if err != nil || byTok.ID != w.ID {
+		t.Fatalf("bytoken: %+v err=%v", byTok, err)
+	}
+}
+
+func TestUpdateAndList(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	if err := s.CreateWorkspace(ctx, w); err != nil {
+		t.Fatal(err)
+	}
+	w.Phase = workspace.PhaseRunning
+	w.AgentConnected = true
+	w.InstanceRef = "c-1"
+	if err := s.UpdateWorkspace(ctx, w); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, _ := s.GetWorkspace(ctx, "default", w.ID)
+	if got.Phase != workspace.PhaseRunning || !got.AgentConnected || got.InstanceRef != "c-1" {
+		t.Fatalf("update not persisted: %+v", got)
+	}
+	all, err := s.ListAll(ctx)
+	if err != nil || len(all) != 1 {
+		t.Fatalf("listall: %d err=%v", len(all), err)
+	}
+}
+
+func TestNotFoundAndDelete(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	if _, err := s.GetWorkspace(ctx, "default", "nope"); err != store.ErrNotFound {
+		t.Fatalf("want ErrNotFound got %v", err)
+	}
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	_ = s.CreateWorkspace(ctx, w)
+	if err := s.DeleteWorkspace(ctx, "default", w.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := s.GetWorkspace(ctx, "default", w.ID); err != store.ErrNotFound {
+		t.Fatalf("want ErrNotFound after delete got %v", err)
+	}
+}
