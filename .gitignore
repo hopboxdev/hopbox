@@ -2,3 +2,6 @@
 *.db
 *.db-shm
 *.db-wal
+
+# Go test crash dumps
+core
