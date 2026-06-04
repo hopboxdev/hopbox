@@ -16,7 +16,6 @@ import (
 	"github.com/mesadev/mesa/internal/api"
 	"github.com/mesadev/mesa/internal/config"
 	"github.com/mesadev/mesa/internal/core/reconciler"
-	"github.com/mesadev/mesa/internal/core/store"
 	"github.com/mesadev/mesa/internal/core/store/sqlite"
 )
 
@@ -83,6 +82,5 @@ func run(cfg config.Config) error {
 	go func() { <-ctx.Done(); gs.GracefulStop() }()
 
 	log.Printf("mesad: API on %s", cfg.APIAddr)
-	_ = store.ErrNotFound // keep store import explicit for readers
 	return gs.Serve(apiLn)
 }
