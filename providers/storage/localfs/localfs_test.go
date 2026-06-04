@@ -50,3 +50,25 @@ func TestDeleteRemovesDir(t *testing.T) {
 		t.Fatalf("dir still exists: %v", err)
 	}
 }
+
+func TestDeleteRefusesOutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	p := localfs.New(root)
+	if err := p.Delete(context.Background(), "/etc"); err == nil {
+		t.Fatal("expected Delete to refuse a path outside root")
+	}
+	// the root itself must also be refused
+	if err := p.Delete(context.Background(), root); err == nil {
+		t.Fatal("expected Delete to refuse the root dir itself")
+	}
+}
+
+func TestEnsureHomeRejectsBadID(t *testing.T) {
+	root := t.TempDir()
+	p := localfs.New(root)
+	for _, bad := range []string{"", "../escape", "a/b", ".."} {
+		if _, err := p.EnsureHome(context.Background(), ports.HomeRequest{WorkspaceID: bad}); err == nil {
+			t.Errorf("EnsureHome(%q) should have errored", bad)
+		}
+	}
+}
