@@ -10,7 +10,7 @@ agent:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -o $(BIN)/mesa-agent-linux-amd64 ./cmd/mesa-agent
 
 build: agent
-	$(GO) build -o $(BIN)/mesad ./cmd/mesad
+	$(GO) build -tags docker -o $(BIN)/mesad ./cmd/mesad
 	$(GO) build -o $(BIN)/mesa  ./cmd/mesa
 
 test:
