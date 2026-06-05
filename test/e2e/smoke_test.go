@@ -38,7 +38,14 @@ func TestEndToEndShell(t *testing.T) {
 	}
 	defer st.Close()
 
+	// Address the in-container agent dials back to reach this in-process mesad.
+	// Defaults to the Docker host gateway (host.docker.internal); override via
+	// MESA_TEST_ADVERTISE when mesad runs somewhere the container reaches by a
+	// different address (e.g. on a remote dev host: the host's own bridge IP).
 	advertise := "host.docker.internal:7799"
+	if a := os.Getenv("MESA_TEST_ADVERTISE"); a != "" {
+		advertise = a
+	}
 	compute, err := dockerprov.New(advertise)
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +93,17 @@ func TestEndToEndShell(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.DeleteWorkspace(context.Background(), &mesav1.DeleteWorkspaceRequest{NameOrId: w.Id})
+	// Teardown: DeleteWorkspace only flags the workspace Destroying for the
+	// reconciler, but this test cancels the reconciler's ctx on return before it
+	// can converge — which would leak the container. So destroy the instance
+	// synchronously here via the compute provider, using the InstanceRef the
+	// store recorded. (Belt-and-suspenders: also issue the API delete.)
+	defer func() {
+		_, _ = c.DeleteWorkspace(context.Background(), &mesav1.DeleteWorkspaceRequest{NameOrId: w.Id})
+		if got, gerr := st.GetWorkspace(context.Background(), "default", w.Id); gerr == nil && got.InstanceRef != "" {
+			_ = compute.Destroy(context.Background(), got.InstanceRef)
+		}
+	}()
 
 	// wait until the agent connects and phase becomes Running
 	deadline := time.Now().Add(60 * time.Second)
