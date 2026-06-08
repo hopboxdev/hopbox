@@ -58,7 +58,7 @@ func TestPendingProvisions(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
 	comp, strg := &fakeCompute{}, &fakeStorage{}
-	r := reconciler.New(st, comp, strg, reconciler.Config{AgentAddr: "host:7777", AgentPath: "/x/agent"})
+	r := reconciler.New(st, comp, strg, reconciler.Config{AgentAddr: "host:7777", Agent: ports.AgentImage{HostBinaryPath: "/x/agent"}})
 
 	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
 	_ = st.CreateWorkspace(ctx, w)

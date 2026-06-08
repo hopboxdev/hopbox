@@ -8,10 +8,13 @@ package docker
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 
 	"github.com/mesadev/mesa/internal/core/ports"
@@ -37,17 +40,23 @@ func New(_ string) (*Provider, error) {
 }
 
 func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (ports.Instance, error) {
-	if r.AgentPath == "" {
-		return ports.Instance{}, fmt.Errorf("docker: AgentPath is required (agent side-load)")
+	target := r.Agent.TargetPath
+	if target == "" {
+		target = agentTarget
 	}
 	env := make([]string, 0, len(r.Env))
 	for k, v := range r.Env {
 		env = append(env, k+"="+v)
 	}
 
-	mounts := []mount.Mount{
-		{Type: mount.TypeBind, Source: r.AgentPath, Target: agentTarget, ReadOnly: true},
+	agentMount, cleanup, err := p.stageAgent(ctx, r.Agent, target)
+	if err != nil {
+		return ports.Instance{}, err
 	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+	mounts := []mount.Mount{agentMount}
 	for _, m := range r.Mounts {
 		mounts = append(mounts, mount.Mount{
 			Type: mount.TypeBind, Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly,
@@ -57,7 +66,7 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 	cfg := &container.Config{
 		Image:      r.ImageRef,
 		Env:        env,
-		Entrypoint: []string{agentTarget},
+		Entrypoint: []string{target},
 		Labels:     map[string]string{labelWorkspace: r.WorkspaceID},
 		Tty:        false,
 	}
@@ -86,6 +95,57 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 		return ports.Instance{}, fmt.Errorf("docker: start: %w", err)
 	}
 	return ports.Instance{Ref: created.ID, Phase: ports.InstanceRunning}, nil
+}
+
+// stageAgent makes the mesa-agent binary available in the workspace as a Mount.
+// Fast path: bind-mount a host binary (dev). Otherwise: pull the agent image,
+// run a throwaway container that copies the binary into a named volume, and
+// mount that volume read-only at the target's directory.
+func (p *Provider) stageAgent(ctx context.Context, a ports.AgentImage, target string) (mount.Mount, func(), error) {
+	if a.HostBinaryPath != "" {
+		return mount.Mount{Type: mount.TypeBind, Source: a.HostBinaryPath, Target: target, ReadOnly: true}, nil, nil
+	}
+	if a.ImageRef == "" || a.BinaryPath == "" {
+		return mount.Mount{}, nil, fmt.Errorf("docker: Agent needs HostBinaryPath or (ImageRef+BinaryPath)")
+	}
+	rc, err := p.cli.ImagePull(ctx, a.ImageRef, image.PullOptions{})
+	if err != nil {
+		return mount.Mount{}, nil, fmt.Errorf("docker: pull agent image %q: %w", a.ImageRef, err)
+	}
+	_, _ = io.Copy(io.Discard, rc)
+	_ = rc.Close()
+
+	vol, err := p.cli.VolumeCreate(ctx, volume.CreateOptions{})
+	if err != nil {
+		return mount.Mount{}, nil, fmt.Errorf("docker: create agent volume: %w", err)
+	}
+	volName := vol.Name
+
+	dir := target[:strings.LastIndex(target, "/")+1] // e.g. "/mesa/"
+	seed, err := p.cli.ContainerCreate(ctx, &container.Config{
+		Image:      a.ImageRef,
+		Entrypoint: []string{"cp", a.BinaryPath, target},
+	}, &container.HostConfig{
+		Mounts: []mount.Mount{{Type: mount.TypeVolume, Source: volName, Target: dir}},
+	}, nil, nil, "")
+	if err != nil {
+		return mount.Mount{}, nil, fmt.Errorf("docker: create agent seeder: %w", err)
+	}
+	if err := p.cli.ContainerStart(ctx, seed.ID, container.StartOptions{}); err != nil {
+		return mount.Mount{}, nil, fmt.Errorf("docker: start agent seeder: %w", err)
+	}
+	statusCh, errCh := p.cli.ContainerWait(ctx, seed.ID, container.WaitConditionNotRunning)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return mount.Mount{}, nil, fmt.Errorf("docker: wait agent seeder: %w", err)
+		}
+	case <-statusCh:
+	}
+	_ = p.cli.ContainerRemove(ctx, seed.ID, container.RemoveOptions{Force: true})
+
+	cleanup := func() {} // volume is mounted into the workspace; reaped later
+	return mount.Mount{Type: mount.TypeVolume, Source: volName, Target: dir, ReadOnly: true}, cleanup, nil
 }
 
 func (p *Provider) Status(ctx context.Context, ref string) (ports.Instance, error) {

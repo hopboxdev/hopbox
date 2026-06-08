@@ -18,8 +18,8 @@ import (
 )
 
 type Config struct {
-	AgentAddr string // what the agent dials, e.g. host.docker.internal:7777
-	AgentPath string // host path of the agent binary to side-load
+	AgentAddr string           // what the agent dials, e.g. host.docker.internal:7777
+	Agent     ports.AgentImage // how to side-load the agent into a workspace
 	Interval  time.Duration
 }
 
@@ -110,7 +110,7 @@ func (r *Reconciler) provision(ctx context.Context, w *workspace.Workspace) erro
 		ImageRef:    w.ImageRef,
 		MemMB:       w.MemMB,
 		Mounts:      []ports.Mount{mount},
-		AgentPath:   r.cfg.AgentPath,
+		Agent:       r.cfg.Agent,
 		Env: map[string]string{
 			"MESA_AGENT_TOKEN":  w.BootstrapToken,
 			"MESA_CONTROL_ADDR": r.cfg.AgentAddr,

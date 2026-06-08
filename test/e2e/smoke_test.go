@@ -17,6 +17,7 @@ import (
 	mesav1 "github.com/mesadev/mesa/gen/mesa/v1"
 	"github.com/mesadev/mesa/internal/agenthub"
 	"github.com/mesadev/mesa/internal/api"
+	"github.com/mesadev/mesa/internal/core/ports"
 	"github.com/mesadev/mesa/internal/core/reconciler"
 	"github.com/mesadev/mesa/internal/core/store/sqlite"
 	dockerprov "github.com/mesadev/mesa/providers/compute/docker"
@@ -69,7 +70,9 @@ func TestEndToEndShell(t *testing.T) {
 	go hub.Serve(ctx, agentLn)
 
 	rec := reconciler.New(st, compute, storage, reconciler.Config{
-		AgentAddr: advertise, AgentPath: agentBin, Interval: 500 * time.Millisecond,
+		AgentAddr: advertise,
+		Agent:     ports.AgentImage{HostBinaryPath: agentBin, TargetPath: "/mesa/mesa-agent"},
+		Interval:  500 * time.Millisecond,
 	})
 	go rec.Run(ctx)
 

@@ -25,7 +25,7 @@ func TestProvisionRunsAgentAndDestroy(t *testing.T) {
 	inst, err := p.Provision(ctx, ports.ProvisionRequest{
 		WorkspaceID: "itest1",
 		ImageRef:    "ubuntu:24.04",
-		AgentPath:   agentBin,
+		Agent:       ports.AgentImage{HostBinaryPath: agentBin, TargetPath: "/mesa/mesa-agent"},
 		Env: map[string]string{
 			"MESA_AGENT_TOKEN":  "tok",
 			"MESA_CONTROL_ADDR": "host.docker.internal:7777",

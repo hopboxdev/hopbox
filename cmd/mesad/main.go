@@ -15,6 +15,7 @@ import (
 	"github.com/mesadev/mesa/internal/agenthub"
 	"github.com/mesadev/mesa/internal/api"
 	"github.com/mesadev/mesa/internal/config"
+	"github.com/mesadev/mesa/internal/core/ports"
 	"github.com/mesadev/mesa/internal/core/reconciler"
 	"github.com/mesadev/mesa/internal/core/store/sqlite"
 )
@@ -69,7 +70,12 @@ func run(cfg config.Config) error {
 
 	rec := reconciler.New(st, compute, storage, reconciler.Config{
 		AgentAddr: cfg.AgentAdvertise,
-		AgentPath: cfg.AgentBin,
+		Agent: ports.AgentImage{
+			ImageRef:       cfg.AgentImageRef,
+			BinaryPath:     cfg.AgentBinaryPath,
+			TargetPath:     cfg.AgentTargetPath,
+			HostBinaryPath: cfg.AgentBin, // M1 dev fast-path
+		},
 	})
 	go rec.Run(ctx)
 
