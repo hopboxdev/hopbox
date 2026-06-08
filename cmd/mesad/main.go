@@ -18,6 +18,7 @@ import (
 	"github.com/mesadev/mesa/internal/core/ports"
 	"github.com/mesadev/mesa/internal/core/reconciler"
 	"github.com/mesadev/mesa/internal/core/store/sqlite"
+	"github.com/mesadev/mesa/internal/plugin"
 )
 
 func main() {
@@ -40,11 +41,23 @@ func run(cfg config.Config) error {
 	}
 	defer st.Close()
 
-	compute, err := newCompute(cfg.AgentAdvertise)
+	inprocCompute, err := newCompute(cfg.AgentAdvertise) // nil-returning stub without -tags docker
+	if err != nil && cfg.ComputeTransport != "remote" {
+		return err
+	}
+	compute, err := plugin.LoadCompute(plugin.ProviderConfig{
+		Kind: cfg.ComputeKind, Transport: cfg.ComputeTransport, RemoteAddr: cfg.ComputeRemote,
+	}, inprocCompute)
 	if err != nil {
 		return err
 	}
-	storage := newStorage(cfg) // defined in storage_localfs.go below
+
+	storage, err := plugin.LoadStorage(plugin.ProviderConfig{
+		Kind: cfg.StorageKind, Transport: cfg.StorageTransport, RemoteAddr: cfg.StorageRemote,
+	}, newStorage(cfg))
+	if err != nil {
+		return err
+	}
 
 	// agent hub: resolve tokens via the store, report connect state to the store.
 	hub := agenthub.New().
