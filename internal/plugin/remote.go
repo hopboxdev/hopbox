@@ -15,6 +15,7 @@ type remoteCompute struct{ cli pb.ComputeClient }
 var _ ports.Compute = (*remoteCompute)(nil)
 
 // NewRemoteCompute returns a ports.Compute backed by a gRPC Compute service.
+// The caller owns conn and must Close it; the returned provider does not.
 func NewRemoteCompute(conn *grpc.ClientConn) ports.Compute {
 	return &remoteCompute{cli: pb.NewComputeClient(conn)}
 }
@@ -48,6 +49,7 @@ type remoteStorage struct{ cli pb.StorageClient }
 var _ ports.Storage = (*remoteStorage)(nil)
 
 // NewRemoteStorage returns a ports.Storage backed by a gRPC Storage service.
+// The caller owns conn and must Close it; the returned provider does not.
 func NewRemoteStorage(conn *grpc.ClientConn) ports.Storage {
 	return &remoteStorage{cli: pb.NewStorageClient(conn)}
 }
