@@ -13,6 +13,7 @@ var banned = []string{
 	"modernc.org/sqlite",
 	"github.com/hashicorp/yamux",
 	"github.com/creack/pty",
+	"github.com/mesadev/mesa/gen/mesa/provider",
 }
 
 func TestCoreHasNoProviderSDKImports(t *testing.T) {
