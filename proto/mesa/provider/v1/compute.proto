@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package mesa.provider.v1;
+
+// Compute is the vendor-neutral workspace-lifecycle contract. A provider maps
+// a ProvisionRequest onto its platform (Docker container, k8s Pod, VM, ...).
+service Compute {
+  rpc Provision (ProvisionRequest) returns (Instance);
+  rpc Status    (InstanceRef)      returns (Instance);
+  rpc Stop      (InstanceRef)      returns (Empty);
+  rpc Destroy   (InstanceRef)      returns (Empty);
+}
+
+enum Phase {
+  PHASE_UNSPECIFIED = 0;
+  RUNNING = 1;
+  STOPPED = 2;
+  GONE = 3;
+  FAILED = 4;
+}
+
+message ProvisionRequest {
+  string workspace_id = 1;
+  string image_ref = 2;
+  int64 mem_mb = 3;
+  repeated Mount mounts = 4;
+  map<string, string> env = 5;
+  AgentImage agent = 6;
+}
+
+// AgentImage describes how a provider obtains and runs the mesa-agent inside a
+// workspace. Replaces M1's host-path AgentPath (a Docker-only assumption).
+message AgentImage {
+  string image_ref = 1;        // OCI image carrying the agent binary
+  string binary_path = 2;      // path of the binary inside that image
+  string target_path = 3;      // where to place + run it in the workspace
+  string host_binary_path = 4; // docker-only dev fast-path: bind-mount this host binary instead
+}
+
+message Mount {
+  string source = 1;     // provider-opaque (host path | volume | PVC claim | ...)
+  string target = 2;     // path inside the workspace
+  bool read_only = 3;
+}
+
+message Instance {
+  string ref = 1;        // provider-opaque handle
+  Phase phase = 2;
+}
+
+message InstanceRef {
+  string ref = 1;
+}
+
+message Empty {}

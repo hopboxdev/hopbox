@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package mesa.provider.v1;
+
+// The remaining four provider contracts are part of Mesa's design surface but
+// are RESERVED in M2 — no messages or generated code yet. They are documented
+// here so the contract package is complete and reviewers see the full shape.
+// Adapters are built in their milestones:
+//   - Build    (M4): rpc Resolve(BuildRequest) returns (ImageRef); rpc Status(BuildRef) returns (BuildStatus);
+//   - Identity (M4): rpc Authenticate(Credential) returns (Principal); rpc Authorize(AccessRequest) returns (Decision);
+//   - Ingress  (M3): rpc Expose(ExposeRequest) returns (Endpoint); rpc Unexpose(EndpointRef) returns (Empty);
+//   - Metering (M5): rpc Emit(stream UsageEvent) returns (Empty); rpc Quota(PrincipalRef) returns (QuotaState);
+// Intentionally no service/message declarations here yet (declaring empty
+// services would generate unused gRPC stubs).

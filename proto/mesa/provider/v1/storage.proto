@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package mesa.provider.v1;
+
+import "mesa/provider/v1/compute.proto";
+
+// Storage persists a workspace home and hands it to a Compute provider as a Mount.
+service Storage {
+  rpc EnsureHome (HomeRequest) returns (Mount);
+  rpc Delete     (HomeRef)     returns (Empty);
+}
+
+message HomeRequest {
+  string workspace_id = 1;
+  string tenant_id = 2;
+  string owner = 3;
+}
+
+message HomeRef {
+  string source = 1;
+}
+// Mount and Empty are defined in compute.proto (same package).
