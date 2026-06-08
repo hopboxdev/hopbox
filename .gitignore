@@ -6,3 +6,4 @@
 # Go test crash dumps (anchored: must NOT match the internal/core/ tree)
 /core
 /mesad
+/mesa-provider
