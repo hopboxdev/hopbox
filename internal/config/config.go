@@ -21,6 +21,11 @@ type Config struct {
 	StorageKind      string
 	StorageTransport string
 	StorageRemote    string
+
+	KubeNamespace    string
+	Kubeconfig       string
+	KubeStorageClass string
+	KubeHomeSize     string
 }
 
 func Parse(args []string) (Config, error) {
@@ -42,6 +47,10 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.StorageKind, "storage", "localfs", "storage provider: localfs|k8spvc")
 	fs.StringVar(&c.StorageTransport, "storage-transport", "inproc", "storage transport: inproc|remote")
 	fs.StringVar(&c.StorageRemote, "storage-remote", "", "remote storage provider address")
+	fs.StringVar(&c.KubeNamespace, "kube-namespace", "mesa-workspaces", "namespace for workspace pods/PVCs (kubernetes provider)")
+	fs.StringVar(&c.Kubeconfig, "kubeconfig", "", "path to kubeconfig; empty = in-cluster config (kubernetes provider)")
+	fs.StringVar(&c.KubeStorageClass, "kube-storageclass", "", "PVC StorageClass; empty = cluster default (k8spvc storage)")
+	fs.StringVar(&c.KubeHomeSize, "kube-home-size", "1Gi", "PVC size for a workspace home (k8spvc storage)")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}

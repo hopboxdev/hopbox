@@ -14,6 +14,9 @@ var banned = []string{
 	"github.com/hashicorp/yamux",
 	"github.com/creack/pty",
 	"github.com/mesadev/mesa/gen/mesa/provider",
+	"k8s.io/api",
+	"k8s.io/apimachinery",
+	"k8s.io/client-go",
 }
 
 func TestCoreHasNoProviderSDKImports(t *testing.T) {
