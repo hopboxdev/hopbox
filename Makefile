@@ -1,13 +1,17 @@
 GO ?= go
 BIN := bin
+AGENT_IMAGE ?= ghcr.io/mesadev/mesa-agent:dev
 
-.PHONY: proto agent build test lint run-mesad
+.PHONY: proto agent agent-image build test lint run-mesad
 
 proto:
 	buf generate
 
 agent:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -o $(BIN)/mesa-agent-linux-amd64 ./cmd/mesa-agent
+
+agent-image: agent
+	docker build -f cmd/mesa-agent/Dockerfile -t $(AGENT_IMAGE) .
 
 build: agent
 	$(GO) build -tags docker -o $(BIN)/mesad ./cmd/mesad
