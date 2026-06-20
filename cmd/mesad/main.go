@@ -41,7 +41,7 @@ func run(cfg config.Config) error {
 	}
 	defer st.Close()
 
-	inprocCompute, err := newCompute(cfg.AgentAdvertise) // nil-returning stub without -tags docker
+	inprocCompute, err := newCompute(cfg) // nil-returning stub without -tags docker/k8s
 	if err != nil && cfg.ComputeTransport != "remote" {
 		return err
 	}
