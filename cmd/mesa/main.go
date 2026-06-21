@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -13,6 +15,19 @@ import (
 
 	mesav1 "github.com/mesadev/mesa/gen/mesa/v1"
 )
+
+// parseExpose turns a "name:port" flag value into an IngressPort.
+func parseExpose(s string) (*mesav1.IngressPort, error) {
+	name, portStr, ok := strings.Cut(s, ":")
+	if !ok || name == "" || portStr == "" {
+		return nil, fmt.Errorf("invalid --expose %q, want name:port (e.g. app:3000)", s)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 {
+		return nil, fmt.Errorf("invalid port in --expose %q", s)
+	}
+	return &mesav1.IngressPort{Name: name, Port: int32(port)}, nil
+}
 
 var apiAddr string
 
@@ -38,18 +53,27 @@ func main() {
 func newCreateCmd() *cobra.Command {
 	var image string
 	var mem int64
+	var expose []string
 	c := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create a workspace",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
+			var ingress []*mesav1.IngressPort
+			for _, e := range expose {
+				ip, err := parseExpose(e)
+				if err != nil {
+					return err
+				}
+				ingress = append(ingress, ip)
+			}
 			client, closer, err := dial()
 			if err != nil {
 				return err
 			}
 			defer closer()
 			w, err := client.CreateWorkspace(context.Background(), &mesav1.CreateWorkspaceRequest{
-				Name: args[0], ImageRef: image, MemMb: mem,
+				Name: args[0], ImageRef: image, MemMb: mem, Ingress: ingress,
 			})
 			if err != nil {
 				return err
@@ -60,6 +84,7 @@ func newCreateCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&image, "image", "ubuntu:24.04", "container image")
 	c.Flags().Int64Var(&mem, "mem-mb", 0, "memory limit in MB (0=unlimited)")
+	c.Flags().StringArrayVar(&expose, "expose", nil, "expose a workspace port at the gateway: name:port (repeatable)")
 	return c
 }
 
@@ -78,9 +103,17 @@ func newListCmd() *cobra.Command {
 				return err
 			}
 			tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-			fmt.Fprintln(tw, "NAME\tPHASE\tAGENT\tIMAGE\tID")
+			fmt.Fprintln(tw, "NAME\tPHASE\tAGENT\tIMAGE\tENDPOINTS\tID")
 			for _, w := range resp.Workspaces {
-				fmt.Fprintf(tw, "%s\t%s\t%v\t%s\t%s\n", w.Name, w.Phase, w.AgentConnected, w.ImageRef, w.Id)
+				var urls []string
+				for _, e := range w.Endpoints {
+					urls = append(urls, e.Url)
+				}
+				eps := strings.Join(urls, ",")
+				if eps == "" {
+					eps = "-"
+				}
+				fmt.Fprintf(tw, "%s\t%s\t%v\t%s\t%s\t%s\n", w.Name, w.Phase, w.AgentConnected, w.ImageRef, eps, w.Id)
 			}
 			return tw.Flush()
 		},

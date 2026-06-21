@@ -23,12 +23,25 @@ message Workspace {
   string phase = 7;
   bool   agent_connected = 8;
   string message = 9;
+  repeated Endpoint endpoints = 10; // resolved ingress endpoints (status)
+}
+
+// IngressPort is a desired exposed port (spec); Endpoint is its resolved address (status).
+message IngressPort {
+  string name = 1;
+  int32  port = 2;
+}
+message Endpoint {
+  string name = 1;
+  string url = 2;
+  int32  port = 3;
 }
 
 message CreateWorkspaceRequest {
   string name = 1;
   string image_ref = 2;
   int64  mem_mb = 3;
+  repeated IngressPort ingress = 4; // ports to expose at the gateway
 }
 message GetWorkspaceRequest { string name_or_id = 1; }
 message ListWorkspacesRequest {}

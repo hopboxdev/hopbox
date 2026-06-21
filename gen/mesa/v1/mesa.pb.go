@@ -33,6 +33,7 @@ type Workspace struct {
 	Phase          string                 `protobuf:"bytes,7,opt,name=phase,proto3" json:"phase,omitempty"`
 	AgentConnected bool                   `protobuf:"varint,8,opt,name=agent_connected,json=agentConnected,proto3" json:"agent_connected,omitempty"`
 	Message        string                 `protobuf:"bytes,9,opt,name=message,proto3" json:"message,omitempty"`
+	Endpoints      []*Endpoint            `protobuf:"bytes,10,rep,name=endpoints,proto3" json:"endpoints,omitempty"` // resolved ingress endpoints (status)
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -130,18 +131,139 @@ func (x *Workspace) GetMessage() string {
 	return ""
 }
 
+func (x *Workspace) GetEndpoints() []*Endpoint {
+	if x != nil {
+		return x.Endpoints
+	}
+	return nil
+}
+
+// IngressPort is a desired exposed port (spec); Endpoint is its resolved address (status).
+type IngressPort struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Port          int32                  `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IngressPort) Reset() {
+	*x = IngressPort{}
+	mi := &file_mesa_v1_mesa_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IngressPort) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IngressPort) ProtoMessage() {}
+
+func (x *IngressPort) ProtoReflect() protoreflect.Message {
+	mi := &file_mesa_v1_mesa_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IngressPort.ProtoReflect.Descriptor instead.
+func (*IngressPort) Descriptor() ([]byte, []int) {
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *IngressPort) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *IngressPort) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+type Endpoint struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Url           string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	Port          int32                  `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Endpoint) Reset() {
+	*x = Endpoint{}
+	mi := &file_mesa_v1_mesa_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Endpoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Endpoint) ProtoMessage() {}
+
+func (x *Endpoint) ProtoReflect() protoreflect.Message {
+	mi := &file_mesa_v1_mesa_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Endpoint.ProtoReflect.Descriptor instead.
+func (*Endpoint) Descriptor() ([]byte, []int) {
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Endpoint) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Endpoint) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *Endpoint) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
 type CreateWorkspaceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	ImageRef      string                 `protobuf:"bytes,2,opt,name=image_ref,json=imageRef,proto3" json:"image_ref,omitempty"`
 	MemMb         int64                  `protobuf:"varint,3,opt,name=mem_mb,json=memMb,proto3" json:"mem_mb,omitempty"`
+	Ingress       []*IngressPort         `protobuf:"bytes,4,rep,name=ingress,proto3" json:"ingress,omitempty"` // ports to expose at the gateway
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateWorkspaceRequest) Reset() {
 	*x = CreateWorkspaceRequest{}
-	mi := &file_mesa_v1_mesa_proto_msgTypes[1]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -153,7 +275,7 @@ func (x *CreateWorkspaceRequest) String() string {
 func (*CreateWorkspaceRequest) ProtoMessage() {}
 
 func (x *CreateWorkspaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mesa_v1_mesa_proto_msgTypes[1]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -166,7 +288,7 @@ func (x *CreateWorkspaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateWorkspaceRequest.ProtoReflect.Descriptor instead.
 func (*CreateWorkspaceRequest) Descriptor() ([]byte, []int) {
-	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{1}
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CreateWorkspaceRequest) GetName() string {
@@ -190,6 +312,13 @@ func (x *CreateWorkspaceRequest) GetMemMb() int64 {
 	return 0
 }
 
+func (x *CreateWorkspaceRequest) GetIngress() []*IngressPort {
+	if x != nil {
+		return x.Ingress
+	}
+	return nil
+}
+
 type GetWorkspaceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	NameOrId      string                 `protobuf:"bytes,1,opt,name=name_or_id,json=nameOrId,proto3" json:"name_or_id,omitempty"`
@@ -199,7 +328,7 @@ type GetWorkspaceRequest struct {
 
 func (x *GetWorkspaceRequest) Reset() {
 	*x = GetWorkspaceRequest{}
-	mi := &file_mesa_v1_mesa_proto_msgTypes[2]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -211,7 +340,7 @@ func (x *GetWorkspaceRequest) String() string {
 func (*GetWorkspaceRequest) ProtoMessage() {}
 
 func (x *GetWorkspaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mesa_v1_mesa_proto_msgTypes[2]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -224,7 +353,7 @@ func (x *GetWorkspaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkspaceRequest.ProtoReflect.Descriptor instead.
 func (*GetWorkspaceRequest) Descriptor() ([]byte, []int) {
-	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{2}
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetWorkspaceRequest) GetNameOrId() string {
@@ -242,7 +371,7 @@ type ListWorkspacesRequest struct {
 
 func (x *ListWorkspacesRequest) Reset() {
 	*x = ListWorkspacesRequest{}
-	mi := &file_mesa_v1_mesa_proto_msgTypes[3]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -254,7 +383,7 @@ func (x *ListWorkspacesRequest) String() string {
 func (*ListWorkspacesRequest) ProtoMessage() {}
 
 func (x *ListWorkspacesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mesa_v1_mesa_proto_msgTypes[3]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -267,7 +396,7 @@ func (x *ListWorkspacesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListWorkspacesRequest.ProtoReflect.Descriptor instead.
 func (*ListWorkspacesRequest) Descriptor() ([]byte, []int) {
-	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{3}
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{5}
 }
 
 type ListWorkspacesResponse struct {
@@ -279,7 +408,7 @@ type ListWorkspacesResponse struct {
 
 func (x *ListWorkspacesResponse) Reset() {
 	*x = ListWorkspacesResponse{}
-	mi := &file_mesa_v1_mesa_proto_msgTypes[4]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -291,7 +420,7 @@ func (x *ListWorkspacesResponse) String() string {
 func (*ListWorkspacesResponse) ProtoMessage() {}
 
 func (x *ListWorkspacesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mesa_v1_mesa_proto_msgTypes[4]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -304,7 +433,7 @@ func (x *ListWorkspacesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListWorkspacesResponse.ProtoReflect.Descriptor instead.
 func (*ListWorkspacesResponse) Descriptor() ([]byte, []int) {
-	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{4}
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListWorkspacesResponse) GetWorkspaces() []*Workspace {
@@ -323,7 +452,7 @@ type DeleteWorkspaceRequest struct {
 
 func (x *DeleteWorkspaceRequest) Reset() {
 	*x = DeleteWorkspaceRequest{}
-	mi := &file_mesa_v1_mesa_proto_msgTypes[5]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -335,7 +464,7 @@ func (x *DeleteWorkspaceRequest) String() string {
 func (*DeleteWorkspaceRequest) ProtoMessage() {}
 
 func (x *DeleteWorkspaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mesa_v1_mesa_proto_msgTypes[5]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -348,7 +477,7 @@ func (x *DeleteWorkspaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteWorkspaceRequest.ProtoReflect.Descriptor instead.
 func (*DeleteWorkspaceRequest) Descriptor() ([]byte, []int) {
-	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{5}
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DeleteWorkspaceRequest) GetNameOrId() string {
@@ -373,7 +502,7 @@ type ShellClientMsg struct {
 
 func (x *ShellClientMsg) Reset() {
 	*x = ShellClientMsg{}
-	mi := &file_mesa_v1_mesa_proto_msgTypes[6]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -385,7 +514,7 @@ func (x *ShellClientMsg) String() string {
 func (*ShellClientMsg) ProtoMessage() {}
 
 func (x *ShellClientMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_mesa_v1_mesa_proto_msgTypes[6]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -398,7 +527,7 @@ func (x *ShellClientMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShellClientMsg.ProtoReflect.Descriptor instead.
 func (*ShellClientMsg) Descriptor() ([]byte, []int) {
-	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{6}
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ShellClientMsg) GetMsg() isShellClientMsg_Msg {
@@ -469,7 +598,7 @@ type OpenShell struct {
 
 func (x *OpenShell) Reset() {
 	*x = OpenShell{}
-	mi := &file_mesa_v1_mesa_proto_msgTypes[7]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -481,7 +610,7 @@ func (x *OpenShell) String() string {
 func (*OpenShell) ProtoMessage() {}
 
 func (x *OpenShell) ProtoReflect() protoreflect.Message {
-	mi := &file_mesa_v1_mesa_proto_msgTypes[7]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -494,7 +623,7 @@ func (x *OpenShell) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenShell.ProtoReflect.Descriptor instead.
 func (*OpenShell) Descriptor() ([]byte, []int) {
-	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{7}
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *OpenShell) GetNameOrId() string {
@@ -535,7 +664,7 @@ type Resize struct {
 
 func (x *Resize) Reset() {
 	*x = Resize{}
-	mi := &file_mesa_v1_mesa_proto_msgTypes[8]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -547,7 +676,7 @@ func (x *Resize) String() string {
 func (*Resize) ProtoMessage() {}
 
 func (x *Resize) ProtoReflect() protoreflect.Message {
-	mi := &file_mesa_v1_mesa_proto_msgTypes[8]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -560,7 +689,7 @@ func (x *Resize) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Resize.ProtoReflect.Descriptor instead.
 func (*Resize) Descriptor() ([]byte, []int) {
-	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{8}
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Resize) GetCols() uint32 {
@@ -590,7 +719,7 @@ type ShellServerMsg struct {
 
 func (x *ShellServerMsg) Reset() {
 	*x = ShellServerMsg{}
-	mi := &file_mesa_v1_mesa_proto_msgTypes[9]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -602,7 +731,7 @@ func (x *ShellServerMsg) String() string {
 func (*ShellServerMsg) ProtoMessage() {}
 
 func (x *ShellServerMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_mesa_v1_mesa_proto_msgTypes[9]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -615,7 +744,7 @@ func (x *ShellServerMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShellServerMsg.ProtoReflect.Descriptor instead.
 func (*ShellServerMsg) Descriptor() ([]byte, []int) {
-	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{9}
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ShellServerMsg) GetMsg() isShellServerMsg_Msg {
@@ -663,7 +792,7 @@ var File_mesa_v1_mesa_proto protoreflect.FileDescriptor
 
 const file_mesa_v1_mesa_proto_rawDesc = "" +
 	"\n" +
-	"\x12mesa/v1/mesa.proto\x12\amesa.v1\x1a\x1bgoogle/protobuf/empty.proto\"\xef\x01\n" +
+	"\x12mesa/v1/mesa.proto\x12\amesa.v1\x1a\x1bgoogle/protobuf/empty.proto\"\xa0\x02\n" +
 	"\tWorkspace\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x14\n" +
@@ -673,11 +802,21 @@ const file_mesa_v1_mesa_proto_rawDesc = "" +
 	"\x06mem_mb\x18\x06 \x01(\x03R\x05memMb\x12\x14\n" +
 	"\x05phase\x18\a \x01(\tR\x05phase\x12'\n" +
 	"\x0fagent_connected\x18\b \x01(\bR\x0eagentConnected\x12\x18\n" +
-	"\amessage\x18\t \x01(\tR\amessage\"`\n" +
+	"\amessage\x18\t \x01(\tR\amessage\x12/\n" +
+	"\tendpoints\x18\n" +
+	" \x03(\v2\x11.mesa.v1.EndpointR\tendpoints\"5\n" +
+	"\vIngressPort\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04port\x18\x02 \x01(\x05R\x04port\"D\n" +
+	"\bEndpoint\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\x12\x12\n" +
+	"\x04port\x18\x03 \x01(\x05R\x04port\"\x90\x01\n" +
 	"\x16CreateWorkspaceRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
 	"\timage_ref\x18\x02 \x01(\tR\bimageRef\x12\x15\n" +
-	"\x06mem_mb\x18\x03 \x01(\x03R\x05memMb\"3\n" +
+	"\x06mem_mb\x18\x03 \x01(\x03R\x05memMb\x12.\n" +
+	"\aingress\x18\x04 \x03(\v2\x14.mesa.v1.IngressPortR\aingress\"3\n" +
 	"\x13GetWorkspaceRequest\x12\x1c\n" +
 	"\n" +
 	"name_or_id\x18\x01 \x01(\tR\bnameOrId\"\x17\n" +
@@ -727,39 +866,43 @@ func file_mesa_v1_mesa_proto_rawDescGZIP() []byte {
 	return file_mesa_v1_mesa_proto_rawDescData
 }
 
-var file_mesa_v1_mesa_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_mesa_v1_mesa_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_mesa_v1_mesa_proto_goTypes = []any{
 	(*Workspace)(nil),              // 0: mesa.v1.Workspace
-	(*CreateWorkspaceRequest)(nil), // 1: mesa.v1.CreateWorkspaceRequest
-	(*GetWorkspaceRequest)(nil),    // 2: mesa.v1.GetWorkspaceRequest
-	(*ListWorkspacesRequest)(nil),  // 3: mesa.v1.ListWorkspacesRequest
-	(*ListWorkspacesResponse)(nil), // 4: mesa.v1.ListWorkspacesResponse
-	(*DeleteWorkspaceRequest)(nil), // 5: mesa.v1.DeleteWorkspaceRequest
-	(*ShellClientMsg)(nil),         // 6: mesa.v1.ShellClientMsg
-	(*OpenShell)(nil),              // 7: mesa.v1.OpenShell
-	(*Resize)(nil),                 // 8: mesa.v1.Resize
-	(*ShellServerMsg)(nil),         // 9: mesa.v1.ShellServerMsg
-	(*emptypb.Empty)(nil),          // 10: google.protobuf.Empty
+	(*IngressPort)(nil),            // 1: mesa.v1.IngressPort
+	(*Endpoint)(nil),               // 2: mesa.v1.Endpoint
+	(*CreateWorkspaceRequest)(nil), // 3: mesa.v1.CreateWorkspaceRequest
+	(*GetWorkspaceRequest)(nil),    // 4: mesa.v1.GetWorkspaceRequest
+	(*ListWorkspacesRequest)(nil),  // 5: mesa.v1.ListWorkspacesRequest
+	(*ListWorkspacesResponse)(nil), // 6: mesa.v1.ListWorkspacesResponse
+	(*DeleteWorkspaceRequest)(nil), // 7: mesa.v1.DeleteWorkspaceRequest
+	(*ShellClientMsg)(nil),         // 8: mesa.v1.ShellClientMsg
+	(*OpenShell)(nil),              // 9: mesa.v1.OpenShell
+	(*Resize)(nil),                 // 10: mesa.v1.Resize
+	(*ShellServerMsg)(nil),         // 11: mesa.v1.ShellServerMsg
+	(*emptypb.Empty)(nil),          // 12: google.protobuf.Empty
 }
 var file_mesa_v1_mesa_proto_depIdxs = []int32{
-	0,  // 0: mesa.v1.ListWorkspacesResponse.workspaces:type_name -> mesa.v1.Workspace
-	7,  // 1: mesa.v1.ShellClientMsg.open:type_name -> mesa.v1.OpenShell
-	8,  // 2: mesa.v1.ShellClientMsg.resize:type_name -> mesa.v1.Resize
-	1,  // 3: mesa.v1.WorkspaceService.CreateWorkspace:input_type -> mesa.v1.CreateWorkspaceRequest
-	2,  // 4: mesa.v1.WorkspaceService.GetWorkspace:input_type -> mesa.v1.GetWorkspaceRequest
-	3,  // 5: mesa.v1.WorkspaceService.ListWorkspaces:input_type -> mesa.v1.ListWorkspacesRequest
-	5,  // 6: mesa.v1.WorkspaceService.DeleteWorkspace:input_type -> mesa.v1.DeleteWorkspaceRequest
-	6,  // 7: mesa.v1.WorkspaceService.Shell:input_type -> mesa.v1.ShellClientMsg
-	0,  // 8: mesa.v1.WorkspaceService.CreateWorkspace:output_type -> mesa.v1.Workspace
-	0,  // 9: mesa.v1.WorkspaceService.GetWorkspace:output_type -> mesa.v1.Workspace
-	4,  // 10: mesa.v1.WorkspaceService.ListWorkspaces:output_type -> mesa.v1.ListWorkspacesResponse
-	10, // 11: mesa.v1.WorkspaceService.DeleteWorkspace:output_type -> google.protobuf.Empty
-	9,  // 12: mesa.v1.WorkspaceService.Shell:output_type -> mesa.v1.ShellServerMsg
-	8,  // [8:13] is the sub-list for method output_type
-	3,  // [3:8] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	2,  // 0: mesa.v1.Workspace.endpoints:type_name -> mesa.v1.Endpoint
+	1,  // 1: mesa.v1.CreateWorkspaceRequest.ingress:type_name -> mesa.v1.IngressPort
+	0,  // 2: mesa.v1.ListWorkspacesResponse.workspaces:type_name -> mesa.v1.Workspace
+	9,  // 3: mesa.v1.ShellClientMsg.open:type_name -> mesa.v1.OpenShell
+	10, // 4: mesa.v1.ShellClientMsg.resize:type_name -> mesa.v1.Resize
+	3,  // 5: mesa.v1.WorkspaceService.CreateWorkspace:input_type -> mesa.v1.CreateWorkspaceRequest
+	4,  // 6: mesa.v1.WorkspaceService.GetWorkspace:input_type -> mesa.v1.GetWorkspaceRequest
+	5,  // 7: mesa.v1.WorkspaceService.ListWorkspaces:input_type -> mesa.v1.ListWorkspacesRequest
+	7,  // 8: mesa.v1.WorkspaceService.DeleteWorkspace:input_type -> mesa.v1.DeleteWorkspaceRequest
+	8,  // 9: mesa.v1.WorkspaceService.Shell:input_type -> mesa.v1.ShellClientMsg
+	0,  // 10: mesa.v1.WorkspaceService.CreateWorkspace:output_type -> mesa.v1.Workspace
+	0,  // 11: mesa.v1.WorkspaceService.GetWorkspace:output_type -> mesa.v1.Workspace
+	6,  // 12: mesa.v1.WorkspaceService.ListWorkspaces:output_type -> mesa.v1.ListWorkspacesResponse
+	12, // 13: mesa.v1.WorkspaceService.DeleteWorkspace:output_type -> google.protobuf.Empty
+	11, // 14: mesa.v1.WorkspaceService.Shell:output_type -> mesa.v1.ShellServerMsg
+	10, // [10:15] is the sub-list for method output_type
+	5,  // [5:10] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_mesa_v1_mesa_proto_init() }
@@ -767,12 +910,12 @@ func file_mesa_v1_mesa_proto_init() {
 	if File_mesa_v1_mesa_proto != nil {
 		return
 	}
-	file_mesa_v1_mesa_proto_msgTypes[6].OneofWrappers = []any{
+	file_mesa_v1_mesa_proto_msgTypes[8].OneofWrappers = []any{
 		(*ShellClientMsg_Open)(nil),
 		(*ShellClientMsg_Data)(nil),
 		(*ShellClientMsg_Resize)(nil),
 	}
-	file_mesa_v1_mesa_proto_msgTypes[9].OneofWrappers = []any{
+	file_mesa_v1_mesa_proto_msgTypes[11].OneofWrappers = []any{
 		(*ShellServerMsg_Data)(nil),
 		(*ShellServerMsg_ExitCode)(nil),
 	}
@@ -782,7 +925,7 @@ func file_mesa_v1_mesa_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mesa_v1_mesa_proto_rawDesc), len(file_mesa_v1_mesa_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

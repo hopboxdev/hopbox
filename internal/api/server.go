@@ -36,11 +36,15 @@ func NewServer(s store.Store, hub Hub, tenant, owner string) *Server {
 }
 
 func toProto(w *workspace.Workspace) *mesav1.Workspace {
-	return &mesav1.Workspace{
+	out := &mesav1.Workspace{
 		Id: w.ID, TenantId: w.TenantID, Owner: w.Owner, Name: w.Name,
 		ImageRef: w.ImageRef, MemMb: w.MemMB, Phase: string(w.Phase),
 		AgentConnected: w.AgentConnected, Message: w.Message,
 	}
+	for _, e := range w.Endpoints {
+		out.Endpoints = append(out.Endpoints, &mesav1.Endpoint{Name: e.Name, Url: e.URL, Port: e.Port})
+	}
+	return out
 }
 
 func (s *Server) resolve(ctx context.Context, nameOrID string) (*workspace.Workspace, error) {
@@ -67,6 +71,12 @@ func (s *Server) CreateWorkspace(ctx context.Context, r *mesav1.CreateWorkspaceR
 	}
 	w := workspace.New(s.tenant, s.owner, r.Name, r.ImageRef)
 	w.MemMB = r.MemMb
+	for _, ip := range r.Ingress {
+		if ip.Name == "" || ip.Port <= 0 {
+			return nil, status.Error(codes.InvalidArgument, "ingress entries need a name and port > 0")
+		}
+		w.Ingress = append(w.Ingress, workspace.IngressPort{Name: ip.Name, Port: ip.Port})
+	}
 	if err := s.store.CreateWorkspace(ctx, w); err != nil {
 		return nil, status.Errorf(codes.Internal, "create: %v", err)
 	}
