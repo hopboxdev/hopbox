@@ -15,6 +15,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/mesadev/mesa/internal/gateway"
 )
@@ -28,10 +29,32 @@ func main() {
 	selfSigned := fs.Bool("tls-self-signed", false, "serve HTTPS with an in-memory self-signed wildcard cert (testing)")
 	zone := fs.String("zone", "gw.example.com", "wildcard DNS zone for the self-signed cert SAN")
 	redirect := fs.String("redirect-addr", "", "if set, serve an HTTP->HTTPS 301 redirect on this address (e.g. :80)")
+	askAddr := fs.String("ask-addr", "", "if set, serve a Caddy on-demand-TLS ask endpoint here: 200 for hosts in --zone, else 403")
 	_ = fs.Parse(os.Args[1:])
 
 	gw := gateway.New(gateway.NewRemoteConnector(*tunnel))
 	srv := &http.Server{Addr: *listen, Handler: gw}
+
+	// Caddy on-demand TLS asks this endpoint before issuing a cert for a host,
+	// bounding issuance to our wildcard zone (when TLS is fronted by Caddy and
+	// mesa-gw itself serves plain HTTP).
+	if *askAddr != "" {
+		z := strings.TrimPrefix(*zone, ".")
+		go func() {
+			log.Printf("mesa-gw: on-demand-TLS ask on %s (zone %s)", *askAddr, z)
+			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				d := r.URL.Query().Get("domain")
+				if d == z || strings.HasSuffix(d, "."+z) {
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+				w.WriteHeader(http.StatusForbidden)
+			})
+			if err := http.ListenAndServe(*askAddr, h); err != nil {
+				log.Printf("mesa-gw: ask server: %v", err)
+			}
+		}()
+	}
 
 	if *redirect != "" {
 		go func() {
