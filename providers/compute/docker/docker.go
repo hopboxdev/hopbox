@@ -86,6 +86,9 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 	if err := p.cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true}); err != nil && !client.IsErrNotFound(err) {
 		return ports.Instance{}, fmt.Errorf("docker: remove stale container %q: %w", name, err)
 	}
+	if err := p.ensureImage(ctx, r.ImageRef); err != nil {
+		return ports.Instance{}, err
+	}
 	// TODO(arch): platform is nil — agent binary is linux/amd64; arch-mismatch on non-amd64 hosts is unhandled in M1.
 	created, err := p.cli.ContainerCreate(ctx, cfg, host, nil, nil, name)
 	if err != nil {
@@ -95,6 +98,25 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 		return ports.Instance{}, fmt.Errorf("docker: start: %w", err)
 	}
 	return ports.Instance{Ref: created.ID, Phase: ports.InstanceRunning}, nil
+}
+
+// ensureImage pulls ref if it is not already present locally (IfNotPresent).
+// The workspace image is user-supplied and frequently not cached; without this,
+// ContainerCreate fails with "No such image". IfNotPresent (rather than always
+// pulling) avoids re-pulling on every reconcile self-heal re-provision.
+func (p *Provider) ensureImage(ctx context.Context, ref string) error {
+	if _, err := p.cli.ImageInspect(ctx, ref); err == nil {
+		return nil // already present
+	} else if !client.IsErrNotFound(err) {
+		return fmt.Errorf("docker: inspect image %q: %w", ref, err)
+	}
+	rc, err := p.cli.ImagePull(ctx, ref, image.PullOptions{})
+	if err != nil {
+		return fmt.Errorf("docker: pull image %q: %w", ref, err)
+	}
+	_, _ = io.Copy(io.Discard, rc) // drain to completion
+	_ = rc.Close()
+	return nil
 }
 
 // stageAgent makes the mesa-agent binary available in the workspace as a Mount.
