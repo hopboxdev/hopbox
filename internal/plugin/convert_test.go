@@ -83,6 +83,22 @@ func TestMeteringRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBuildRoundTrip(t *testing.T) {
+	br := ports.BuildRequest{WorkspaceID: "w1", SourceRef: "ubuntu:24.04", Provider: "prebuilt", Options: map[string]string{"k": "v"}, TenantID: "default"}
+	got := FromProtoBuildRequest(ToProtoBuildRequest(br))
+	if got.WorkspaceID != br.WorkspaceID || got.SourceRef != br.SourceRef || got.Provider != br.Provider || got.TenantID != br.TenantID || got.Options["k"] != "v" {
+		t.Fatalf("buildrequest round-trip: %+v", got)
+	}
+	ir := ports.ImageRef{Ref: "ubuntu:24.04", BuildRef: "b-1"}
+	if g := FromProtoImageRef(ToProtoImageRef(ir)); g != ir {
+		t.Fatalf("imageref round-trip: %+v", g)
+	}
+	bs := ports.BuildStatus{Phase: "ready", ImageRef: "ubuntu:24.04", Message: "ok"}
+	if g := FromProtoBuildStatus(ToProtoBuildStatus(bs)); g != bs {
+		t.Fatalf("buildstatus round-trip: %+v", g)
+	}
+}
+
 func TestHomeRequestAndMountRoundTrip(t *testing.T) {
 	hr := ports.HomeRequest{WorkspaceID: "w1", TenantID: "default", Owner: "alice"}
 	if got := FromProtoHomeRequest(ToProtoHomeRequest(hr)); got != hr {

@@ -159,3 +159,33 @@ type Metering interface {
 	Emit(ctx context.Context, e UsageEvent) error
 	Quota(ctx context.Context, r PrincipalRef) (QuotaState, error)
 }
+
+// BuildRequest asks a Build provider to resolve a workspace source to an image.
+type BuildRequest struct {
+	WorkspaceID string
+	SourceRef   string // git URL | path | image ref (for prebuilt)
+	Provider    string // devcontainer | dockerfile | nix | prebuilt
+	Options     map[string]string
+	TenantID    string
+}
+
+// ImageRef is a resolved OCI image reference (the Build output). BuildRef is a
+// handle to poll Status for async builds ("" when resolution was synchronous).
+type ImageRef struct {
+	Ref      string
+	BuildRef string
+}
+
+// BuildStatus reports an async build's progress.
+type BuildStatus struct {
+	Phase    string // pending | building | ready | failed
+	ImageRef string
+	Message  string
+}
+
+// Build resolves a workspace source to an OCI image ref. The output is always an
+// image ref, decoupling build from compute.
+type Build interface {
+	Resolve(ctx context.Context, r BuildRequest) (ImageRef, error)
+	Status(ctx context.Context, buildRef string) (BuildStatus, error)
+}

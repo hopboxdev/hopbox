@@ -145,3 +145,29 @@ func (r *remoteMetering) Quota(ctx context.Context, ref ports.PrincipalRef) (por
 	}
 	return FromProtoQuotaState(q), nil
 }
+
+// remoteBuild implements ports.Build over a gRPC connection.
+type remoteBuild struct{ cli pb.BuildClient }
+
+var _ ports.Build = (*remoteBuild)(nil)
+
+// NewRemoteBuild returns a ports.Build backed by a gRPC Build service.
+// The caller owns conn and must Close it; the returned provider does not.
+func NewRemoteBuild(conn *grpc.ClientConn) ports.Build {
+	return &remoteBuild{cli: pb.NewBuildClient(conn)}
+}
+
+func (r *remoteBuild) Resolve(ctx context.Context, req ports.BuildRequest) (ports.ImageRef, error) {
+	img, err := r.cli.Resolve(ctx, ToProtoBuildRequest(req))
+	if err != nil {
+		return ports.ImageRef{}, err
+	}
+	return FromProtoImageRef(img), nil
+}
+func (r *remoteBuild) Status(ctx context.Context, buildRef string) (ports.BuildStatus, error) {
+	st, err := r.cli.Status(ctx, &pb.BuildRef{BuildRef: buildRef})
+	if err != nil {
+		return ports.BuildStatus{}, err
+	}
+	return FromProtoBuildStatus(st), nil
+}

@@ -91,3 +91,21 @@ func TestLoadMeteringUnknownTransport(t *testing.T) {
 		t.Fatal("expected error for unknown transport")
 	}
 }
+
+func TestLoadBuildInprocNilIsError(t *testing.T) {
+	if _, err := plugin.LoadBuild(plugin.ProviderConfig{Transport: "inproc"}, nil); err == nil {
+		t.Fatal("expected error when inproc build provider is nil")
+	}
+}
+
+func TestLoadBuildRemoteRequiresAddr(t *testing.T) {
+	if _, err := plugin.LoadBuild(plugin.ProviderConfig{Transport: "remote"}, nil); err == nil {
+		t.Fatal("expected error when remote addr is empty")
+	}
+}
+
+func TestLoadBuildUnknownTransport(t *testing.T) {
+	if _, err := plugin.LoadBuild(plugin.ProviderConfig{Transport: "carrier-pigeon"}, nil); err == nil {
+		t.Fatal("expected error for unknown transport")
+	}
+}

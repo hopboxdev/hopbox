@@ -136,3 +136,26 @@ func (s *MeteringServer) Quota(ctx context.Context, r *pb.PrincipalRef) (*pb.Quo
 	}
 	return plugin.ToProtoQuotaState(q), nil
 }
+
+// BuildServer adapts a ports.Build to the gRPC Build service.
+type BuildServer struct {
+	pb.UnimplementedBuildServer
+	impl ports.Build
+}
+
+func NewBuild(impl ports.Build) *BuildServer { return &BuildServer{impl: impl} }
+
+func (s *BuildServer) Resolve(ctx context.Context, r *pb.BuildRequest) (*pb.ImageRef, error) {
+	img, err := s.impl.Resolve(ctx, plugin.FromProtoBuildRequest(r))
+	if err != nil {
+		return nil, err
+	}
+	return plugin.ToProtoImageRef(img), nil
+}
+func (s *BuildServer) Status(ctx context.Context, r *pb.BuildRef) (*pb.BuildStatus, error) {
+	st, err := s.impl.Status(ctx, r.BuildRef)
+	if err != nil {
+		return nil, err
+	}
+	return plugin.ToProtoBuildStatus(st), nil
+}

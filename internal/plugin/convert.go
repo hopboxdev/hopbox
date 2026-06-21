@@ -206,3 +206,39 @@ func FromProtoQuotaState(q *pb.QuotaState) ports.QuotaState {
 	}
 	return ports.QuotaState{Allowed: q.Allowed, WorkspacesUsed: q.WorkspacesUsed, WorkspacesLimit: q.WorkspacesLimit, Reason: q.Reason}
 }
+
+func ToProtoBuildRequest(r ports.BuildRequest) *pb.BuildRequest {
+	return &pb.BuildRequest{
+		WorkspaceId: r.WorkspaceID, SourceRef: r.SourceRef, Provider: r.Provider,
+		Options: r.Options, TenantId: r.TenantID,
+	}
+}
+func FromProtoBuildRequest(r *pb.BuildRequest) ports.BuildRequest {
+	if r == nil {
+		return ports.BuildRequest{}
+	}
+	return ports.BuildRequest{
+		WorkspaceID: r.WorkspaceId, SourceRef: r.SourceRef, Provider: r.Provider,
+		Options: r.Options, TenantID: r.TenantId,
+	}
+}
+
+func ToProtoImageRef(i ports.ImageRef) *pb.ImageRef {
+	return &pb.ImageRef{Ref: i.Ref, BuildRef: i.BuildRef}
+}
+func FromProtoImageRef(i *pb.ImageRef) ports.ImageRef {
+	if i == nil {
+		return ports.ImageRef{}
+	}
+	return ports.ImageRef{Ref: i.Ref, BuildRef: i.BuildRef}
+}
+
+func ToProtoBuildStatus(b ports.BuildStatus) *pb.BuildStatus {
+	return &pb.BuildStatus{Phase: b.Phase, ImageRef: b.ImageRef, Message: b.Message}
+}
+func FromProtoBuildStatus(b *pb.BuildStatus) ports.BuildStatus {
+	if b == nil {
+		return ports.BuildStatus{}
+	}
+	return ports.BuildStatus{Phase: b.Phase, ImageRef: b.ImageRef, Message: b.Message}
+}

@@ -134,3 +134,25 @@ func LoadMetering(cfg ProviderConfig, inproc ports.Metering) (ports.Metering, er
 		return nil, fmt.Errorf("plugin: unknown metering transport %q", cfg.Transport)
 	}
 }
+
+// LoadBuild mirrors LoadCompute for ports.Build.
+func LoadBuild(cfg ProviderConfig, inproc ports.Build) (ports.Build, error) {
+	switch cfg.Transport {
+	case "", "inproc":
+		if inproc == nil {
+			return nil, fmt.Errorf("plugin: inproc build provider is nil")
+		}
+		return inproc, nil
+	case "remote":
+		if cfg.RemoteAddr == "" {
+			return nil, fmt.Errorf("plugin: remote build transport requires RemoteAddr")
+		}
+		conn, err := dial(cfg.RemoteAddr)
+		if err != nil {
+			return nil, fmt.Errorf("plugin: dial build %q: %w", cfg.RemoteAddr, err)
+		}
+		return NewRemoteBuild(conn), nil
+	default:
+		return nil, fmt.Errorf("plugin: unknown build transport %q", cfg.Transport)
+	}
+}
