@@ -68,6 +68,21 @@ func TestIdentityRoundTrip(t *testing.T) {
 	}
 }
 
+func TestMeteringRoundTrip(t *testing.T) {
+	ev := ports.UsageEvent{TenantID: "default", PrincipalID: "alice", WorkspaceID: "w1", Kind: "workspace.start", Value: 1, UnixMillis: 1718000000000}
+	if got := FromProtoUsageEvent(ToProtoUsageEvent(ev)); got != ev {
+		t.Fatalf("usageevent round-trip: %+v", got)
+	}
+	ref := ports.PrincipalRef{PrincipalID: "alice", TenantID: "default"}
+	if got := FromProtoPrincipalRef(ToProtoPrincipalRef(ref)); got != ref {
+		t.Fatalf("principalref round-trip: %+v", got)
+	}
+	q := ports.QuotaState{Allowed: false, WorkspacesUsed: 2, WorkspacesLimit: 2, Reason: "limit"}
+	if got := FromProtoQuotaState(ToProtoQuotaState(q)); got != q {
+		t.Fatalf("quotastate round-trip: %+v", got)
+	}
+}
+
 func TestHomeRequestAndMountRoundTrip(t *testing.T) {
 	hr := ports.HomeRequest{WorkspaceID: "w1", TenantID: "default", Owner: "alice"}
 	if got := FromProtoHomeRequest(ToProtoHomeRequest(hr)); got != hr {

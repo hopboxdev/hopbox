@@ -170,3 +170,39 @@ func FromProtoDecision(d *pb.Decision) ports.Decision {
 	}
 	return ports.Decision{Allow: d.Allow, Reason: d.Reason}
 }
+
+func ToProtoUsageEvent(e ports.UsageEvent) *pb.UsageEvent {
+	return &pb.UsageEvent{
+		TenantId: e.TenantID, PrincipalId: e.PrincipalID, WorkspaceId: e.WorkspaceID,
+		Kind: e.Kind, Value: e.Value, UnixMillis: e.UnixMillis,
+	}
+}
+func FromProtoUsageEvent(e *pb.UsageEvent) ports.UsageEvent {
+	if e == nil {
+		return ports.UsageEvent{}
+	}
+	return ports.UsageEvent{
+		TenantID: e.TenantId, PrincipalID: e.PrincipalId, WorkspaceID: e.WorkspaceId,
+		Kind: e.Kind, Value: e.Value, UnixMillis: e.UnixMillis,
+	}
+}
+
+func ToProtoPrincipalRef(r ports.PrincipalRef) *pb.PrincipalRef {
+	return &pb.PrincipalRef{PrincipalId: r.PrincipalID, TenantId: r.TenantID}
+}
+func FromProtoPrincipalRef(r *pb.PrincipalRef) ports.PrincipalRef {
+	if r == nil {
+		return ports.PrincipalRef{}
+	}
+	return ports.PrincipalRef{PrincipalID: r.PrincipalId, TenantID: r.TenantId}
+}
+
+func ToProtoQuotaState(q ports.QuotaState) *pb.QuotaState {
+	return &pb.QuotaState{Allowed: q.Allowed, WorkspacesUsed: q.WorkspacesUsed, WorkspacesLimit: q.WorkspacesLimit, Reason: q.Reason}
+}
+func FromProtoQuotaState(q *pb.QuotaState) ports.QuotaState {
+	if q == nil {
+		return ports.QuotaState{}
+	}
+	return ports.QuotaState{Allowed: q.Allowed, WorkspacesUsed: q.WorkspacesUsed, WorkspacesLimit: q.WorkspacesLimit, Reason: q.Reason}
+}

@@ -4,6 +4,10 @@ package server
 
 import (
 	"context"
+	"errors"
+	"io"
+
+	"google.golang.org/grpc"
 
 	pb "github.com/mesadev/mesa/gen/mesa/provider/v1"
 	"github.com/mesadev/mesa/internal/core/ports"
@@ -98,4 +102,37 @@ func (s *IdentityServer) Authorize(ctx context.Context, r *pb.AccessRequest) (*p
 		return nil, err
 	}
 	return plugin.ToProtoDecision(d), nil
+}
+
+// MeteringServer adapts a ports.Metering to the gRPC Metering service.
+type MeteringServer struct {
+	pb.UnimplementedMeteringServer
+	impl ports.Metering
+}
+
+func NewMetering(impl ports.Metering) *MeteringServer { return &MeteringServer{impl: impl} }
+
+// Emit drains the client stream, dispatching each event to the in-process
+// provider, then closes with Empty.
+func (s *MeteringServer) Emit(stream grpc.ClientStreamingServer[pb.UsageEvent, pb.Empty]) error {
+	ctx := stream.Context()
+	for {
+		ev, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return stream.SendAndClose(&pb.Empty{})
+		}
+		if err != nil {
+			return err
+		}
+		if err := s.impl.Emit(ctx, plugin.FromProtoUsageEvent(ev)); err != nil {
+			return err
+		}
+	}
+}
+func (s *MeteringServer) Quota(ctx context.Context, r *pb.PrincipalRef) (*pb.QuotaState, error) {
+	q, err := s.impl.Quota(ctx, plugin.FromProtoPrincipalRef(r))
+	if err != nil {
+		return nil, err
+	}
+	return plugin.ToProtoQuotaState(q), nil
 }

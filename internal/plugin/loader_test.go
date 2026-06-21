@@ -73,3 +73,21 @@ func TestLoadIdentityUnknownTransport(t *testing.T) {
 		t.Fatal("expected error for unknown transport")
 	}
 }
+
+func TestLoadMeteringInprocNilIsError(t *testing.T) {
+	if _, err := plugin.LoadMetering(plugin.ProviderConfig{Transport: "inproc"}, nil); err == nil {
+		t.Fatal("expected error when inproc metering provider is nil")
+	}
+}
+
+func TestLoadMeteringRemoteRequiresAddr(t *testing.T) {
+	if _, err := plugin.LoadMetering(plugin.ProviderConfig{Transport: "remote"}, nil); err == nil {
+		t.Fatal("expected error when remote addr is empty")
+	}
+}
+
+func TestLoadMeteringUnknownTransport(t *testing.T) {
+	if _, err := plugin.LoadMetering(plugin.ProviderConfig{Transport: "carrier-pigeon"}, nil); err == nil {
+		t.Fatal("expected error for unknown transport")
+	}
+}

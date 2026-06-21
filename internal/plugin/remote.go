@@ -114,3 +114,34 @@ func (r *remoteIdentity) Authorize(ctx context.Context, req ports.AccessRequest)
 	}
 	return FromProtoDecision(d), nil
 }
+
+// remoteMetering implements ports.Metering over a gRPC connection.
+type remoteMetering struct{ cli pb.MeteringClient }
+
+var _ ports.Metering = (*remoteMetering)(nil)
+
+// NewRemoteMetering returns a ports.Metering backed by a gRPC Metering service.
+// The caller owns conn and must Close it; the returned provider does not.
+func NewRemoteMetering(conn *grpc.ClientConn) ports.Metering {
+	return &remoteMetering{cli: pb.NewMeteringClient(conn)}
+}
+
+// Emit sends one event over a fresh client stream and waits for the close ack.
+func (r *remoteMetering) Emit(ctx context.Context, e ports.UsageEvent) error {
+	stream, err := r.cli.Emit(ctx)
+	if err != nil {
+		return err
+	}
+	if err := stream.Send(ToProtoUsageEvent(e)); err != nil {
+		return err
+	}
+	_, err = stream.CloseAndRecv()
+	return err
+}
+func (r *remoteMetering) Quota(ctx context.Context, ref ports.PrincipalRef) (ports.QuotaState, error) {
+	q, err := r.cli.Quota(ctx, ToProtoPrincipalRef(ref))
+	if err != nil {
+		return ports.QuotaState{}, err
+	}
+	return FromProtoQuotaState(q), nil
+}

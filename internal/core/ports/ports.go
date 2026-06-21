@@ -128,3 +128,34 @@ type Identity interface {
 	Authenticate(ctx context.Context, c Credential) (Principal, error)
 	Authorize(ctx context.Context, r AccessRequest) (Decision, error)
 }
+
+// UsageEvent is a single metered fact about workspace usage.
+type UsageEvent struct {
+	TenantID    string
+	PrincipalID string
+	WorkspaceID string
+	Kind        string // workspace.start | workspace.stop | cpu_seconds | storage_mb | ...
+	Value       int64  // magnitude for metered kinds
+	UnixMillis  int64  // event time
+}
+
+// PrincipalRef identifies whose quota to check.
+type PrincipalRef struct {
+	PrincipalID string
+	TenantID    string
+}
+
+// QuotaState is the pre-flight provisioning gate for a principal.
+type QuotaState struct {
+	Allowed         bool
+	WorkspacesUsed  int64
+	WorkspacesLimit int64
+	Reason          string
+}
+
+// Metering records usage and gates provisioning. Quota is a pre-flight check the
+// reconciler runs before Provision; Emit records a usage event.
+type Metering interface {
+	Emit(ctx context.Context, e UsageEvent) error
+	Quota(ctx context.Context, r PrincipalRef) (QuotaState, error)
+}

@@ -112,3 +112,25 @@ func LoadIdentity(cfg ProviderConfig, inproc ports.Identity) (ports.Identity, er
 		return nil, fmt.Errorf("plugin: unknown identity transport %q", cfg.Transport)
 	}
 }
+
+// LoadMetering mirrors LoadCompute for ports.Metering.
+func LoadMetering(cfg ProviderConfig, inproc ports.Metering) (ports.Metering, error) {
+	switch cfg.Transport {
+	case "", "inproc":
+		if inproc == nil {
+			return nil, fmt.Errorf("plugin: inproc metering provider is nil")
+		}
+		return inproc, nil
+	case "remote":
+		if cfg.RemoteAddr == "" {
+			return nil, fmt.Errorf("plugin: remote metering transport requires RemoteAddr")
+		}
+		conn, err := dial(cfg.RemoteAddr)
+		if err != nil {
+			return nil, fmt.Errorf("plugin: dial metering %q: %w", cfg.RemoteAddr, err)
+		}
+		return NewRemoteMetering(conn), nil
+	default:
+		return nil, fmt.Errorf("plugin: unknown metering transport %q", cfg.Transport)
+	}
+}
