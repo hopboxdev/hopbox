@@ -1,61 +1,66 @@
-// Package gateway is mesa-gw: the stateless service gateway. It terminates
-// inbound HTTP, resolves the request's Host to a workspace + port via the
-// Router, and reverse-proxies the request INTO that workspace over a Dialer —
-// in production a fresh agent forward stream (mesad's hub.OpenForward). It needs
-// no route into compute: the workspace dialed out, the gateway rides that conn.
+// Package gateway is mesa-gw: the service gateway. It terminates inbound HTTP,
+// and for each request opens a connection to the workspace service its Host maps
+// to (via a Connector) and reverse-proxies the request over that conn. The
+// Connector hides whether the workspace is reached in-process (mesad's hub) or
+// across a tunnel to a central mesad (the standalone mesa-gw fleet). Either way
+// the gateway needs no route into compute: the workspace dialed out.
 package gateway
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httputil"
 )
 
-// Router resolves an inbound gateway Host to a workspace id + target port.
-type Router interface {
-	Lookup(host string) (workspaceID string, port int32, ok bool)
-}
+// ErrNoRoute means no workspace is mapped to the request Host (=> 404). Any
+// other Connect error is an upstream/dial failure (=> 502).
+var ErrNoRoute = errors.New("gateway: no route for host")
 
-// Dialer opens a connection to a port inside a workspace. The returned conn is a
-// raw byte pipe to that service (the agent forward stream in production).
-type Dialer interface {
-	DialWorkspace(ctx context.Context, workspaceID string, port int32) (net.Conn, error)
+// Connector opens a raw byte pipe to the workspace service that serves a given
+// gateway Host. The gateway proxies the HTTP request/response over the returned
+// conn (in production a fresh agent forward stream, possibly across a tunnel).
+type Connector interface {
+	Connect(ctx context.Context, host string) (net.Conn, error)
 }
 
 // Gateway is an http.Handler that proxies each request into the workspace its
 // Host maps to.
-type Gateway struct {
-	router Router
-	dialer Dialer
-}
+type Gateway struct{ conn Connector }
 
-func New(router Router, dialer Dialer) *Gateway {
-	return &Gateway{router: router, dialer: dialer}
-}
+func New(c Connector) *Gateway { return &Gateway{conn: c} }
 
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	wsID, port, ok := g.router.Lookup(host)
-	if !ok {
+	upstream, err := g.conn.Connect(r.Context(), host)
+	if errors.Is(err, ErrNoRoute) {
 		http.Error(w, "mesa-gw: no route for host "+host, http.StatusNotFound)
 		return
 	}
+	if err != nil {
+		http.Error(w, "mesa-gw: connect: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	used := false
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
-			// The Transport below ignores the address; set a syntactically valid
+			// The Transport returns the already-open upstream conn; set a valid
 			// target so ReverseProxy builds the outbound request.
 			req.URL.Scheme = "http"
 			req.URL.Host = host
 		},
 		Transport: &http.Transport{
-			// Every request rides a fresh forward stream into the workspace,
-			// regardless of the dialed address.
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				return g.dialer.DialWorkspace(ctx, wsID, port)
+			DialContext: func(context.Context, string, string) (net.Conn, error) {
+				if used {
+					return nil, errors.New("mesa-gw: upstream conn already consumed")
+				}
+				used = true
+				return upstream, nil
 			},
 			DisableKeepAlives: true,
 		},
@@ -63,5 +68,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "mesa-gw: upstream error: "+err.Error(), http.StatusBadGateway)
 		},
 	}
+	defer func() {
+		if !used {
+			_ = upstream.Close()
+		}
+	}()
 	proxy.ServeHTTP(w, r)
 }

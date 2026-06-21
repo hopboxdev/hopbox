@@ -11,14 +11,10 @@ import (
 	"github.com/mesadev/mesa/internal/gateway"
 )
 
-type routerFunc func(host string) (string, int32, bool)
+type connectorFunc func(ctx context.Context, host string) (net.Conn, error)
 
-func (f routerFunc) Lookup(host string) (string, int32, bool) { return f(host) }
-
-type dialerFunc func(ctx context.Context, wsID string, port int32) (net.Conn, error)
-
-func (f dialerFunc) DialWorkspace(ctx context.Context, wsID string, port int32) (net.Conn, error) {
-	return f(ctx, wsID, port)
+func (f connectorFunc) Connect(ctx context.Context, host string) (net.Conn, error) {
+	return f(ctx, host)
 }
 
 func TestGatewayProxiesToWorkspaceService(t *testing.T) {
@@ -29,19 +25,14 @@ func TestGatewayProxiesToWorkspaceService(t *testing.T) {
 	defer backend.Close()
 	backendAddr := backend.Listener.Addr().String()
 
-	g := gateway.New(
-		routerFunc(func(host string) (string, int32, bool) {
-			if host == "app-w1.gw.example.com" {
-				return "w1", 3000, true
-			}
-			return "", 0, false
-		}),
-		// the dialer stands in for hub.OpenForward: it returns a conn to the
-		// backend regardless of port, exactly as the agent forward stream would.
-		dialerFunc(func(_ context.Context, _ string, _ int32) (net.Conn, error) {
+	// the connector stands in for the in-proc/remote path: it returns a conn to
+	// the backend, exactly as an agent forward stream would.
+	g := gateway.New(connectorFunc(func(_ context.Context, host string) (net.Conn, error) {
+		if host == "app-w1.gw.example.com" {
 			return net.Dial("tcp", backendAddr)
-		}),
-	)
+		}
+		return nil, gateway.ErrNoRoute
+	}))
 	gw := httptest.NewServer(g)
 	defer gw.Close()
 
@@ -62,10 +53,9 @@ func TestGatewayProxiesToWorkspaceService(t *testing.T) {
 }
 
 func TestGatewayUnknownHostIs404(t *testing.T) {
-	g := gateway.New(
-		routerFunc(func(string) (string, int32, bool) { return "", 0, false }),
-		dialerFunc(func(context.Context, string, int32) (net.Conn, error) { return nil, nil }),
-	)
+	g := gateway.New(connectorFunc(func(context.Context, string) (net.Conn, error) {
+		return nil, gateway.ErrNoRoute
+	}))
 	gw := httptest.NewServer(g)
 	defer gw.Close()
 

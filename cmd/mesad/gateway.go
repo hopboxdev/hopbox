@@ -9,23 +9,29 @@ import (
 	"github.com/mesadev/mesa/providers/ingress/subdomain"
 )
 
-// subdomainRouter adapts the subdomain Ingress provider's route table to the
-// gateway.Router interface.
-type subdomainRouter struct{ p *subdomain.Provider }
-
-func (r subdomainRouter) Lookup(host string) (string, int32, bool) {
-	rt, ok := r.p.Lookup(host)
-	return rt.WorkspaceID, rt.Port, ok
+// inProcConnector resolves a gateway Host against the subdomain route table and
+// opens a forward stream into the workspace via the agent hub — the in-process
+// path used by mesad's embedded gateway and served to remote mesa-gw over the
+// tunnel.
+type inProcConnector struct {
+	ig  *subdomain.Provider
+	hub *agenthub.Hub
 }
 
-// hubDialer adapts the agent hub to gateway.Dialer: each DialWorkspace opens a
-// fresh forward stream into the workspace over its agent reverse-connection.
-type hubDialer struct{ h *agenthub.Hub }
+var _ gateway.Connector = inProcConnector{}
 
-func (d hubDialer) DialWorkspace(_ context.Context, workspaceID string, port int32) (net.Conn, error) {
-	return d.h.OpenForward(workspaceID, uint32(port))
+func (c inProcConnector) Connect(_ context.Context, host string) (net.Conn, error) {
+	rt, ok := c.ig.Lookup(host)
+	if !ok {
+		return nil, gateway.ErrNoRoute
+	}
+	return c.hub.OpenForward(rt.WorkspaceID, uint32(rt.Port))
+}
+
+func newConnector(ig *subdomain.Provider, hub *agenthub.Hub) inProcConnector {
+	return inProcConnector{ig: ig, hub: hub}
 }
 
 func newGateway(ig *subdomain.Provider, hub *agenthub.Hub) *gateway.Gateway {
-	return gateway.New(subdomainRouter{ig}, hubDialer{hub})
+	return gateway.New(newConnector(ig, hub))
 }
