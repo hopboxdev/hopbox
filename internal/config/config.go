@@ -32,6 +32,7 @@ type Config struct {
 
 	GatewayAddr string
 	GatewayZone string
+	TunnelAddr  string
 }
 
 func Parse(args []string) (Config, error) {
@@ -61,6 +62,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.KubeHomeSize, "kube-home-size", "1Gi", "PVC size for a workspace home (k8spvc storage)")
 	fs.StringVar(&c.GatewayAddr, "gateway-addr", ":8088", "service gateway (mesa-gw) HTTP listen address; empty disables")
 	fs.StringVar(&c.GatewayZone, "gateway-zone", "gw.example.com", "wildcard DNS zone for the subdomain ingress provider")
+	fs.StringVar(&c.TunnelAddr, "tunnel-addr", ":7701", "gateway tunnel listen address for standalone mesa-gw; empty disables")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}

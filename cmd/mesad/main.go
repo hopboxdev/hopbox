@@ -115,6 +115,22 @@ func run(cfg config.Config) error {
 		}()
 	}
 
+	// Gateway tunnel: lets a standalone mesa-gw fleet reach these workspaces
+	// (resolves Host + bridges to the agent forward stream, server-side).
+	if cfg.TunnelAddr != "" {
+		tunLn, err := net.Listen("tcp", cfg.TunnelAddr)
+		if err != nil {
+			return err
+		}
+		tunSrv := newTunnelServer(ingress, hub)
+		go func() {
+			log.Printf("mesad: gateway tunnel on %s", cfg.TunnelAddr)
+			if err := tunSrv.Serve(ctx, tunLn); err != nil {
+				log.Printf("mesad: gateway tunnel stopped: %v", err)
+			}
+		}()
+	}
+
 	apiLn, err := net.Listen("tcp", cfg.APIAddr)
 	if err != nil {
 		return err

@@ -16,7 +16,8 @@ agent-image: agent
 
 build: agent
 	$(GO) build -tags docker -o $(BIN)/mesad ./cmd/mesad
-	$(GO) build -o $(BIN)/mesa  ./cmd/mesa
+	$(GO) build -o $(BIN)/mesa    ./cmd/mesa
+	$(GO) build -o $(BIN)/mesa-gw ./cmd/mesa-gw
 
 test:
 	$(GO) test ./...

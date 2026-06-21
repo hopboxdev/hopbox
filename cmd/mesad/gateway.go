@@ -35,3 +35,7 @@ func newConnector(ig *subdomain.Provider, hub *agenthub.Hub) inProcConnector {
 func newGateway(ig *subdomain.Provider, hub *agenthub.Hub) *gateway.Gateway {
 	return gateway.New(newConnector(ig, hub))
 }
+
+func newTunnelServer(ig *subdomain.Provider, hub *agenthub.Hub) *gateway.TunnelServer {
+	return gateway.NewTunnelServer(newConnector(ig, hub))
+}
