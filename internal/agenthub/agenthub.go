@@ -112,6 +112,25 @@ func (h *Hub) OpenForward(workspaceID string, port uint32) (net.Conn, error) {
 	return stream, nil
 }
 
+// OpenExec opens a yamux stream and asks the agent to run cmd (argv, no pty).
+// The returned stream yields exec frames (stdout/stderr/exit) via
+// agentproto.ReadExecFrame.
+func (h *Hub) OpenExec(workspaceID string, cmd []string) (io.ReadWriteCloser, error) {
+	stream, err := h.openStream(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if err := agentproto.WriteOpenFrame(stream, agentproto.OpenFrame{Kind: agentproto.KindExec}); err != nil {
+		_ = stream.Close()
+		return nil, fmt.Errorf("agenthub: write open frame: %w", err)
+	}
+	if err := agentproto.WriteExecHeader(stream, agentproto.ExecHeader{Cmd: cmd}); err != nil {
+		_ = stream.Close()
+		return nil, fmt.Errorf("agenthub: write exec header: %w", err)
+	}
+	return stream, nil
+}
+
 func (h *Hub) openStream(workspaceID string) (*yamux.Stream, error) {
 	sess, ok := h.get(workspaceID)
 	if !ok || sess.IsClosed() {

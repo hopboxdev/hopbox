@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/creack/pty"
@@ -73,9 +74,77 @@ func handleStream(stream io.ReadWriteCloser) {
 	switch of.Kind {
 	case agentproto.KindForward:
 		handleForward(stream)
+	case agentproto.KindExec:
+		handleExec(stream)
 	default: // KindShell
 		handleShell(stream)
 	}
+}
+
+// execWriter frames each Write as an exec stdout/stderr frame, chunking to stay
+// under the frame cap. Writes are serialized via mu so stdout and stderr don't
+// interleave a single frame.
+type execWriter struct {
+	w   io.Writer
+	typ byte
+	mu  *sync.Mutex
+}
+
+const execChunk = 32 * 1024
+
+func (e *execWriter) Write(p []byte) (int, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	total := 0
+	for len(p) > 0 {
+		n := len(p)
+		if n > execChunk {
+			n = execChunk
+		}
+		if err := agentproto.WriteExecData(e.w, e.typ, p[:n]); err != nil {
+			return total, err
+		}
+		total += n
+		p = p[n:]
+	}
+	return total, nil
+}
+
+// handleExec runs an argv command without a pty and streams stdout/stderr back
+// as exec frames, then the exit code. No stdin in v1.
+func handleExec(stream io.ReadWriteCloser) {
+	hdr, err := agentproto.ReadExecHeader(stream)
+	if err != nil {
+		log.Printf("mesa-agent: read exec header: %v", err)
+		return
+	}
+	if len(hdr.Cmd) == 0 {
+		_ = agentproto.WriteExecExit(stream, 2)
+		return
+	}
+	var mu sync.Mutex
+	cmd := exec.Command(hdr.Cmd[0], hdr.Cmd[1:]...)
+	cmd.Env = append(os.Environ(), "TERM=dumb")
+	cmd.Stdout = &execWriter{w: stream, typ: agentproto.ExecStdout, mu: &mu}
+	cmd.Stderr = &execWriter{w: stream, typ: agentproto.ExecStderr, mu: &mu}
+
+	if err := cmd.Start(); err != nil {
+		// nothing else writes yet; emit directly.
+		_ = agentproto.WriteExecData(stream, agentproto.ExecStderr, []byte("mesa-agent: "+err.Error()+"\n"))
+		_ = agentproto.WriteExecExit(stream, 127)
+		return
+	}
+	code := int32(0)
+	if err := cmd.Wait(); err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = int32(ee.ExitCode())
+		} else {
+			code = 1
+		}
+	}
+	mu.Lock()
+	_ = agentproto.WriteExecExit(stream, code)
+	mu.Unlock()
 }
 
 // handleForward dials a local TCP service in the workspace and pipes the stream

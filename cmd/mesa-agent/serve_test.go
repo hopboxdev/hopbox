@@ -57,6 +57,65 @@ func TestServeSessionRunsCommand(t *testing.T) {
 	}
 }
 
+func TestServeSessionExecRunsCommand(t *testing.T) {
+	c1, c2 := net.Pipe()
+	agentSess, err := yamux.Server(c1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go serveSession(agentSess)
+	ctrlSess, err := yamux.Client(c2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := ctrlSess.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agentproto.WriteOpenFrame(st, agentproto.OpenFrame{Kind: agentproto.KindExec}); err != nil {
+		t.Fatal(err)
+	}
+	if err := agentproto.WriteExecHeader(st, agentproto.ExecHeader{Cmd: []string{"/bin/sh", "-c", "echo out; echo err 1>&2; exit 7"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr string
+	var code int32 = -1
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			typ, data, c, err := agentproto.ReadExecFrame(st)
+			if err != nil {
+				return
+			}
+			switch typ {
+			case agentproto.ExecStdout:
+				stdout += string(data)
+			case agentproto.ExecStderr:
+				stderr += string(data)
+			case agentproto.ExecExit:
+				code = c
+				return
+			}
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout waiting for exec output")
+	}
+	if !strings.Contains(stdout, "out") {
+		t.Fatalf("stdout=%q", stdout)
+	}
+	if !strings.Contains(stderr, "err") {
+		t.Fatalf("stderr=%q", stderr)
+	}
+	if code != 7 {
+		t.Fatalf("exit code=%d want 7", code)
+	}
+}
+
 func TestHandleStreamNoGoroutineLeak(t *testing.T) {
 	base := runtime.NumGoroutine()
 	c1, c2 := net.Pipe()

@@ -83,6 +83,40 @@ func TestOpenForwardReachesAgent(t *testing.T) {
 
 func itoa(p uint32) string { return strconv.FormatUint(uint64(p), 10) }
 
+func TestOpenExecReachesAgent(t *testing.T) {
+	c1, c2 := net.Pipe()
+
+	// fake agent: read the open frame + exec header, echo the command joined.
+	go func() {
+		sess, err := yamux.Server(c1, nil)
+		if err != nil {
+			return
+		}
+		st, err := sess.Accept()
+		if err != nil {
+			return
+		}
+		of, _ := agentproto.ReadOpenFrame(st)
+		eh, _ := agentproto.ReadExecHeader(st)
+		_, _ = io.WriteString(st, of.Kind+":"+eh.Cmd[0])
+		_ = st.Close()
+	}()
+
+	hub := agenthub.New()
+	clientSess, _ := yamux.Client(c2, nil)
+	hub.Register("w1", clientSess)
+
+	stream, err := hub.OpenExec("w1", []string{"ls", "-la"})
+	if err != nil {
+		t.Fatalf("openexec: %v", err)
+	}
+	defer stream.Close()
+	b, _ := io.ReadAll(stream)
+	if string(b) != "exec:ls" {
+		t.Fatalf("got %q", string(b))
+	}
+}
+
 func TestOpenShellUnknownWorkspace(t *testing.T) {
 	hub := agenthub.New()
 	if _, err := hub.OpenShell(context.Background(), "ghost", agentproto.ShellHeader{}); err == nil {

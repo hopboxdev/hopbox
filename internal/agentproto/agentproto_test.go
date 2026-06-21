@@ -57,6 +57,39 @@ func TestOpenFrameAndForwardHeaderRoundTrip(t *testing.T) {
 	}
 }
 
+func TestExecFramingRoundTrip(t *testing.T) {
+	var buf bytes.Buffer
+	hdr := agentproto.ExecHeader{Cmd: []string{"echo", "hi"}}
+	if err := agentproto.WriteExecHeader(&buf, hdr); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := agentproto.ReadExecHeader(&buf); err != nil || len(out.Cmd) != 2 || out.Cmd[0] != "echo" {
+		t.Fatalf("exec header roundtrip: %+v err=%v", out, err)
+	}
+	// stdout frame, stderr frame, exit frame in order
+	if err := agentproto.WriteExecData(&buf, agentproto.ExecStdout, []byte("out")); err != nil {
+		t.Fatal(err)
+	}
+	if err := agentproto.WriteExecData(&buf, agentproto.ExecStderr, []byte("err")); err != nil {
+		t.Fatal(err)
+	}
+	if err := agentproto.WriteExecExit(&buf, 42); err != nil {
+		t.Fatal(err)
+	}
+	typ, data, _, err := agentproto.ReadExecFrame(&buf)
+	if err != nil || typ != agentproto.ExecStdout || string(data) != "out" {
+		t.Fatalf("stdout frame: typ=%d data=%q err=%v", typ, data, err)
+	}
+	typ, data, _, err = agentproto.ReadExecFrame(&buf)
+	if err != nil || typ != agentproto.ExecStderr || string(data) != "err" {
+		t.Fatalf("stderr frame: typ=%d data=%q err=%v", typ, data, err)
+	}
+	typ, _, code, err := agentproto.ReadExecFrame(&buf)
+	if err != nil || typ != agentproto.ExecExit || code != 42 {
+		t.Fatalf("exit frame: typ=%d code=%d err=%v", typ, code, err)
+	}
+}
+
 func TestReadHandshakeRejectsOversizeLength(t *testing.T) {
 	// craft a header claiming a body far larger than maxFrame (1<<16)
 	var hdr [4]byte

@@ -21,6 +21,7 @@ type Handshake struct {
 const (
 	KindShell   = "shell"
 	KindForward = "forward"
+	KindExec    = "exec"
 )
 
 // OpenFrame is the first frame on every yamux stream; Kind selects the handler.
@@ -42,6 +43,76 @@ type ShellHeader struct {
 // 127.0.0.1:Port inside the workspace and pipes the stream to it.
 type ForwardHeader struct {
 	Port uint32 `json:"port"`
+}
+
+// ExecHeader follows an OpenFrame{Kind:exec}; the agent runs Cmd (argv, no pty)
+// and streams its output back as exec frames (no stdin in v1).
+type ExecHeader struct {
+	Cmd []string `json:"cmd"`
+}
+
+// Exec output frame types (agent -> controller), a binary framing on the exec
+// stream: [type:1][len:4][payload]. stdout/stderr payloads are raw bytes; the
+// exit payload is a 4-byte big-endian int32 process exit code (sent last).
+const (
+	ExecStdout byte = 1
+	ExecStderr byte = 2
+	ExecExit   byte = 3
+)
+
+// WriteExecData writes a stdout/stderr frame. Callers must chunk payloads to
+// <= maxFrame; the agent's exec writer does this.
+func WriteExecData(w io.Writer, typ byte, data []byte) error {
+	if len(data) > maxFrame {
+		return fmt.Errorf("agentproto: exec data frame too large (%d)", len(data))
+	}
+	var hdr [5]byte
+	hdr[0] = typ
+	binary.BigEndian.PutUint32(hdr[1:], uint32(len(data)))
+	if _, err := w.Write(hdr[:]); err != nil {
+		return err
+	}
+	_, err := w.Write(data)
+	return err
+}
+
+// WriteExecExit writes the terminal exit frame.
+func WriteExecExit(w io.Writer, code int32) error {
+	var buf [9]byte
+	buf[0] = ExecExit
+	binary.BigEndian.PutUint32(buf[1:5], 4)
+	binary.BigEndian.PutUint32(buf[5:9], uint32(code))
+	_, err := w.Write(buf[:])
+	return err
+}
+
+// ReadExecFrame reads one exec frame. For ExecExit, code is set and data is nil;
+// otherwise data holds the stdout/stderr bytes.
+func ReadExecFrame(r io.Reader) (typ byte, data []byte, code int32, err error) {
+	var h [5]byte
+	if _, err = io.ReadFull(r, h[:]); err != nil {
+		return
+	}
+	typ = h[0]
+	n := binary.BigEndian.Uint32(h[1:])
+	if n > maxFrame {
+		err = fmt.Errorf("agentproto: exec frame too large (%d)", n)
+		return
+	}
+	payload := make([]byte, n)
+	if _, err = io.ReadFull(r, payload); err != nil {
+		return
+	}
+	if typ == ExecExit {
+		if len(payload) != 4 {
+			err = fmt.Errorf("agentproto: bad exit frame length %d", len(payload))
+			return
+		}
+		code = int32(binary.BigEndian.Uint32(payload))
+		return
+	}
+	data = payload
+	return
 }
 
 const maxFrame = 1 << 16
@@ -89,5 +160,11 @@ func ReadShellHeader(r io.Reader) (ShellHeader, error)  { var h ShellHeader; ret
 func WriteForwardHeader(w io.Writer, h ForwardHeader) error { return writeFrame(w, h) }
 func ReadForwardHeader(r io.Reader) (ForwardHeader, error) {
 	var h ForwardHeader
+	return h, readFrame(r, &h)
+}
+
+func WriteExecHeader(w io.Writer, h ExecHeader) error { return writeFrame(w, h) }
+func ReadExecHeader(r io.Reader) (ExecHeader, error) {
+	var h ExecHeader
 	return h, readFrame(r, &h)
 }
