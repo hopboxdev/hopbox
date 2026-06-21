@@ -6,7 +6,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 // ProviderConfig selects how a provider is loaded. The concrete in-process

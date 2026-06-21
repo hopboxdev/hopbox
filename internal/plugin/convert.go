@@ -4,8 +4,8 @@
 package plugin
 
 import (
-	pb "github.com/mesadev/mesa/gen/mesa/provider/v1"
-	"github.com/mesadev/mesa/internal/core/ports"
+	pb "github.com/hopboxdev/hopbox/gen/hopbox/provider/v1"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 // Converters are EXPORTED because the sibling internal/plugin/server package

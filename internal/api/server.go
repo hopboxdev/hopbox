@@ -11,10 +11,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	mesav1 "github.com/mesadev/mesa/gen/mesa/v1"
-	"github.com/mesadev/mesa/internal/agentproto"
-	"github.com/mesadev/mesa/internal/core/store"
-	"github.com/mesadev/mesa/internal/core/workspace"
+	hopboxv1 "github.com/hopboxdev/hopbox/gen/hopbox/v1"
+	"github.com/hopboxdev/hopbox/internal/agentproto"
+	"github.com/hopboxdev/hopbox/internal/core/store"
+	"github.com/hopboxdev/hopbox/internal/core/workspace"
 )
 
 // Hub is the subset of agenthub.Hub the API needs (kept small for testing).
@@ -25,7 +25,7 @@ type Hub interface {
 }
 
 type Server struct {
-	mesav1.UnimplementedWorkspaceServiceServer
+	hopboxv1.UnimplementedWorkspaceServiceServer
 	store  store.Store
 	hub    Hub
 	tenant string // M1 single tenant
@@ -36,14 +36,14 @@ func NewServer(s store.Store, hub Hub, tenant, owner string) *Server {
 	return &Server{store: s, hub: hub, tenant: tenant, owner: owner}
 }
 
-func toProto(w *workspace.Workspace) *mesav1.Workspace {
-	out := &mesav1.Workspace{
+func toProto(w *workspace.Workspace) *hopboxv1.Workspace {
+	out := &hopboxv1.Workspace{
 		Id: w.ID, TenantId: w.TenantID, Owner: w.Owner, Name: w.Name,
 		ImageRef: w.ImageRef, MemMb: w.MemMB, Phase: string(w.Phase),
 		AgentConnected: w.AgentConnected, Message: w.Message,
 	}
 	for _, e := range w.Endpoints {
-		out.Endpoints = append(out.Endpoints, &mesav1.Endpoint{Name: e.Name, Url: e.URL, Port: e.Port})
+		out.Endpoints = append(out.Endpoints, &hopboxv1.Endpoint{Name: e.Name, Url: e.URL, Port: e.Port})
 	}
 	return out
 }
@@ -66,7 +66,7 @@ func (s *Server) resolve(ctx context.Context, nameOrID string) (*workspace.Works
 	return w, nil
 }
 
-func (s *Server) CreateWorkspace(ctx context.Context, r *mesav1.CreateWorkspaceRequest) (*mesav1.Workspace, error) {
+func (s *Server) CreateWorkspace(ctx context.Context, r *hopboxv1.CreateWorkspaceRequest) (*hopboxv1.Workspace, error) {
 	if r.Name == "" || r.ImageRef == "" {
 		return nil, status.Error(codes.InvalidArgument, "name and image_ref are required")
 	}
@@ -84,7 +84,7 @@ func (s *Server) CreateWorkspace(ctx context.Context, r *mesav1.CreateWorkspaceR
 	return toProto(w), nil
 }
 
-func (s *Server) GetWorkspace(ctx context.Context, r *mesav1.GetWorkspaceRequest) (*mesav1.Workspace, error) {
+func (s *Server) GetWorkspace(ctx context.Context, r *hopboxv1.GetWorkspaceRequest) (*hopboxv1.Workspace, error) {
 	w, err := s.resolve(ctx, r.NameOrId)
 	if err != nil {
 		return nil, err
@@ -92,19 +92,19 @@ func (s *Server) GetWorkspace(ctx context.Context, r *mesav1.GetWorkspaceRequest
 	return toProto(w), nil
 }
 
-func (s *Server) ListWorkspaces(ctx context.Context, _ *mesav1.ListWorkspacesRequest) (*mesav1.ListWorkspacesResponse, error) {
+func (s *Server) ListWorkspaces(ctx context.Context, _ *hopboxv1.ListWorkspacesRequest) (*hopboxv1.ListWorkspacesResponse, error) {
 	ws, err := s.store.ListWorkspaces(ctx, s.tenant)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "list: %v", err)
 	}
-	out := &mesav1.ListWorkspacesResponse{}
+	out := &hopboxv1.ListWorkspacesResponse{}
 	for _, w := range ws {
 		out.Workspaces = append(out.Workspaces, toProto(w))
 	}
 	return out, nil
 }
 
-func (s *Server) DeleteWorkspace(ctx context.Context, r *mesav1.DeleteWorkspaceRequest) (*emptypb.Empty, error) {
+func (s *Server) DeleteWorkspace(ctx context.Context, r *hopboxv1.DeleteWorkspaceRequest) (*emptypb.Empty, error) {
 	w, err := s.resolve(ctx, r.NameOrId)
 	if err != nil {
 		return nil, err
@@ -122,7 +122,7 @@ func (s *Server) DeleteWorkspace(ctx context.Context, r *mesav1.DeleteWorkspaceR
 
 // Exec runs a non-interactive command on the agent, forwarding client stdin and
 // streaming framed stdout/stderr back, finishing with the exit code.
-func (s *Server) Exec(stream mesav1.WorkspaceService_ExecServer) error {
+func (s *Server) Exec(stream hopboxv1.WorkspaceService_ExecServer) error {
 	ctx := stream.Context()
 	first, err := stream.Recv()
 	if err != nil {
@@ -174,21 +174,21 @@ func (s *Server) Exec(stream mesav1.WorkspaceService_ExecServer) error {
 		}
 		switch typ {
 		case agentproto.ExecStdout:
-			if err := stream.Send(&mesav1.ExecServerMsg{Msg: &mesav1.ExecServerMsg_Stdout{Stdout: data}}); err != nil {
+			if err := stream.Send(&hopboxv1.ExecServerMsg{Msg: &hopboxv1.ExecServerMsg_Stdout{Stdout: data}}); err != nil {
 				return err
 			}
 		case agentproto.ExecStderr:
-			if err := stream.Send(&mesav1.ExecServerMsg{Msg: &mesav1.ExecServerMsg_Stderr{Stderr: data}}); err != nil {
+			if err := stream.Send(&hopboxv1.ExecServerMsg{Msg: &hopboxv1.ExecServerMsg_Stderr{Stderr: data}}); err != nil {
 				return err
 			}
 		case agentproto.ExecExit:
-			return stream.Send(&mesav1.ExecServerMsg{Msg: &mesav1.ExecServerMsg_ExitCode{ExitCode: code}})
+			return stream.Send(&hopboxv1.ExecServerMsg{Msg: &hopboxv1.ExecServerMsg_ExitCode{ExitCode: code}})
 		}
 	}
 }
 
 // Shell bridges the gRPC bidi stream to a pty stream on the agent.
-func (s *Server) Shell(stream mesav1.WorkspaceService_ShellServer) error {
+func (s *Server) Shell(stream hopboxv1.WorkspaceService_ShellServer) error {
 	ctx := stream.Context()
 	first, err := stream.Recv()
 	if err != nil {
@@ -220,8 +220,8 @@ func (s *Server) Shell(stream mesav1.WorkspaceService_ShellServer) error {
 		for {
 			n, rerr := agentStream.Read(buf)
 			if n > 0 {
-				if serr := stream.Send(&mesav1.ShellServerMsg{
-					Msg: &mesav1.ShellServerMsg_Data{Data: append([]byte(nil), buf[:n]...)},
+				if serr := stream.Send(&hopboxv1.ShellServerMsg{
+					Msg: &hopboxv1.ShellServerMsg_Data{Data: append([]byte(nil), buf[:n]...)},
 				}); serr != nil {
 					errc <- serr
 					return

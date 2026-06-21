@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/mesadev/mesa/internal/gateway"
+	"github.com/hopboxdev/hopbox/internal/gateway"
 )
 
 // startTunnel runs a TunnelServer backed by connector on a fresh listener and
@@ -34,7 +34,7 @@ func TestRemoteTunnelEndToEnd(t *testing.T) {
 	defer backend.Close()
 	backendAddr := backend.Listener.Addr().String()
 
-	// mesad-side connector: resolves one host to the backend
+	// hopboxd-side connector: resolves one host to the backend
 	tunnelAddr := startTunnel(t, connectorFunc(func(_ context.Context, host string) (net.Conn, error) {
 		if host == "app-w1.gw.example.com" {
 			return net.Dial("tcp", backendAddr)
@@ -42,7 +42,7 @@ func TestRemoteTunnelEndToEnd(t *testing.T) {
 		return nil, gateway.ErrNoRoute
 	}))
 
-	// standalone mesa-gw: a gateway fronted by the RemoteConnector (stateless)
+	// standalone hopbox-gw: a gateway fronted by the RemoteConnector (stateless)
 	gw := httptest.NewServer(gateway.New(gateway.NewRemoteConnector(tunnelAddr)))
 	defer gw.Close()
 

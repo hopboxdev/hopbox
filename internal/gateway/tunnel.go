@@ -10,10 +10,10 @@ import (
 	"net"
 )
 
-// The gateway tunnel lets a standalone mesa-gw reach workspaces hosted by a
-// central mesad. mesa-gw dials the tunnel and sends a TunnelHeader naming the
-// request Host; mesad resolves it (server-side) and bridges the raw byte pipe to
-// the workspace's agent forward stream. This keeps mesa-gw stateless — it owns
+// The gateway tunnel lets a standalone hopbox-gw reach workspaces hosted by a
+// central hopboxd. hopbox-gw dials the tunnel and sends a TunnelHeader naming the
+// request Host; hopboxd resolves it (server-side) and bridges the raw byte pipe to
+// the workspace's agent forward stream. This keeps hopbox-gw stateless — it owns
 // no route table and no agent sessions; it just forwards Hosts.
 //
 // Wire format: a 4-byte big-endian length prefix + JSON, one TunnelHeader from
@@ -64,7 +64,7 @@ func readFrame(r io.Reader, v any) error {
 	return json.Unmarshal(b, v)
 }
 
-// TunnelServer serves the in-process Connector to remote mesa-gw processes over
+// TunnelServer serves the in-process Connector to remote hopbox-gw processes over
 // a raw TCP listener.
 type TunnelServer struct{ connector Connector }
 
@@ -115,9 +115,9 @@ func (s *TunnelServer) handle(ctx context.Context, conn net.Conn) {
 	}
 }
 
-// RemoteConnector implements Connector by dialing a mesad gateway tunnel. It is
-// the heart of the standalone mesa-gw: stateless, it forwards the Host and lets
-// mesad resolve + bridge.
+// RemoteConnector implements Connector by dialing a hopboxd gateway tunnel. It is
+// the heart of the standalone hopbox-gw: stateless, it forwards the Host and lets
+// hopboxd resolve + bridge.
 type RemoteConnector struct {
 	addr string
 	dial func(ctx context.Context, addr string) (net.Conn, error)

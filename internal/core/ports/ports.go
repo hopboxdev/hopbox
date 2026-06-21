@@ -1,4 +1,4 @@
-// Package ports defines Mesa's provider contracts as Go interfaces with
+// Package ports defines Hopbox's provider contracts as Go interfaces with
 // vendor-neutral types. In M1 providers are in-process; M2 lifts these to
 // protobuf + an out-of-process loader. No provider SDK type appears here.
 package ports
@@ -29,7 +29,7 @@ type Instance struct {
 	Phase InstancePhase
 }
 
-// AgentImage describes how a Compute provider obtains and runs the mesa-agent
+// AgentImage describes how a Compute provider obtains and runs the hopbox-agent
 // inside a workspace. It replaces M1's host-path field (a Docker-only
 // assumption that could not work for a Kubernetes pod). Each provider
 // interprets it: docker pulls the image and copies the binary into a volume
@@ -48,7 +48,7 @@ type ProvisionRequest struct {
 	ImageRef    string
 	MemMB       int64
 	Mounts      []Mount
-	Env         map[string]string // includes MESA_AGENT_TOKEN, MESA_CONTROL_ADDR
+	Env         map[string]string // includes HOPBOX_AGENT_TOKEN, HOPBOX_CONTROL_ADDR
 	Agent       AgentImage        // how to side-load the agent (replaces AgentPath)
 }
 
@@ -102,7 +102,7 @@ type Credential struct {
 }
 
 // Principal is an authenticated identity. It carries TenantID — the seam a
-// hyperscaler uses to map their customer model onto Mesa tenants.
+// hyperscaler uses to map their customer model onto Hopbox tenants.
 type Principal struct {
 	ID          string
 	TenantID    string

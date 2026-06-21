@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mesadev/mesa/internal/core/store"
-	"github.com/mesadev/mesa/internal/core/store/sqlite"
-	"github.com/mesadev/mesa/internal/core/workspace"
+	"github.com/hopboxdev/hopbox/internal/core/store"
+	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
+	"github.com/hopboxdev/hopbox/internal/core/workspace"
 )
 
 func newTestStore(t *testing.T) store.Store {

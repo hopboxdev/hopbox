@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/mesadev/mesa/internal/core/workspace"
+	"github.com/hopboxdev/hopbox/internal/core/workspace"
 )
 
 var ErrNotFound = errors.New("store: not found")

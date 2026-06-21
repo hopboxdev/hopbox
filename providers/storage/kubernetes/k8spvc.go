@@ -16,13 +16,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 const (
 	homeTarget     = "/home/dev"
-	labelWorkspace = "mesa.workspace_id"
-	labelTenant    = "mesa.tenant"
+	labelWorkspace = "hopbox.workspace_id"
+	labelTenant    = "hopbox.tenant"
 )
 
 type Provider struct {
@@ -38,7 +38,7 @@ var _ ports.Storage = (*Provider)(nil)
 // storageClass "" means the cluster default.
 func New(cli kubernetes.Interface, namespace, storageClass, size string) (*Provider, error) {
 	if namespace == "" {
-		namespace = "mesa-workspaces"
+		namespace = "hopbox-workspaces"
 	}
 	if size == "" {
 		size = "1Gi"
@@ -50,7 +50,7 @@ func New(cli kubernetes.Interface, namespace, storageClass, size string) (*Provi
 	return &Provider{cli: cli, ns: namespace, storageClass: storageClass, size: q}, nil
 }
 
-func pvcName(wsID string) string { return "mesa-home-" + wsID }
+func pvcName(wsID string) string { return "hopbox-home-" + wsID }
 
 func (p *Provider) EnsureHome(ctx context.Context, r ports.HomeRequest) (ports.Mount, error) {
 	if r.WorkspaceID == "" {

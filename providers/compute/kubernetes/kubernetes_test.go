@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 func sampleReq() ports.ProvisionRequest {
@@ -18,23 +18,23 @@ func sampleReq() ports.ProvisionRequest {
 		WorkspaceID: "w1",
 		ImageRef:    "ubuntu:24.04",
 		MemMB:       512,
-		Mounts:      []ports.Mount{{Source: "mesa-home-w1", Target: "/home/dev"}},
-		Env:         map[string]string{"MESA_AGENT_TOKEN": "tok", "MESA_WORKSPACE_ID": "w1"},
-		Agent:       ports.AgentImage{ImageRef: "ghcr.io/mesadev/mesa-agent:0.2.0", BinaryPath: "/mesa-agent", TargetPath: "/mesa/mesa-agent"},
+		Mounts:      []ports.Mount{{Source: "hopbox-home-w1", Target: "/home/dev"}},
+		Env:         map[string]string{"HOPBOX_AGENT_TOKEN": "tok", "HOPBOX_WORKSPACE_ID": "w1"},
+		Agent:       ports.AgentImage{ImageRef: "ghcr.io/hopboxdev/hopbox-agent:0.2.0", BinaryPath: "/hopbox-agent", TargetPath: "/hopbox/hopbox-agent"},
 	}
 }
 
 func TestProvisionBuildsAgentInjectingPod(t *testing.T) {
 	cli := fake.NewSimpleClientset()
-	p := New(cli, "mesa-workspaces")
+	p := New(cli, "hopbox-workspaces")
 	inst, err := p.Provision(context.Background(), sampleReq())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inst.Ref != "mesa-workspaces/mesa-w1" {
+	if inst.Ref != "hopbox-workspaces/hopbox-w1" {
 		t.Fatalf("ref = %q", inst.Ref)
 	}
-	pod, err := cli.CoreV1().Pods("mesa-workspaces").Get(context.Background(), "mesa-w1", metav1.GetOptions{})
+	pod, err := cli.CoreV1().Pods("hopbox-workspaces").Get(context.Background(), "hopbox-w1", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("pod not created: %v", err)
 	}
@@ -43,15 +43,15 @@ func TestProvisionBuildsAgentInjectingPod(t *testing.T) {
 		t.Fatalf("want 1 initContainer, got %d", len(pod.Spec.InitContainers))
 	}
 	ic := pod.Spec.InitContainers[0]
-	if ic.Image != "ghcr.io/mesadev/mesa-agent:0.2.0" {
+	if ic.Image != "ghcr.io/hopboxdev/hopbox-agent:0.2.0" {
 		t.Fatalf("init image = %q", ic.Image)
 	}
-	if got := ic.Command; len(got) != 3 || got[0] != "cp" || got[1] != "/mesa-agent" || got[2] != "/mesa/mesa-agent" {
+	if got := ic.Command; len(got) != 3 || got[0] != "cp" || got[1] != "/hopbox-agent" || got[2] != "/hopbox/hopbox-agent" {
 		t.Fatalf("init command = %v", got)
 	}
 	// workspace container runs the agent at TargetPath
 	ws := pod.Spec.Containers[0]
-	if len(ws.Command) != 1 || ws.Command[0] != "/mesa/mesa-agent" {
+	if len(ws.Command) != 1 || ws.Command[0] != "/hopbox/hopbox-agent" {
 		t.Fatalf("workspace command = %v", ws.Command)
 	}
 	if ws.Image != "ubuntu:24.04" {
@@ -64,7 +64,7 @@ func TestProvisionBuildsAgentInjectingPod(t *testing.T) {
 	// the home mount became a PVC-claim volume (the seam: Mount.Source -> claimName)
 	var foundPVC bool
 	for _, v := range pod.Spec.Volumes {
-		if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == "mesa-home-w1" {
+		if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == "hopbox-home-w1" {
 			foundPVC = true
 		}
 	}
@@ -75,23 +75,23 @@ func TestProvisionBuildsAgentInjectingPod(t *testing.T) {
 
 func TestProvisionIsIdempotent(t *testing.T) {
 	cli := fake.NewSimpleClientset()
-	p := New(cli, "mesa-workspaces")
+	p := New(cli, "hopbox-workspaces")
 	if _, err := p.Provision(context.Background(), sampleReq()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.Provision(context.Background(), sampleReq()); err != nil {
 		t.Fatalf("re-provision (delete-then-create) must succeed: %v", err)
 	}
-	pods, _ := cli.CoreV1().Pods("mesa-workspaces").List(context.Background(), metav1.ListOptions{})
+	pods, _ := cli.CoreV1().Pods("hopbox-workspaces").List(context.Background(), metav1.ListOptions{})
 	if len(pods.Items) != 1 {
 		t.Fatalf("want exactly 1 pod after re-provision, got %d", len(pods.Items))
 	}
 }
 
 func TestProvisionRejectsHostBinaryOnlyAgent(t *testing.T) {
-	p := New(fake.NewSimpleClientset(), "mesa-workspaces")
+	p := New(fake.NewSimpleClientset(), "hopbox-workspaces")
 	req := sampleReq()
-	req.Agent = ports.AgentImage{HostBinaryPath: "/usr/local/bin/mesa-agent"} // docker-only
+	req.Agent = ports.AgentImage{HostBinaryPath: "/usr/local/bin/hopbox-agent"} // docker-only
 	if _, err := p.Provision(context.Background(), req); err == nil {
 		t.Fatal("expected error: kubernetes cannot bind-mount a host binary")
 	}

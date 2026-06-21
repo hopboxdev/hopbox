@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mesadev/mesa/internal/core/ports"
-	"github.com/mesadev/mesa/internal/core/reconciler"
-	"github.com/mesadev/mesa/internal/core/store"
-	"github.com/mesadev/mesa/internal/core/store/sqlite"
-	"github.com/mesadev/mesa/internal/core/workspace"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/reconciler"
+	"github.com/hopboxdev/hopbox/internal/core/store"
+	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
+	"github.com/hopboxdev/hopbox/internal/core/workspace"
 )
 
 // --- fakes ---

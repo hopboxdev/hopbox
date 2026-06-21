@@ -32,7 +32,7 @@ type Endpoint struct {
 	Ref  string `json:"ref"`  // provider-opaque handle / gateway route key
 }
 
-// Workspace is Mesa's single declarative resource (M1 subset + M3 ingress).
+// Workspace is Hopbox's single declarative resource (M1 subset + M3 ingress).
 type Workspace struct {
 	// metadata
 	ID       string

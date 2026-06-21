@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 func TestExposeBuildsHostAndLookupResolves(t *testing.T) {

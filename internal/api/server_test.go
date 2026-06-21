@@ -13,10 +13,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	mesav1 "github.com/mesadev/mesa/gen/mesa/v1"
-	"github.com/mesadev/mesa/internal/agentproto"
-	"github.com/mesadev/mesa/internal/api"
-	"github.com/mesadev/mesa/internal/core/store/sqlite"
+	hopboxv1 "github.com/hopboxdev/hopbox/gen/hopbox/v1"
+	"github.com/hopboxdev/hopbox/internal/agentproto"
+	"github.com/hopboxdev/hopbox/internal/api"
+	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
 )
 
 // fakeHub returns a pre-baked pipe whose far end echoes input back, so the
@@ -55,7 +55,7 @@ func (f *fakeHub) OpenExec(_ string, cmd []string) (io.ReadWriteCloser, error) {
 	return c1, nil
 }
 
-func dialer(t *testing.T) (mesav1.WorkspaceServiceClient, func()) {
+func dialer(t *testing.T) (hopboxv1.WorkspaceServiceClient, func()) {
 	t.Helper()
 	s, err := sqlite.Open(t.TempDir() + "/api.db")
 	if err != nil {
@@ -65,7 +65,7 @@ func dialer(t *testing.T) (mesav1.WorkspaceServiceClient, func()) {
 
 	lis := bufconn.Listen(1 << 20)
 	gs := grpc.NewServer()
-	mesav1.RegisterWorkspaceServiceServer(gs, srv)
+	hopboxv1.RegisterWorkspaceServiceServer(gs, srv)
 	go func() { _ = gs.Serve(lis) }()
 
 	conn, err := grpc.NewClient("passthrough:///bufnet",
@@ -74,7 +74,7 @@ func dialer(t *testing.T) (mesav1.WorkspaceServiceClient, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return mesav1.NewWorkspaceServiceClient(conn), func() {
+	return hopboxv1.NewWorkspaceServiceClient(conn), func() {
 		_ = conn.Close()
 		gs.Stop()
 		_ = s.Close()
@@ -86,22 +86,22 @@ func TestCreateGetListDelete(t *testing.T) {
 	c, done := dialer(t)
 	defer done()
 
-	w, err := c.CreateWorkspace(ctx, &mesav1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
+	w, err := c.CreateWorkspace(ctx, &hopboxv1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	if w.Phase != "Pending" || w.Name != "proj" {
 		t.Fatalf("bad create: %+v", w)
 	}
-	got, err := c.GetWorkspace(ctx, &mesav1.GetWorkspaceRequest{NameOrId: "proj"})
+	got, err := c.GetWorkspace(ctx, &hopboxv1.GetWorkspaceRequest{NameOrId: "proj"})
 	if err != nil || got.Id != w.Id {
 		t.Fatalf("get: %+v err=%v", got, err)
 	}
-	list, err := c.ListWorkspaces(ctx, &mesav1.ListWorkspacesRequest{})
+	list, err := c.ListWorkspaces(ctx, &hopboxv1.ListWorkspacesRequest{})
 	if err != nil || len(list.Workspaces) != 1 {
 		t.Fatalf("list: %d err=%v", len(list.Workspaces), err)
 	}
-	if _, err := c.DeleteWorkspace(ctx, &mesav1.DeleteWorkspaceRequest{NameOrId: "proj"}); err != nil {
+	if _, err := c.DeleteWorkspace(ctx, &hopboxv1.DeleteWorkspaceRequest{NameOrId: "proj"}); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 }
@@ -110,7 +110,7 @@ func TestGetWorkspaceNotFound(t *testing.T) {
 	ctx := context.Background()
 	c, done := dialer(t)
 	defer done()
-	_, err := c.GetWorkspace(ctx, &mesav1.GetWorkspaceRequest{NameOrId: "ghost"})
+	_, err := c.GetWorkspace(ctx, &hopboxv1.GetWorkspaceRequest{NameOrId: "ghost"})
 	if status.Code(err) != codes.NotFound {
 		t.Fatalf("want NotFound, got %v (code=%s)", err, status.Code(err))
 	}
@@ -120,18 +120,18 @@ func TestShellBridgeEchoes(t *testing.T) {
 	ctx := context.Background()
 	c, done := dialer(t)
 	defer done()
-	_, _ = c.CreateWorkspace(ctx, &mesav1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
+	_, _ = c.CreateWorkspace(ctx, &hopboxv1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
 
 	stream, err := c.Shell(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := stream.Send(&mesav1.ShellClientMsg{Msg: &mesav1.ShellClientMsg_Open{
-		Open: &mesav1.OpenShell{NameOrId: "proj", Cols: 80, Rows: 24},
+	if err := stream.Send(&hopboxv1.ShellClientMsg{Msg: &hopboxv1.ShellClientMsg_Open{
+		Open: &hopboxv1.OpenShell{NameOrId: "proj", Cols: 80, Rows: 24},
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := stream.Send(&mesav1.ShellClientMsg{Msg: &mesav1.ShellClientMsg_Data{Data: []byte("ping")}}); err != nil {
+	if err := stream.Send(&hopboxv1.ShellClientMsg{Msg: &hopboxv1.ShellClientMsg_Data{Data: []byte("ping")}}); err != nil {
 		t.Fatal(err)
 	}
 	msg, err := stream.Recv()
@@ -145,7 +145,7 @@ func TestShellBridgeEchoes(t *testing.T) {
 
 // drainExec reads an exec stream to completion, returning combined stdout and
 // the exit code.
-func drainExec(t *testing.T, stream mesav1.WorkspaceService_ExecClient) (string, int32) {
+func drainExec(t *testing.T, stream hopboxv1.WorkspaceService_ExecClient) (string, int32) {
 	t.Helper()
 	var out string
 	var code int32 = -1
@@ -160,7 +160,7 @@ func drainExec(t *testing.T, stream mesav1.WorkspaceService_ExecClient) (string,
 		if d := msg.GetStdout(); d != nil {
 			out += string(d)
 		}
-		if _, ok := msg.Msg.(*mesav1.ExecServerMsg_ExitCode); ok {
+		if _, ok := msg.Msg.(*hopboxv1.ExecServerMsg_ExitCode); ok {
 			code = msg.GetExitCode()
 		}
 	}
@@ -171,14 +171,14 @@ func TestExecStreamsOutputAndExit(t *testing.T) {
 	ctx := context.Background()
 	c, done := dialer(t)
 	defer done()
-	_, _ = c.CreateWorkspace(ctx, &mesav1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
+	_, _ = c.CreateWorkspace(ctx, &hopboxv1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
 
 	stream, err := c.Exec(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := stream.Send(&mesav1.ExecClientMsg{Msg: &mesav1.ExecClientMsg_Open{
-		Open: &mesav1.ExecOpen{NameOrId: "proj", Cmd: []string{"ls", "-la"}},
+	if err := stream.Send(&hopboxv1.ExecClientMsg{Msg: &hopboxv1.ExecClientMsg_Open{
+		Open: &hopboxv1.ExecOpen{NameOrId: "proj", Cmd: []string{"ls", "-la"}},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -192,16 +192,16 @@ func TestExecForwardsStdin(t *testing.T) {
 	ctx := context.Background()
 	c, done := dialer(t)
 	defer done()
-	_, _ = c.CreateWorkspace(ctx, &mesav1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
+	_, _ = c.CreateWorkspace(ctx, &hopboxv1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
 
 	stream, err := c.Exec(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = stream.Send(&mesav1.ExecClientMsg{Msg: &mesav1.ExecClientMsg_Open{
-		Open: &mesav1.ExecOpen{NameOrId: "proj", Cmd: []string{"cat"}},
+	_ = stream.Send(&hopboxv1.ExecClientMsg{Msg: &hopboxv1.ExecClientMsg_Open{
+		Open: &hopboxv1.ExecOpen{NameOrId: "proj", Cmd: []string{"cat"}},
 	}})
-	_ = stream.Send(&mesav1.ExecClientMsg{Msg: &mesav1.ExecClientMsg_Stdin{Stdin: []byte("piped-in")}})
+	_ = stream.Send(&hopboxv1.ExecClientMsg{Msg: &hopboxv1.ExecClientMsg_Stdin{Stdin: []byte("piped-in")}})
 	_ = stream.CloseSend()
 	out, code := drainExec(t, stream)
 	if !strings.Contains(out, "piped-in") || code != 0 {
@@ -213,13 +213,13 @@ func TestExecRequiresCmd(t *testing.T) {
 	ctx := context.Background()
 	c, done := dialer(t)
 	defer done()
-	_, _ = c.CreateWorkspace(ctx, &mesav1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
+	_, _ = c.CreateWorkspace(ctx, &hopboxv1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
 	stream, err := c.Exec(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = stream.Send(&mesav1.ExecClientMsg{Msg: &mesav1.ExecClientMsg_Open{
-		Open: &mesav1.ExecOpen{NameOrId: "proj"},
+	_ = stream.Send(&hopboxv1.ExecClientMsg{Msg: &hopboxv1.ExecClientMsg_Open{
+		Open: &hopboxv1.ExecOpen{NameOrId: "proj"},
 	}})
 	_ = stream.CloseSend()
 	if _, err := stream.Recv(); status.Code(err) != codes.InvalidArgument {

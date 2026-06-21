@@ -2,7 +2,7 @@
 
 // Package kubernetes (compute) maps a neutral ProvisionRequest onto a bare Pod
 // (a singleton pet the reconciler owns, not a Deployment). An initContainer
-// seeds the mesa-agent binary from AgentImage.ImageRef into a shared emptyDir;
+// seeds the hopbox-agent binary from AgentImage.ImageRef into a shared emptyDir;
 // the workspace container mounts it read-only and runs AgentImage.TargetPath.
 // No k8s type crosses ports.*.
 package kubernetes
@@ -20,13 +20,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 const (
-	labelWorkspace = "mesa.workspace_id"
-	agentVolume    = "mesa-agent"
-	defaultTarget  = "/mesa/mesa-agent"
+	labelWorkspace = "hopbox.workspace_id"
+	agentVolume    = "hopbox-agent"
+	defaultTarget  = "/hopbox/hopbox-agent"
 )
 
 type Provider struct {
@@ -38,12 +38,12 @@ var _ ports.Compute = (*Provider)(nil)
 
 func New(cli kubernetes.Interface, namespace string) *Provider {
 	if namespace == "" {
-		namespace = "mesa-workspaces"
+		namespace = "hopbox-workspaces"
 	}
 	return &Provider{cli: cli, ns: namespace}
 }
 
-func podName(wsID string) string { return "mesa-" + wsID }
+func podName(wsID string) string { return "hopbox-" + wsID }
 
 // ref encoding is provider-opaque to the core: "<namespace>/<podname>".
 func (p *Provider) ref(name string) string { return p.ns + "/" + name }
@@ -62,7 +62,7 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 	if target == "" {
 		target = defaultTarget
 	}
-	agentDir := path.Dir(target) // e.g. "/mesa"
+	agentDir := path.Dir(target) // e.g. "/hopbox"
 
 	env := make([]corev1.EnvVar, 0, len(r.Env))
 	for k, v := range r.Env {
@@ -76,7 +76,7 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 	}}
 	wsMounts := []corev1.VolumeMount{{Name: agentVolume, MountPath: agentDir, ReadOnly: true}}
 	for i, m := range r.Mounts {
-		vName := "mesa-mount-" + strconv.Itoa(i)
+		vName := "hopbox-mount-" + strconv.Itoa(i)
 		volumes = append(volumes, corev1.Volume{
 			Name: vName,
 			VolumeSource: corev1.VolumeSource{
@@ -109,7 +109,7 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 			RestartPolicy: corev1.RestartPolicyNever,
 			Volumes:       volumes,
 			InitContainers: []corev1.Container{{
-				Name:         "mesa-agent-init",
+				Name:         "hopbox-agent-init",
 				Image:        r.Agent.ImageRef,
 				Command:      []string{"cp", r.Agent.BinaryPath, target},
 				VolumeMounts: []corev1.VolumeMount{{Name: agentVolume, MountPath: agentDir}},

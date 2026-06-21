@@ -9,12 +9,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	pb "github.com/mesadev/mesa/gen/mesa/provider/v1"
-	"github.com/mesadev/mesa/internal/core/ports"
-	"github.com/mesadev/mesa/internal/plugin"
-	"github.com/mesadev/mesa/internal/plugin/server"
-	"github.com/mesadev/mesa/providers/ingress/subdomain"
-	"github.com/mesadev/mesa/test/conformance"
+	pb "github.com/hopboxdev/hopbox/gen/hopbox/provider/v1"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/plugin"
+	"github.com/hopboxdev/hopbox/internal/plugin/server"
+	"github.com/hopboxdev/hopbox/providers/ingress/subdomain"
+	"github.com/hopboxdev/hopbox/test/conformance"
 )
 
 func TestSubdomainInproc(t *testing.T) {

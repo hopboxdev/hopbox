@@ -12,17 +12,17 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"k8s.io/client-go/kubernetes/fake"
 
-	pb "github.com/mesadev/mesa/gen/mesa/provider/v1"
-	"github.com/mesadev/mesa/internal/core/ports"
-	"github.com/mesadev/mesa/internal/plugin"
-	"github.com/mesadev/mesa/internal/plugin/server"
-	k8sstorage "github.com/mesadev/mesa/providers/storage/kubernetes"
-	"github.com/mesadev/mesa/test/conformance"
+	pb "github.com/hopboxdev/hopbox/gen/hopbox/provider/v1"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/plugin"
+	"github.com/hopboxdev/hopbox/internal/plugin/server"
+	k8sstorage "github.com/hopboxdev/hopbox/providers/storage/kubernetes"
+	"github.com/hopboxdev/hopbox/test/conformance"
 )
 
 func newK8sStorage(t *testing.T) ports.Storage {
 	t.Helper()
-	p, err := k8sstorage.New(fake.NewSimpleClientset(), "mesa-workspaces", "", "1Gi")
+	p, err := k8sstorage.New(fake.NewSimpleClientset(), "hopbox-workspaces", "", "1Gi")
 	if err != nil {
 		t.Fatal(err)
 	}

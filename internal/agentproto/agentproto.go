@@ -1,5 +1,5 @@
 // Package agentproto defines the small length-prefixed JSON frames exchanged
-// between mesad and mesa-agent: a one-time handshake on the raw conn, and a
+// between hopboxd and hopbox-agent: a one-time handshake on the raw conn, and a
 // per-stream shell header sent at the start of each yamux stream.
 package agentproto
 

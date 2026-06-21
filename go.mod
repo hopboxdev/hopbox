@@ -1,4 +1,4 @@
-module github.com/mesadev/mesa
+module github.com/hopboxdev/hopbox
 
 go 1.25.0
 

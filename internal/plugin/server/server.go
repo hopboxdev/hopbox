@@ -9,9 +9,9 @@ import (
 
 	"google.golang.org/grpc"
 
-	pb "github.com/mesadev/mesa/gen/mesa/provider/v1"
-	"github.com/mesadev/mesa/internal/core/ports"
-	"github.com/mesadev/mesa/internal/plugin"
+	pb "github.com/hopboxdev/hopbox/gen/hopbox/provider/v1"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/plugin"
 )
 
 // ComputeServer adapts a ports.Compute to the gRPC Compute service.

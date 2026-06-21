@@ -12,9 +12,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/mesadev/mesa/internal/core/ports"
-	"github.com/mesadev/mesa/internal/core/store"
-	"github.com/mesadev/mesa/internal/core/workspace"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/store"
+	"github.com/hopboxdev/hopbox/internal/core/workspace"
 )
 
 type Config struct {
@@ -91,7 +91,7 @@ func (r *Reconciler) ReconcileOne(ctx context.Context, id, tenantID string) erro
 	default:
 		// Failed and Stopped are terminal in M1: no auto-retry/backoff loop yet
 		// (Failed->Provisioning is a legal edge but intentionally not driven here;
-		// recovery is `mesa rm` + recreate). Revisit with bounded retry post-M1.
+		// recovery is `hopbox rm` + recreate). Revisit with bounded retry post-M1.
 		return nil
 	}
 }
@@ -113,9 +113,9 @@ func (r *Reconciler) provision(ctx context.Context, w *workspace.Workspace) erro
 		Mounts:      []ports.Mount{mount},
 		Agent:       r.cfg.Agent,
 		Env: map[string]string{
-			"MESA_AGENT_TOKEN":  w.BootstrapToken,
-			"MESA_CONTROL_ADDR": r.cfg.AgentAddr,
-			"MESA_WORKSPACE_ID": w.ID,
+			"HOPBOX_AGENT_TOKEN":  w.BootstrapToken,
+			"HOPBOX_CONTROL_ADDR": r.cfg.AgentAddr,
+			"HOPBOX_WORKSPACE_ID": w.ID,
 		},
 	})
 	if err != nil {
@@ -209,7 +209,7 @@ func (r *Reconciler) destroy(ctx context.Context, w *workspace.Workspace) error 
 			return err
 		}
 	}
-	// M1: keep the home (persistence). Storage.Delete is wired for `mesa rm --purge` later.
+	// M1: keep the home (persistence). Storage.Delete is wired for `hopbox rm --purge` later.
 	return r.store.DeleteWorkspace(ctx, w.TenantID, w.ID)
 }
 

@@ -9,8 +9,8 @@ import (
 
 	"github.com/hashicorp/yamux"
 
-	"github.com/mesadev/mesa/internal/agenthub"
-	"github.com/mesadev/mesa/internal/agentproto"
+	"github.com/hopboxdev/hopbox/internal/agenthub"
+	"github.com/hopboxdev/hopbox/internal/agentproto"
 )
 
 func TestOpenShellReachesAgent(t *testing.T) {

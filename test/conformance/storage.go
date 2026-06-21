@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 // RunStorageConformance exercises the ports.Storage contract against a provider

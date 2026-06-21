@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mesadev/mesa/internal/core/ports"
-	"github.com/mesadev/mesa/providers/storage/localfs"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
+	"github.com/hopboxdev/hopbox/providers/storage/localfs"
 )
 
 func TestEnsureHomeCreatesDir(t *testing.T) {

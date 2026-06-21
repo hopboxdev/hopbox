@@ -11,10 +11,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	pb "github.com/mesadev/mesa/gen/mesa/provider/v1"
-	"github.com/mesadev/mesa/internal/core/ports"
-	"github.com/mesadev/mesa/internal/plugin"
-	"github.com/mesadev/mesa/internal/plugin/server"
+	pb "github.com/hopboxdev/hopbox/gen/hopbox/provider/v1"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/plugin"
+	"github.com/hopboxdev/hopbox/internal/plugin/server"
 )
 
 type fakeCompute struct {
@@ -57,12 +57,12 @@ func TestRemoteComputeRoundTrip(t *testing.T) {
 
 	inst, err := rc.Provision(context.Background(), ports.ProvisionRequest{
 		WorkspaceID: "w1", ImageRef: "ubuntu:24.04",
-		Agent: ports.AgentImage{ImageRef: "img:1", BinaryPath: "/a", TargetPath: "/mesa/mesa-agent"},
+		Agent: ports.AgentImage{ImageRef: "img:1", BinaryPath: "/a", TargetPath: "/hopbox/hopbox-agent"},
 	})
 	if err != nil || inst.Ref != "c-w1" || inst.Phase != ports.InstanceRunning {
 		t.Fatalf("provision: %+v err=%v", inst, err)
 	}
-	if fake.lastReq.Agent.ImageRef != "img:1" || fake.lastReq.Agent.TargetPath != "/mesa/mesa-agent" {
+	if fake.lastReq.Agent.ImageRef != "img:1" || fake.lastReq.Agent.TargetPath != "/hopbox/hopbox-agent" {
 		t.Fatalf("agent not transported: %+v", fake.lastReq.Agent)
 	}
 	st, err := rc.Status(context.Background(), "c-w1")

@@ -1,7 +1,7 @@
 // Package subdomain is the MVP Ingress provider: it maps a workspace port onto
 // an L7 Host-routed URL (app-alice.gw.host) on the shared gateway :443. Because
 // routing is by Host header/SNI, there is no port allocator and the number of
-// endpoints per user is unlimited. The provider owns a route table that mesa-gw
+// endpoints per user is unlimited. The provider owns a route table that hopbox-gw
 // consults (Lookup) to forward an inbound request into the right workspace over
 // that workspace's agent reverse-connection.
 package subdomain
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 // Route is a resolved gateway entry: which workspace/port a Host maps to.
@@ -68,7 +68,7 @@ func (p *Provider) Unexpose(_ context.Context, ref string) error {
 	return nil
 }
 
-// Lookup resolves an inbound gateway Host to its Route. mesa-gw calls this to
+// Lookup resolves an inbound gateway Host to its Route. hopbox-gw calls this to
 // forward a request into the right workspace. ok is false if no route exists.
 func (p *Provider) Lookup(host string) (Route, bool) {
 	p.mu.RLock()

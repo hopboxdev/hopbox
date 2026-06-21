@@ -6,21 +6,21 @@ import (
 	"os"
 	"testing"
 
-	"github.com/mesadev/mesa/internal/core/ports"
-	dockerprov "github.com/mesadev/mesa/providers/compute/docker"
-	"github.com/mesadev/mesa/test/conformance"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
+	dockerprov "github.com/hopboxdev/hopbox/providers/compute/docker"
+	"github.com/hopboxdev/hopbox/test/conformance"
 )
 
 func dockerReq(t *testing.T) ports.ProvisionRequest {
-	agentBin := os.Getenv("MESA_TEST_AGENT_BIN")
+	agentBin := os.Getenv("HOPBOX_TEST_AGENT_BIN")
 	if agentBin == "" {
-		t.Skip("set MESA_TEST_AGENT_BIN to the linux/amd64 mesa-agent binary")
+		t.Skip("set HOPBOX_TEST_AGENT_BIN to the linux/amd64 hopbox-agent binary")
 	}
 	return ports.ProvisionRequest{
 		WorkspaceID: "conf1",
 		ImageRef:    "ubuntu:24.04",
-		Agent:       ports.AgentImage{HostBinaryPath: agentBin, TargetPath: "/mesa/mesa-agent"},
-		Env:         map[string]string{"MESA_CONTROL_ADDR": "host.docker.internal:1", "MESA_AGENT_TOKEN": "x", "MESA_WORKSPACE_ID": "conf1"},
+		Agent:       ports.AgentImage{HostBinaryPath: agentBin, TargetPath: "/hopbox/hopbox-agent"},
+		Env:         map[string]string{"HOPBOX_CONTROL_ADDR": "host.docker.internal:1", "HOPBOX_AGENT_TOKEN": "x", "HOPBOX_WORKSPACE_ID": "conf1"},
 	}
 }
 

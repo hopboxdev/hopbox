@@ -1,4 +1,4 @@
-// Package agenthub is mesad's side of the agent reverse connection. It accepts
+// Package agenthub is hopboxd's side of the agent reverse connection. It accepts
 // agent dials on a TCP listener, authenticates the one-time bootstrap token,
 // holds each workspace's yamux session, and opens pty shells on demand.
 package agenthub
@@ -13,7 +13,7 @@ import (
 
 	"github.com/hashicorp/yamux"
 
-	"github.com/mesadev/mesa/internal/agentproto"
+	"github.com/hopboxdev/hopbox/internal/agentproto"
 )
 
 // TokenResolver maps a bootstrap token to its workspace id (the store provides this).
@@ -95,7 +95,7 @@ func (h *Hub) OpenShell(ctx context.Context, workspaceID string, hdr agentproto.
 
 // OpenForward opens a yamux stream and asks the agent to dial 127.0.0.1:port
 // inside the workspace. The returned net.Conn is a raw pipe to that service —
-// mesa-gw uses it to proxy an inbound request into the workspace.
+// hopbox-gw uses it to proxy an inbound request into the workspace.
 func (h *Hub) OpenForward(workspaceID string, port uint32) (net.Conn, error) {
 	stream, err := h.openStream(workspaceID)
 	if err != nil {

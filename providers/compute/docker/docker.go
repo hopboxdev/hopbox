@@ -1,7 +1,7 @@
 //go:build docker
 
 // Package docker is the M1 Compute provider. It maps a neutral ProvisionRequest
-// onto a Docker container that side-loads the mesa-agent binary (bind-mounted,
+// onto a Docker container that side-loads the hopbox-agent binary (bind-mounted,
 // read-only) and runs it as the entrypoint. No Docker type crosses ports.*.
 package docker
 
@@ -19,11 +19,11 @@ import (
 	"github.com/docker/docker/client"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 // hostPlatform pins workspace containers (and image pulls) to the host's arch.
-// The mesa-agent is a native binary injected and run as the entrypoint, so the
+// The hopbox-agent is a native binary injected and run as the entrypoint, so the
 // workspace image's arch MUST match the agent's. Without pinning, a multi-arch
 // image could resolve to a different arch than the injected agent (e.g. an
 // amd64 image with an arm64 agent on Apple Silicon) and the agent fails to exec.
@@ -32,8 +32,8 @@ var hostPlatform = ocispec.Platform{OS: "linux", Architecture: runtime.GOARCH}
 func platformString() string { return hostPlatform.OS + "/" + hostPlatform.Architecture }
 
 const (
-	labelWorkspace = "mesa.workspace_id"
-	agentTarget    = "/mesa/mesa-agent"
+	labelWorkspace = "hopbox.workspace_id"
+	agentTarget    = "/hopbox/hopbox-agent"
 )
 
 type Provider struct {
@@ -89,7 +89,7 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 		host.Resources = container.Resources{Memory: r.MemMB * 1024 * 1024}
 	}
 
-	name := "mesa-" + r.WorkspaceID
+	name := "hopbox-" + r.WorkspaceID
 	// Idempotency: a self-heal re-provision reuses the stable name while the
 	// dead container may still exist in `exited` state holding it. Remove any
 	// stale container of this name before create, else ContainerCreate fails
@@ -129,7 +129,7 @@ func (p *Provider) ensureImage(ctx context.Context, ref string) error {
 	return nil
 }
 
-// stageAgent makes the mesa-agent binary available in the workspace as a Mount.
+// stageAgent makes the hopbox-agent binary available in the workspace as a Mount.
 // Fast path: bind-mount a host binary (dev). Otherwise: pull the agent image,
 // run a throwaway container that copies the binary into a named volume, and
 // mount that volume read-only at the target's directory.
@@ -153,7 +153,7 @@ func (p *Provider) stageAgent(ctx context.Context, a ports.AgentImage, target st
 	}
 	volName := vol.Name
 
-	dir := target[:strings.LastIndex(target, "/")+1] // e.g. "/mesa/"
+	dir := target[:strings.LastIndex(target, "/")+1] // e.g. "/hopbox/"
 	seed, err := p.cli.ContainerCreate(ctx, &container.Config{
 		Image:      a.ImageRef,
 		Entrypoint: []string{"cp", a.BinaryPath, target},

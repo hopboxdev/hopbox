@@ -13,7 +13,7 @@ var banned = []string{
 	"modernc.org/sqlite",
 	"github.com/hashicorp/yamux",
 	"github.com/creack/pty",
-	"github.com/mesadev/mesa/gen/mesa/provider",
+	"github.com/hopboxdev/hopbox/gen/hopbox/provider",
 	"k8s.io/api",
 	"k8s.io/apimachinery",
 	"k8s.io/client-go",

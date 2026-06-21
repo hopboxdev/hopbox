@@ -1,8 +1,8 @@
-// Package gateway is mesa-gw: the service gateway. It terminates inbound HTTP,
+// Package gateway is hopbox-gw: the service gateway. It terminates inbound HTTP,
 // and for each request opens a connection to the workspace service its Host maps
 // to (via a Connector) and reverse-proxies the request over that conn. The
-// Connector hides whether the workspace is reached in-process (mesad's hub) or
-// across a tunnel to a central mesad (the standalone mesa-gw fleet). Either way
+// Connector hides whether the workspace is reached in-process (hopboxd's hub) or
+// across a tunnel to a central hopboxd (the standalone hopbox-gw fleet). Either way
 // the gateway needs no route into compute: the workspace dialed out.
 package gateway
 
@@ -38,11 +38,11 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	upstream, err := g.conn.Connect(r.Context(), host)
 	if errors.Is(err, ErrNoRoute) {
-		http.Error(w, "mesa-gw: no route for host "+host, http.StatusNotFound)
+		http.Error(w, "hopbox-gw: no route for host "+host, http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		http.Error(w, "mesa-gw: connect: "+err.Error(), http.StatusBadGateway)
+		http.Error(w, "hopbox-gw: connect: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 
@@ -57,7 +57,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Transport: &http.Transport{
 			DialContext: func(context.Context, string, string) (net.Conn, error) {
 				if used {
-					return nil, errors.New("mesa-gw: upstream conn already consumed")
+					return nil, errors.New("hopbox-gw: upstream conn already consumed")
 				}
 				used = true
 				return upstream, nil
@@ -65,7 +65,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			DisableKeepAlives: true,
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
-			http.Error(w, "mesa-gw: upstream error: "+err.Error(), http.StatusBadGateway)
+			http.Error(w, "hopbox-gw: upstream error: "+err.Error(), http.StatusBadGateway)
 		},
 	}
 	defer func() {

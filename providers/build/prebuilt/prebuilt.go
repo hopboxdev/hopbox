@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 type Provider struct{}

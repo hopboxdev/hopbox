@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mesadev/mesa/internal/core/ports"
-	"github.com/mesadev/mesa/internal/plugin"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/plugin"
 )
 
 func TestLoadComputeInprocReturnsProvider(t *testing.T) {

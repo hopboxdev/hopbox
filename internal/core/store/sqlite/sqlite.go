@@ -12,8 +12,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/mesadev/mesa/internal/core/store"
-	"github.com/mesadev/mesa/internal/core/workspace"
+	"github.com/hopboxdev/hopbox/internal/core/store"
+	"github.com/hopboxdev/hopbox/internal/core/workspace"
 )
 
 //go:embed schema.sql

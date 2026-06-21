@@ -8,7 +8,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 // Provider authenticates api-key credentials against a fixed key→Principal map.

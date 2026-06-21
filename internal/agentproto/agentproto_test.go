@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/mesadev/mesa/internal/agentproto"
+	"github.com/hopboxdev/hopbox/internal/agentproto"
 )
 
 func TestHandshakeRoundTrip(t *testing.T) {

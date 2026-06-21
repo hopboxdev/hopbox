@@ -3,7 +3,7 @@ package plugin
 import (
 	"testing"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 func TestProvisionRequestRoundTrip(t *testing.T) {
@@ -12,8 +12,8 @@ func TestProvisionRequestRoundTrip(t *testing.T) {
 		ImageRef:    "ubuntu:24.04",
 		MemMB:       512,
 		Mounts:      []ports.Mount{{Source: "/data/w1", Target: "/home/dev", ReadOnly: false}},
-		Env:         map[string]string{"MESA_AGENT_TOKEN": "tok", "MESA_WORKSPACE_ID": "w1"},
-		Agent:       ports.AgentImage{ImageRef: "img:1", BinaryPath: "/a", TargetPath: "/mesa/mesa-agent", HostBinaryPath: ""},
+		Env:         map[string]string{"HOPBOX_AGENT_TOKEN": "tok", "HOPBOX_WORKSPACE_ID": "w1"},
+		Agent:       ports.AgentImage{ImageRef: "img:1", BinaryPath: "/a", TargetPath: "/hopbox/hopbox-agent", HostBinaryPath: ""},
 	}
 	got := FromProtoProvisionRequest(ToProtoProvisionRequest(in))
 	if got.WorkspaceID != in.WorkspaceID || got.ImageRef != in.ImageRef || got.MemMB != in.MemMB {
@@ -22,7 +22,7 @@ func TestProvisionRequestRoundTrip(t *testing.T) {
 	if len(got.Mounts) != 1 || got.Mounts[0] != in.Mounts[0] {
 		t.Fatalf("mounts mismatch: %+v", got.Mounts)
 	}
-	if got.Env["MESA_AGENT_TOKEN"] != "tok" || got.Agent != in.Agent {
+	if got.Env["HOPBOX_AGENT_TOKEN"] != "tok" || got.Agent != in.Agent {
 		t.Fatalf("env/agent mismatch: %+v", got)
 	}
 }

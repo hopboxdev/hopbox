@@ -3,7 +3,7 @@ package config_test
 import (
 	"testing"
 
-	"github.com/mesadev/mesa/internal/config"
+	"github.com/hopboxdev/hopbox/internal/config"
 )
 
 func TestParseDefaults(t *testing.T) {

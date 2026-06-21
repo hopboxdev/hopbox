@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/mesadev/mesa/internal/gateway"
+	"github.com/hopboxdev/hopbox/internal/gateway"
 )
 
 func TestSelfSignedCertHasWildcardSAN(t *testing.T) {

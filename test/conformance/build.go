@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 // RunBuildConformance exercises the ports.Build contract against a provider from

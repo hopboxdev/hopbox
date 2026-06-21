@@ -1,4 +1,4 @@
-// Package core holds Mesa's vendor-neutral domain: the Workspace resource,
+// Package core holds Hopbox's vendor-neutral domain: the Workspace resource,
 // provider ports (Go interfaces), the state store interface, and the reconciler.
 //
 // ARCHITECTURAL RULE: no code under internal/core may import a provider SDK

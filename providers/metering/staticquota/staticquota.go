@@ -9,7 +9,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
 // event kinds the active-workspace counter reacts to.

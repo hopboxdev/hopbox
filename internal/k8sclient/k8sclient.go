@@ -14,7 +14,7 @@ import (
 )
 
 // New returns a clientset. If kubeconfig is empty it uses in-cluster config
-// (the mesad-in-cluster / mesa-provider-in-cluster deploy); otherwise it loads
+// (the hopboxd-in-cluster / hopbox-provider-in-cluster deploy); otherwise it loads
 // the given kubeconfig file (local dev against a remote cluster).
 func New(kubeconfig string) (kubernetes.Interface, error) {
 	var (

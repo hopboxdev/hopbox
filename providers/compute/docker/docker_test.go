@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mesadev/mesa/internal/core/ports"
-	dockerprov "github.com/mesadev/mesa/providers/compute/docker"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
+	dockerprov "github.com/hopboxdev/hopbox/providers/compute/docker"
 )
 
 func TestProvisionRunsAgentAndDestroy(t *testing.T) {
-	agentBin := os.Getenv("MESA_TEST_AGENT_BIN")
+	agentBin := os.Getenv("HOPBOX_TEST_AGENT_BIN")
 	if agentBin == "" {
-		t.Skip("set MESA_TEST_AGENT_BIN to the linux/amd64 mesa-agent binary")
+		t.Skip("set HOPBOX_TEST_AGENT_BIN to the linux/amd64 hopbox-agent binary")
 	}
 	ctx := context.Background()
 	p, err := dockerprov.New("host.docker.internal:7777")
@@ -25,11 +25,11 @@ func TestProvisionRunsAgentAndDestroy(t *testing.T) {
 	inst, err := p.Provision(ctx, ports.ProvisionRequest{
 		WorkspaceID: "itest1",
 		ImageRef:    "ubuntu:24.04",
-		Agent:       ports.AgentImage{HostBinaryPath: agentBin, TargetPath: "/mesa/mesa-agent"},
+		Agent:       ports.AgentImage{HostBinaryPath: agentBin, TargetPath: "/hopbox/hopbox-agent"},
 		Env: map[string]string{
-			"MESA_AGENT_TOKEN":  "tok",
-			"MESA_CONTROL_ADDR": "host.docker.internal:7777",
-			"MESA_WORKSPACE_ID": "itest1",
+			"HOPBOX_AGENT_TOKEN":  "tok",
+			"HOPBOX_CONTROL_ADDR": "host.docker.internal:7777",
+			"HOPBOX_WORKSPACE_ID": "itest1",
 		},
 		Mounts: []ports.Mount{{Source: t.TempDir(), Target: "/home/dev"}},
 	})

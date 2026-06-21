@@ -12,26 +12,26 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"k8s.io/client-go/kubernetes/fake"
 
-	pb "github.com/mesadev/mesa/gen/mesa/provider/v1"
-	"github.com/mesadev/mesa/internal/core/ports"
-	"github.com/mesadev/mesa/internal/plugin"
-	"github.com/mesadev/mesa/internal/plugin/server"
-	k8scompute "github.com/mesadev/mesa/providers/compute/kubernetes"
-	"github.com/mesadev/mesa/test/conformance"
+	pb "github.com/hopboxdev/hopbox/gen/hopbox/provider/v1"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/plugin"
+	"github.com/hopboxdev/hopbox/internal/plugin/server"
+	k8scompute "github.com/hopboxdev/hopbox/providers/compute/kubernetes"
+	"github.com/hopboxdev/hopbox/test/conformance"
 )
 
 func k8sComputeReq() ports.ProvisionRequest {
 	return ports.ProvisionRequest{
 		WorkspaceID: "conf1",
 		ImageRef:    "ubuntu:24.04",
-		Agent:       ports.AgentImage{ImageRef: "ghcr.io/mesadev/mesa-agent:0.2.0", BinaryPath: "/mesa-agent", TargetPath: "/mesa/mesa-agent"},
-		Env:         map[string]string{"MESA_WORKSPACE_ID": "conf1"},
+		Agent:       ports.AgentImage{ImageRef: "ghcr.io/hopboxdev/hopbox-agent:0.2.0", BinaryPath: "/hopbox-agent", TargetPath: "/hopbox/hopbox-agent"},
+		Env:         map[string]string{"HOPBOX_WORKSPACE_ID": "conf1"},
 	}
 }
 
 func TestK8sComputeInproc(t *testing.T) {
 	conformance.RunComputeConformance(t, func(t *testing.T) ports.Compute {
-		return k8scompute.New(fake.NewSimpleClientset(), "mesa-workspaces")
+		return k8scompute.New(fake.NewSimpleClientset(), "hopbox-workspaces")
 	}, k8sComputeReq())
 }
 
@@ -39,7 +39,7 @@ func TestK8sComputeOverRemote(t *testing.T) {
 	conformance.RunComputeConformance(t, func(t *testing.T) ports.Compute {
 		lis := bufconn.Listen(1 << 20)
 		gs := grpc.NewServer()
-		pb.RegisterComputeServer(gs, server.NewCompute(k8scompute.New(fake.NewSimpleClientset(), "mesa-workspaces")))
+		pb.RegisterComputeServer(gs, server.NewCompute(k8scompute.New(fake.NewSimpleClientset(), "hopbox-workspaces")))
 		go func() { _ = gs.Serve(lis) }()
 		t.Cleanup(gs.Stop)
 		conn, err := grpc.NewClient("passthrough:///bufnet",
