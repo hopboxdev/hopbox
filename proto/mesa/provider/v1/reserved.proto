@@ -2,13 +2,13 @@ syntax = "proto3";
 
 package mesa.provider.v1;
 
-// The remaining provider contracts are part of Mesa's design surface but are
-// RESERVED until their milestone — no messages or generated code yet. They are
-// documented here so the contract package is complete and reviewers see the
-// full shape. Adapters are built in their milestones:
-//   - Build    (M4): rpc Resolve(BuildRequest) returns (ImageRef); rpc Status(BuildRef) returns (BuildStatus);
-//   - Identity (M4): rpc Authenticate(Credential) returns (Principal); rpc Authorize(AccessRequest) returns (Decision);
-//   - Metering (M5): rpc Emit(stream UsageEvent) returns (Empty); rpc Quota(PrincipalRef) returns (QuotaState);
-// Ingress (M3) is now real — see ingress.proto.
-// Intentionally no service/message declarations here yet (declaring empty
-// services would generate unused gRPC stubs).
+// All six provider contracts are now defined as real services — each in its own
+// file in this package:
+//   - Compute  -> compute.proto
+//   - Storage  -> storage.proto
+//   - Ingress  -> ingress.proto   (M3)
+//   - Identity -> identity.proto  (M4)
+//   - Build    -> build.proto     (M4)
+//   - Metering -> metering.proto  (M5)
+// Nothing remains reserved. This file is retained as the package's contract
+// index; it declares no services or messages itself.
