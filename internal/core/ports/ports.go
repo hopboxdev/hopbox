@@ -94,3 +94,37 @@ type Ingress interface {
 	Expose(ctx context.Context, r ExposeRequest) (Endpoint, error)
 	Unexpose(ctx context.Context, ref string) error
 }
+
+// Credential is what an Identity provider authenticates (api-key | oidc-token).
+type Credential struct {
+	Scheme string
+	Value  string
+}
+
+// Principal is an authenticated identity. It carries TenantID — the seam a
+// hyperscaler uses to map their customer model onto Mesa tenants.
+type Principal struct {
+	ID          string
+	TenantID    string
+	DisplayName string
+	Roles       []string // coarse RBAC: owner | tenant-admin | system
+}
+
+// AccessRequest asks whether a Principal may perform an action on a resource.
+type AccessRequest struct {
+	Principal Principal
+	Action    string
+	Resource  string
+}
+
+// Decision is the authorization outcome.
+type Decision struct {
+	Allow  bool
+	Reason string
+}
+
+// Identity authenticates credentials to principals and authorizes actions.
+type Identity interface {
+	Authenticate(ctx context.Context, c Credential) (Principal, error)
+	Authorize(ctx context.Context, r AccessRequest) (Decision, error)
+}

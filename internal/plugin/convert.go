@@ -130,3 +130,43 @@ func FromProtoEndpoint(e *pb.Endpoint) ports.Endpoint {
 	}
 	return ports.Endpoint{Ref: e.Ref, URL: e.Url, Name: e.Name, Port: e.Port}
 }
+
+func ToProtoCredential(c ports.Credential) *pb.Credential {
+	return &pb.Credential{Scheme: c.Scheme, Value: c.Value}
+}
+func FromProtoCredential(c *pb.Credential) ports.Credential {
+	if c == nil {
+		return ports.Credential{}
+	}
+	return ports.Credential{Scheme: c.Scheme, Value: c.Value}
+}
+
+func ToProtoPrincipal(p ports.Principal) *pb.Principal {
+	return &pb.Principal{Id: p.ID, TenantId: p.TenantID, DisplayName: p.DisplayName, Roles: p.Roles}
+}
+func FromProtoPrincipal(p *pb.Principal) ports.Principal {
+	if p == nil {
+		return ports.Principal{}
+	}
+	return ports.Principal{ID: p.Id, TenantID: p.TenantId, DisplayName: p.DisplayName, Roles: p.Roles}
+}
+
+func ToProtoAccessRequest(r ports.AccessRequest) *pb.AccessRequest {
+	return &pb.AccessRequest{Principal: ToProtoPrincipal(r.Principal), Action: r.Action, Resource: r.Resource}
+}
+func FromProtoAccessRequest(r *pb.AccessRequest) ports.AccessRequest {
+	if r == nil {
+		return ports.AccessRequest{}
+	}
+	return ports.AccessRequest{Principal: FromProtoPrincipal(r.Principal), Action: r.Action, Resource: r.Resource}
+}
+
+func ToProtoDecision(d ports.Decision) *pb.Decision {
+	return &pb.Decision{Allow: d.Allow, Reason: d.Reason}
+}
+func FromProtoDecision(d *pb.Decision) ports.Decision {
+	if d == nil {
+		return ports.Decision{}
+	}
+	return ports.Decision{Allow: d.Allow, Reason: d.Reason}
+}

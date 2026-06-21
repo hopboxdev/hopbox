@@ -88,3 +88,29 @@ func (r *remoteIngress) Unexpose(ctx context.Context, ref string) error {
 	_, err := r.cli.Unexpose(ctx, &pb.EndpointRef{Ref: ref})
 	return err
 }
+
+// remoteIdentity implements ports.Identity over a gRPC connection.
+type remoteIdentity struct{ cli pb.IdentityClient }
+
+var _ ports.Identity = (*remoteIdentity)(nil)
+
+// NewRemoteIdentity returns a ports.Identity backed by a gRPC Identity service.
+// The caller owns conn and must Close it; the returned provider does not.
+func NewRemoteIdentity(conn *grpc.ClientConn) ports.Identity {
+	return &remoteIdentity{cli: pb.NewIdentityClient(conn)}
+}
+
+func (r *remoteIdentity) Authenticate(ctx context.Context, c ports.Credential) (ports.Principal, error) {
+	p, err := r.cli.Authenticate(ctx, ToProtoCredential(c))
+	if err != nil {
+		return ports.Principal{}, err
+	}
+	return FromProtoPrincipal(p), nil
+}
+func (r *remoteIdentity) Authorize(ctx context.Context, req ports.AccessRequest) (ports.Decision, error) {
+	d, err := r.cli.Authorize(ctx, ToProtoAccessRequest(req))
+	if err != nil {
+		return ports.Decision{}, err
+	}
+	return FromProtoDecision(d), nil
+}

@@ -55,3 +55,21 @@ func TestLoadIngressUnknownTransport(t *testing.T) {
 		t.Fatal("expected error for unknown transport")
 	}
 }
+
+func TestLoadIdentityInprocNilIsError(t *testing.T) {
+	if _, err := plugin.LoadIdentity(plugin.ProviderConfig{Transport: "inproc"}, nil); err == nil {
+		t.Fatal("expected error when inproc identity provider is nil")
+	}
+}
+
+func TestLoadIdentityRemoteRequiresAddr(t *testing.T) {
+	if _, err := plugin.LoadIdentity(plugin.ProviderConfig{Transport: "remote"}, nil); err == nil {
+		t.Fatal("expected error when remote addr is empty")
+	}
+}
+
+func TestLoadIdentityUnknownTransport(t *testing.T) {
+	if _, err := plugin.LoadIdentity(plugin.ProviderConfig{Transport: "carrier-pigeon"}, nil); err == nil {
+		t.Fatal("expected error for unknown transport")
+	}
+}

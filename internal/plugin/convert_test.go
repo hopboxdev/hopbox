@@ -48,6 +48,26 @@ func TestExposeRequestAndEndpointRoundTrip(t *testing.T) {
 	}
 }
 
+func TestIdentityRoundTrip(t *testing.T) {
+	cred := ports.Credential{Scheme: "api-key", Value: "secret-1"}
+	if got := FromProtoCredential(ToProtoCredential(cred)); got != cred {
+		t.Fatalf("credential round-trip: %+v", got)
+	}
+	pr := ports.Principal{ID: "alice", TenantID: "default", DisplayName: "Alice", Roles: []string{"owner", "tenant-admin"}}
+	got := FromProtoPrincipal(ToProtoPrincipal(pr))
+	if got.ID != pr.ID || got.TenantID != pr.TenantID || got.DisplayName != pr.DisplayName || len(got.Roles) != 2 || got.Roles[0] != "owner" {
+		t.Fatalf("principal round-trip: %+v", got)
+	}
+	ar := ports.AccessRequest{Principal: pr, Action: "workspace.create", Resource: "default"}
+	if g := FromProtoAccessRequest(ToProtoAccessRequest(ar)); g.Action != ar.Action || g.Resource != ar.Resource || g.Principal.ID != pr.ID {
+		t.Fatalf("accessrequest round-trip: %+v", g)
+	}
+	d := ports.Decision{Allow: true, Reason: "ok"}
+	if g := FromProtoDecision(ToProtoDecision(d)); g != d {
+		t.Fatalf("decision round-trip: %+v", g)
+	}
+}
+
 func TestHomeRequestAndMountRoundTrip(t *testing.T) {
 	hr := ports.HomeRequest{WorkspaceID: "w1", TenantID: "default", Owner: "alice"}
 	if got := FromProtoHomeRequest(ToProtoHomeRequest(hr)); got != hr {

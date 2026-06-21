@@ -76,3 +76,26 @@ func (s *IngressServer) Expose(ctx context.Context, r *pb.ExposeRequest) (*pb.En
 func (s *IngressServer) Unexpose(ctx context.Context, r *pb.EndpointRef) (*pb.Empty, error) {
 	return &pb.Empty{}, s.impl.Unexpose(ctx, r.Ref)
 }
+
+// IdentityServer adapts a ports.Identity to the gRPC Identity service.
+type IdentityServer struct {
+	pb.UnimplementedIdentityServer
+	impl ports.Identity
+}
+
+func NewIdentity(impl ports.Identity) *IdentityServer { return &IdentityServer{impl: impl} }
+
+func (s *IdentityServer) Authenticate(ctx context.Context, r *pb.Credential) (*pb.Principal, error) {
+	p, err := s.impl.Authenticate(ctx, plugin.FromProtoCredential(r))
+	if err != nil {
+		return nil, err
+	}
+	return plugin.ToProtoPrincipal(p), nil
+}
+func (s *IdentityServer) Authorize(ctx context.Context, r *pb.AccessRequest) (*pb.Decision, error) {
+	d, err := s.impl.Authorize(ctx, plugin.FromProtoAccessRequest(r))
+	if err != nil {
+		return nil, err
+	}
+	return plugin.ToProtoDecision(d), nil
+}

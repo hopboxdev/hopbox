@@ -90,3 +90,25 @@ func LoadIngress(cfg ProviderConfig, inproc ports.Ingress) (ports.Ingress, error
 		return nil, fmt.Errorf("plugin: unknown ingress transport %q", cfg.Transport)
 	}
 }
+
+// LoadIdentity mirrors LoadCompute for ports.Identity.
+func LoadIdentity(cfg ProviderConfig, inproc ports.Identity) (ports.Identity, error) {
+	switch cfg.Transport {
+	case "", "inproc":
+		if inproc == nil {
+			return nil, fmt.Errorf("plugin: inproc identity provider is nil")
+		}
+		return inproc, nil
+	case "remote":
+		if cfg.RemoteAddr == "" {
+			return nil, fmt.Errorf("plugin: remote identity transport requires RemoteAddr")
+		}
+		conn, err := dial(cfg.RemoteAddr)
+		if err != nil {
+			return nil, fmt.Errorf("plugin: dial identity %q: %w", cfg.RemoteAddr, err)
+		}
+		return NewRemoteIdentity(conn), nil
+	default:
+		return nil, fmt.Errorf("plugin: unknown identity transport %q", cfg.Transport)
+	}
+}
