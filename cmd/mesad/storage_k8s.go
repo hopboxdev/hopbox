@@ -5,8 +5,8 @@ package main
 import (
 	"github.com/mesadev/mesa/internal/config"
 	"github.com/mesadev/mesa/internal/core/ports"
-	k8sstorage "github.com/mesadev/mesa/providers/storage/kubernetes"
 	"github.com/mesadev/mesa/internal/k8sclient"
+	k8sstorage "github.com/mesadev/mesa/providers/storage/kubernetes"
 )
 
 // newStorage returns no error today (see main.go), so a misconfigured kubeconfig

@@ -5,8 +5,8 @@ package main
 import (
 	"github.com/mesadev/mesa/internal/config"
 	"github.com/mesadev/mesa/internal/core/ports"
-	k8scompute "github.com/mesadev/mesa/providers/compute/kubernetes"
 	"github.com/mesadev/mesa/internal/k8sclient"
+	k8scompute "github.com/mesadev/mesa/providers/compute/kubernetes"
 )
 
 func newCompute(cfg config.Config) (ports.Compute, error) {

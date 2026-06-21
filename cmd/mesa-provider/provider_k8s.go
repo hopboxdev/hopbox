@@ -6,9 +6,9 @@ import (
 	"os"
 
 	"github.com/mesadev/mesa/internal/core/ports"
+	"github.com/mesadev/mesa/internal/k8sclient"
 	k8scompute "github.com/mesadev/mesa/providers/compute/kubernetes"
 	k8sstorage "github.com/mesadev/mesa/providers/storage/kubernetes"
-	"github.com/mesadev/mesa/internal/k8sclient"
 )
 
 // mesa-provider is the in-cluster remote server; it reads its k8s config from the
