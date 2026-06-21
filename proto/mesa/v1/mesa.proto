@@ -11,6 +11,7 @@ service WorkspaceService {
   rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse);
   rpc DeleteWorkspace(DeleteWorkspaceRequest) returns (google.protobuf.Empty);
   rpc Shell(stream ShellClientMsg) returns (stream ShellServerMsg);
+  rpc Exec(ExecRequest) returns (stream ExecServerMsg);
 }
 
 message Workspace {
@@ -68,5 +69,19 @@ message ShellServerMsg {
   oneof msg {
     bytes data = 1;
     int32 exit_code = 2;
+  }
+}
+
+// Exec runs a non-interactive command in a workspace (no pty). The server
+// streams stdout/stderr as they arrive, then a final exit_code.
+message ExecRequest {
+  string name_or_id = 1;
+  repeated string cmd = 2; // argv; run directly (use sh -c '...' for shell features)
+}
+message ExecServerMsg {
+  oneof msg {
+    bytes stdout = 1;
+    bytes stderr = 2;
+    int32 exit_code = 3;
   }
 }

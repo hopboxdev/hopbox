@@ -21,6 +21,7 @@ import (
 type Hub interface {
 	Connected(workspaceID string) bool
 	OpenShell(ctx context.Context, workspaceID string, hdr agentproto.ShellHeader) (io.ReadWriteCloser, error)
+	OpenExec(workspaceID string, cmd []string) (io.ReadWriteCloser, error)
 }
 
 type Server struct {
@@ -117,6 +118,49 @@ func (s *Server) DeleteWorkspace(ctx context.Context, r *mesav1.DeleteWorkspaceR
 		return nil, status.Errorf(codes.Internal, "delete: %v", err)
 	}
 	return &emptypb.Empty{}, nil
+}
+
+// Exec runs a non-interactive command on the agent, streaming framed
+// stdout/stderr back and finishing with the exit code.
+func (s *Server) Exec(req *mesav1.ExecRequest, stream mesav1.WorkspaceService_ExecServer) error {
+	ctx := stream.Context()
+	if len(req.Cmd) == 0 {
+		return status.Error(codes.InvalidArgument, "cmd is required")
+	}
+	w, err := s.resolve(ctx, req.NameOrId)
+	if err != nil {
+		return err
+	}
+	if !s.hub.Connected(w.ID) {
+		return status.Errorf(codes.FailedPrecondition, "workspace %q agent not connected (phase=%s)", w.Name, w.Phase)
+	}
+	agentStream, err := s.hub.OpenExec(w.ID, req.Cmd)
+	if err != nil {
+		return status.Errorf(codes.Internal, "open exec: %v", err)
+	}
+	defer agentStream.Close()
+
+	for {
+		typ, data, code, rerr := agentproto.ReadExecFrame(agentStream)
+		if errors.Is(rerr, io.EOF) {
+			return nil
+		}
+		if rerr != nil {
+			return status.Errorf(codes.Internal, "exec read: %v", rerr)
+		}
+		switch typ {
+		case agentproto.ExecStdout:
+			if err := stream.Send(&mesav1.ExecServerMsg{Msg: &mesav1.ExecServerMsg_Stdout{Stdout: data}}); err != nil {
+				return err
+			}
+		case agentproto.ExecStderr:
+			if err := stream.Send(&mesav1.ExecServerMsg{Msg: &mesav1.ExecServerMsg_Stderr{Stderr: data}}); err != nil {
+				return err
+			}
+		case agentproto.ExecExit:
+			return stream.Send(&mesav1.ExecServerMsg{Msg: &mesav1.ExecServerMsg_ExitCode{ExitCode: code}})
+		}
+	}
 }
 
 // Shell bridges the gRPC bidi stream to a pty stream on the agent.

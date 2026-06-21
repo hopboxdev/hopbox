@@ -25,6 +25,7 @@ const (
 	WorkspaceService_ListWorkspaces_FullMethodName  = "/mesa.v1.WorkspaceService/ListWorkspaces"
 	WorkspaceService_DeleteWorkspace_FullMethodName = "/mesa.v1.WorkspaceService/DeleteWorkspace"
 	WorkspaceService_Shell_FullMethodName           = "/mesa.v1.WorkspaceService/Shell"
+	WorkspaceService_Exec_FullMethodName            = "/mesa.v1.WorkspaceService/Exec"
 )
 
 // WorkspaceServiceClient is the client API for WorkspaceService service.
@@ -38,6 +39,7 @@ type WorkspaceServiceClient interface {
 	ListWorkspaces(ctx context.Context, in *ListWorkspacesRequest, opts ...grpc.CallOption) (*ListWorkspacesResponse, error)
 	DeleteWorkspace(ctx context.Context, in *DeleteWorkspaceRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Shell(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ShellClientMsg, ShellServerMsg], error)
+	Exec(ctx context.Context, in *ExecRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExecServerMsg], error)
 }
 
 type workspaceServiceClient struct {
@@ -101,6 +103,25 @@ func (c *workspaceServiceClient) Shell(ctx context.Context, opts ...grpc.CallOpt
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type WorkspaceService_ShellClient = grpc.BidiStreamingClient[ShellClientMsg, ShellServerMsg]
 
+func (c *workspaceServiceClient) Exec(ctx context.Context, in *ExecRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExecServerMsg], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &WorkspaceService_ServiceDesc.Streams[1], WorkspaceService_Exec_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ExecRequest, ExecServerMsg]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkspaceService_ExecClient = grpc.ServerStreamingClient[ExecServerMsg]
+
 // WorkspaceServiceServer is the server API for WorkspaceService service.
 // All implementations must embed UnimplementedWorkspaceServiceServer
 // for forward compatibility.
@@ -112,6 +133,7 @@ type WorkspaceServiceServer interface {
 	ListWorkspaces(context.Context, *ListWorkspacesRequest) (*ListWorkspacesResponse, error)
 	DeleteWorkspace(context.Context, *DeleteWorkspaceRequest) (*emptypb.Empty, error)
 	Shell(grpc.BidiStreamingServer[ShellClientMsg, ShellServerMsg]) error
+	Exec(*ExecRequest, grpc.ServerStreamingServer[ExecServerMsg]) error
 	mustEmbedUnimplementedWorkspaceServiceServer()
 }
 
@@ -136,6 +158,9 @@ func (UnimplementedWorkspaceServiceServer) DeleteWorkspace(context.Context, *Del
 }
 func (UnimplementedWorkspaceServiceServer) Shell(grpc.BidiStreamingServer[ShellClientMsg, ShellServerMsg]) error {
 	return status.Error(codes.Unimplemented, "method Shell not implemented")
+}
+func (UnimplementedWorkspaceServiceServer) Exec(*ExecRequest, grpc.ServerStreamingServer[ExecServerMsg]) error {
+	return status.Error(codes.Unimplemented, "method Exec not implemented")
 }
 func (UnimplementedWorkspaceServiceServer) mustEmbedUnimplementedWorkspaceServiceServer() {}
 func (UnimplementedWorkspaceServiceServer) testEmbeddedByValue()                          {}
@@ -237,6 +262,17 @@ func _WorkspaceService_Shell_Handler(srv interface{}, stream grpc.ServerStream) 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type WorkspaceService_ShellServer = grpc.BidiStreamingServer[ShellClientMsg, ShellServerMsg]
 
+func _WorkspaceService_Exec_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ExecRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(WorkspaceServiceServer).Exec(m, &grpc.GenericServerStream[ExecRequest, ExecServerMsg]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkspaceService_ExecServer = grpc.ServerStreamingServer[ExecServerMsg]
+
 // WorkspaceService_ServiceDesc is the grpc.ServiceDesc for WorkspaceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -267,6 +303,11 @@ var WorkspaceService_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _WorkspaceService_Shell_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "Exec",
+			Handler:       _WorkspaceService_Exec_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "mesa/v1/mesa.proto",

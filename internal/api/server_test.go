@@ -31,6 +31,17 @@ func (f *fakeHub) OpenShell(_ context.Context, _ string, _ agentproto.ShellHeade
 	return c1, nil
 }
 
+func (f *fakeHub) OpenExec(_ string, cmd []string) (io.ReadWriteCloser, error) {
+	c1, c2 := net.Pipe()
+	// far ("agent") end: emit a stdout frame echoing the command + exit 0.
+	go func() {
+		_ = agentproto.WriteExecData(c2, agentproto.ExecStdout, []byte("ran:"+cmd[0]))
+		_ = agentproto.WriteExecExit(c2, 0)
+		_ = c2.Close()
+	}()
+	return c1, nil
+}
+
 func dialer(t *testing.T) (mesav1.WorkspaceServiceClient, func()) {
 	t.Helper()
 	s, err := sqlite.Open(t.TempDir() + "/api.db")
@@ -116,5 +127,51 @@ func TestShellBridgeEchoes(t *testing.T) {
 	}
 	if string(msg.GetData()) != "ping" {
 		t.Fatalf("echo mismatch: %q", msg.GetData())
+	}
+}
+
+func TestExecStreamsOutputAndExit(t *testing.T) {
+	ctx := context.Background()
+	c, done := dialer(t)
+	defer done()
+	_, _ = c.CreateWorkspace(ctx, &mesav1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
+
+	stream, err := c.Exec(ctx, &mesav1.ExecRequest{NameOrId: "proj", Cmd: []string{"ls", "-la"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out string
+	var code int32 = -1
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("recv: %v", err)
+		}
+		if d := msg.GetStdout(); d != nil {
+			out += string(d)
+		}
+		if _, ok := msg.Msg.(*mesav1.ExecServerMsg_ExitCode); ok {
+			code = msg.GetExitCode()
+		}
+	}
+	if out != "ran:ls" || code != 0 {
+		t.Fatalf("exec output=%q code=%d", out, code)
+	}
+}
+
+func TestExecRequiresCmd(t *testing.T) {
+	ctx := context.Background()
+	c, done := dialer(t)
+	defer done()
+	_, _ = c.CreateWorkspace(ctx, &mesav1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
+	stream, err := c.Exec(ctx, &mesav1.ExecRequest{NameOrId: "proj"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Recv(); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("want InvalidArgument, got %v", err)
 	}
 }
