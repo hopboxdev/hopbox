@@ -127,13 +127,38 @@ func handleExec(stream io.ReadWriteCloser) {
 	cmd.Env = append(os.Environ(), "TERM=dumb")
 	cmd.Stdout = &execWriter{w: stream, typ: agentproto.ExecStdout, mu: &mu}
 	cmd.Stderr = &execWriter{w: stream, typ: agentproto.ExecStderr, mu: &mu}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		_ = agentproto.WriteExecExit(stream, 126)
+		return
+	}
 
 	if err := cmd.Start(); err != nil {
 		// nothing else writes yet; emit directly.
+		_ = stdin.Close()
 		_ = agentproto.WriteExecData(stream, agentproto.ExecStderr, []byte("mesa-agent: "+err.Error()+"\n"))
 		_ = agentproto.WriteExecExit(stream, 127)
 		return
 	}
+
+	// stdin pump: controller -> cmd, until a stdin-close frame or the stream ends.
+	go func() {
+		defer stdin.Close()
+		for {
+			typ, data, _, rerr := agentproto.ReadExecFrame(stream)
+			if rerr != nil {
+				return
+			}
+			switch typ {
+			case agentproto.ExecStdin:
+				if _, werr := stdin.Write(data); werr != nil {
+					return
+				}
+			case agentproto.ExecStdinClose:
+				return
+			}
+		}
+	}()
 	code := int32(0)
 	if err := cmd.Wait(); err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {

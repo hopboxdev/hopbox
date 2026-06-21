@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -33,11 +34,23 @@ func (f *fakeHub) OpenShell(_ context.Context, _ string, _ agentproto.ShellHeade
 
 func (f *fakeHub) OpenExec(_ string, cmd []string) (io.ReadWriteCloser, error) {
 	c1, c2 := net.Pipe()
-	// far ("agent") end: emit a stdout frame echoing the command + exit 0.
+	// far ("agent") end: emit "ran:<cmd>", echo any stdin back as stdout, exit 0.
 	go func() {
+		defer c2.Close()
 		_ = agentproto.WriteExecData(c2, agentproto.ExecStdout, []byte("ran:"+cmd[0]))
+		for {
+			typ, data, _, err := agentproto.ReadExecFrame(c2)
+			if err != nil {
+				break
+			}
+			if typ == agentproto.ExecStdin {
+				_ = agentproto.WriteExecData(c2, agentproto.ExecStdout, data)
+			}
+			if typ == agentproto.ExecStdinClose {
+				break
+			}
+		}
 		_ = agentproto.WriteExecExit(c2, 0)
-		_ = c2.Close()
 	}()
 	return c1, nil
 }
@@ -130,16 +143,10 @@ func TestShellBridgeEchoes(t *testing.T) {
 	}
 }
 
-func TestExecStreamsOutputAndExit(t *testing.T) {
-	ctx := context.Background()
-	c, done := dialer(t)
-	defer done()
-	_, _ = c.CreateWorkspace(ctx, &mesav1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
-
-	stream, err := c.Exec(ctx, &mesav1.ExecRequest{NameOrId: "proj", Cmd: []string{"ls", "-la"}})
-	if err != nil {
-		t.Fatal(err)
-	}
+// drainExec reads an exec stream to completion, returning combined stdout and
+// the exit code.
+func drainExec(t *testing.T, stream mesav1.WorkspaceService_ExecClient) (string, int32) {
+	t.Helper()
 	var out string
 	var code int32 = -1
 	for {
@@ -157,8 +164,48 @@ func TestExecStreamsOutputAndExit(t *testing.T) {
 			code = msg.GetExitCode()
 		}
 	}
-	if out != "ran:ls" || code != 0 {
+	return out, code
+}
+
+func TestExecStreamsOutputAndExit(t *testing.T) {
+	ctx := context.Background()
+	c, done := dialer(t)
+	defer done()
+	_, _ = c.CreateWorkspace(ctx, &mesav1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
+
+	stream, err := c.Exec(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.Send(&mesav1.ExecClientMsg{Msg: &mesav1.ExecClientMsg_Open{
+		Open: &mesav1.ExecOpen{NameOrId: "proj", Cmd: []string{"ls", "-la"}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	_ = stream.CloseSend()
+	if out, code := drainExec(t, stream); out != "ran:ls" || code != 0 {
 		t.Fatalf("exec output=%q code=%d", out, code)
+	}
+}
+
+func TestExecForwardsStdin(t *testing.T) {
+	ctx := context.Background()
+	c, done := dialer(t)
+	defer done()
+	_, _ = c.CreateWorkspace(ctx, &mesav1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
+
+	stream, err := c.Exec(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = stream.Send(&mesav1.ExecClientMsg{Msg: &mesav1.ExecClientMsg_Open{
+		Open: &mesav1.ExecOpen{NameOrId: "proj", Cmd: []string{"cat"}},
+	}})
+	_ = stream.Send(&mesav1.ExecClientMsg{Msg: &mesav1.ExecClientMsg_Stdin{Stdin: []byte("piped-in")}})
+	_ = stream.CloseSend()
+	out, code := drainExec(t, stream)
+	if !strings.Contains(out, "piped-in") || code != 0 {
+		t.Fatalf("stdin not echoed: out=%q code=%d", out, code)
 	}
 }
 
@@ -167,10 +214,14 @@ func TestExecRequiresCmd(t *testing.T) {
 	c, done := dialer(t)
 	defer done()
 	_, _ = c.CreateWorkspace(ctx, &mesav1.CreateWorkspaceRequest{Name: "proj", ImageRef: "ubuntu:24.04"})
-	stream, err := c.Exec(ctx, &mesav1.ExecRequest{NameOrId: "proj"})
+	stream, err := c.Exec(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	_ = stream.Send(&mesav1.ExecClientMsg{Msg: &mesav1.ExecClientMsg_Open{
+		Open: &mesav1.ExecOpen{NameOrId: "proj"},
+	}})
+	_ = stream.CloseSend()
 	if _, err := stream.Recv(); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("want InvalidArgument, got %v", err)
 	}

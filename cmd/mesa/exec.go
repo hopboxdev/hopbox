@@ -34,10 +34,33 @@ func newExecCmd(dial func() (mesav1.WorkspaceServiceClient, func(), error)) *cob
 			}
 			defer closer()
 
-			stream, err := client.Exec(context.Background(), &mesav1.ExecRequest{NameOrId: name, Cmd: command})
+			stream, err := client.Exec(context.Background())
 			if err != nil {
 				return err
 			}
+			if err := stream.Send(&mesav1.ExecClientMsg{Msg: &mesav1.ExecClientMsg_Open{
+				Open: &mesav1.ExecOpen{NameOrId: name, Cmd: command},
+			}}); err != nil {
+				return err
+			}
+			// stdin pump: forward os.Stdin until EOF, then half-close. Commands
+			// that don't read stdin simply ignore it; this goroutine is abandoned
+			// when the command exits and the program returns.
+			go func() {
+				buf := make([]byte, 32*1024)
+				for {
+					n, rerr := os.Stdin.Read(buf)
+					if n > 0 {
+						_ = stream.Send(&mesav1.ExecClientMsg{Msg: &mesav1.ExecClientMsg_Stdin{
+							Stdin: append([]byte(nil), buf[:n]...),
+						}})
+					}
+					if rerr != nil {
+						_ = stream.CloseSend()
+						return
+					}
+				}
+			}()
 			code := 0
 			for {
 				msg, rerr := stream.Recv()

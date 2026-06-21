@@ -120,25 +120,49 @@ func (s *Server) DeleteWorkspace(ctx context.Context, r *mesav1.DeleteWorkspaceR
 	return &emptypb.Empty{}, nil
 }
 
-// Exec runs a non-interactive command on the agent, streaming framed
-// stdout/stderr back and finishing with the exit code.
-func (s *Server) Exec(req *mesav1.ExecRequest, stream mesav1.WorkspaceService_ExecServer) error {
+// Exec runs a non-interactive command on the agent, forwarding client stdin and
+// streaming framed stdout/stderr back, finishing with the exit code.
+func (s *Server) Exec(stream mesav1.WorkspaceService_ExecServer) error {
 	ctx := stream.Context()
-	if len(req.Cmd) == 0 {
+	first, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	open := first.GetOpen()
+	if open == nil {
+		return status.Error(codes.InvalidArgument, "first Exec message must be `open`")
+	}
+	if len(open.Cmd) == 0 {
 		return status.Error(codes.InvalidArgument, "cmd is required")
 	}
-	w, err := s.resolve(ctx, req.NameOrId)
+	w, err := s.resolve(ctx, open.NameOrId)
 	if err != nil {
 		return err
 	}
 	if !s.hub.Connected(w.ID) {
 		return status.Errorf(codes.FailedPrecondition, "workspace %q agent not connected (phase=%s)", w.Name, w.Phase)
 	}
-	agentStream, err := s.hub.OpenExec(w.ID, req.Cmd)
+	agentStream, err := s.hub.OpenExec(w.ID, open.Cmd)
 	if err != nil {
 		return status.Errorf(codes.Internal, "open exec: %v", err)
 	}
 	defer agentStream.Close()
+
+	// stdin pump: client -> agent (framed), until the client half-closes.
+	go func() {
+		for {
+			msg, rerr := stream.Recv()
+			if rerr != nil {
+				_ = agentproto.WriteExecStdinClose(agentStream)
+				return
+			}
+			if d := msg.GetStdin(); d != nil {
+				if werr := agentproto.WriteExecData(agentStream, agentproto.ExecStdin, d); werr != nil {
+					return
+				}
+			}
+		}
+	}()
 
 	for {
 		typ, data, code, rerr := agentproto.ReadExecFrame(agentStream)

@@ -788,30 +788,34 @@ func (*ShellServerMsg_Data) isShellServerMsg_Msg() {}
 
 func (*ShellServerMsg_ExitCode) isShellServerMsg_Msg() {}
 
-// Exec runs a non-interactive command in a workspace (no pty). The server
-// streams stdout/stderr as they arrive, then a final exit_code.
-type ExecRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	NameOrId      string                 `protobuf:"bytes,1,opt,name=name_or_id,json=nameOrId,proto3" json:"name_or_id,omitempty"`
-	Cmd           []string               `protobuf:"bytes,2,rep,name=cmd,proto3" json:"cmd,omitempty"` // argv; run directly (use sh -c '...' for shell features)
+// Exec runs a non-interactive command in a workspace (no pty). First client msg
+// MUST be `open`; subsequent client msgs carry stdin. The server streams
+// stdout/stderr as they arrive, then a final exit_code.
+type ExecClientMsg struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Msg:
+	//
+	//	*ExecClientMsg_Open
+	//	*ExecClientMsg_Stdin
+	Msg           isExecClientMsg_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ExecRequest) Reset() {
-	*x = ExecRequest{}
+func (x *ExecClientMsg) Reset() {
+	*x = ExecClientMsg{}
 	mi := &file_mesa_v1_mesa_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ExecRequest) String() string {
+func (x *ExecClientMsg) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ExecRequest) ProtoMessage() {}
+func (*ExecClientMsg) ProtoMessage() {}
 
-func (x *ExecRequest) ProtoReflect() protoreflect.Message {
+func (x *ExecClientMsg) ProtoReflect() protoreflect.Message {
 	mi := &file_mesa_v1_mesa_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -823,19 +827,98 @@ func (x *ExecRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ExecRequest.ProtoReflect.Descriptor instead.
-func (*ExecRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ExecClientMsg.ProtoReflect.Descriptor instead.
+func (*ExecClientMsg) Descriptor() ([]byte, []int) {
 	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *ExecRequest) GetNameOrId() string {
+func (x *ExecClientMsg) GetMsg() isExecClientMsg_Msg {
+	if x != nil {
+		return x.Msg
+	}
+	return nil
+}
+
+func (x *ExecClientMsg) GetOpen() *ExecOpen {
+	if x != nil {
+		if x, ok := x.Msg.(*ExecClientMsg_Open); ok {
+			return x.Open
+		}
+	}
+	return nil
+}
+
+func (x *ExecClientMsg) GetStdin() []byte {
+	if x != nil {
+		if x, ok := x.Msg.(*ExecClientMsg_Stdin); ok {
+			return x.Stdin
+		}
+	}
+	return nil
+}
+
+type isExecClientMsg_Msg interface {
+	isExecClientMsg_Msg()
+}
+
+type ExecClientMsg_Open struct {
+	Open *ExecOpen `protobuf:"bytes,1,opt,name=open,proto3,oneof"`
+}
+
+type ExecClientMsg_Stdin struct {
+	Stdin []byte `protobuf:"bytes,2,opt,name=stdin,proto3,oneof"`
+}
+
+func (*ExecClientMsg_Open) isExecClientMsg_Msg() {}
+
+func (*ExecClientMsg_Stdin) isExecClientMsg_Msg() {}
+
+type ExecOpen struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NameOrId      string                 `protobuf:"bytes,1,opt,name=name_or_id,json=nameOrId,proto3" json:"name_or_id,omitempty"`
+	Cmd           []string               `protobuf:"bytes,2,rep,name=cmd,proto3" json:"cmd,omitempty"` // argv; run directly (use sh -c '...' for shell features)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExecOpen) Reset() {
+	*x = ExecOpen{}
+	mi := &file_mesa_v1_mesa_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecOpen) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecOpen) ProtoMessage() {}
+
+func (x *ExecOpen) ProtoReflect() protoreflect.Message {
+	mi := &file_mesa_v1_mesa_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecOpen.ProtoReflect.Descriptor instead.
+func (*ExecOpen) Descriptor() ([]byte, []int) {
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ExecOpen) GetNameOrId() string {
 	if x != nil {
 		return x.NameOrId
 	}
 	return ""
 }
 
-func (x *ExecRequest) GetCmd() []string {
+func (x *ExecOpen) GetCmd() []string {
 	if x != nil {
 		return x.Cmd
 	}
@@ -856,7 +939,7 @@ type ExecServerMsg struct {
 
 func (x *ExecServerMsg) Reset() {
 	*x = ExecServerMsg{}
-	mi := &file_mesa_v1_mesa_proto_msgTypes[13]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -868,7 +951,7 @@ func (x *ExecServerMsg) String() string {
 func (*ExecServerMsg) ProtoMessage() {}
 
 func (x *ExecServerMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_mesa_v1_mesa_proto_msgTypes[13]
+	mi := &file_mesa_v1_mesa_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -881,7 +964,7 @@ func (x *ExecServerMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecServerMsg.ProtoReflect.Descriptor instead.
 func (*ExecServerMsg) Descriptor() ([]byte, []int) {
-	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{13}
+	return file_mesa_v1_mesa_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ExecServerMsg) GetMsg() isExecServerMsg_Msg {
@@ -997,8 +1080,12 @@ const file_mesa_v1_mesa_proto_rawDesc = "" +
 	"\x0eShellServerMsg\x12\x14\n" +
 	"\x04data\x18\x01 \x01(\fH\x00R\x04data\x12\x1d\n" +
 	"\texit_code\x18\x02 \x01(\x05H\x00R\bexitCodeB\x05\n" +
-	"\x03msg\"=\n" +
-	"\vExecRequest\x12\x1c\n" +
+	"\x03msg\"W\n" +
+	"\rExecClientMsg\x12'\n" +
+	"\x04open\x18\x01 \x01(\v2\x11.mesa.v1.ExecOpenH\x00R\x04open\x12\x16\n" +
+	"\x05stdin\x18\x02 \x01(\fH\x00R\x05stdinB\x05\n" +
+	"\x03msg\":\n" +
+	"\bExecOpen\x12\x1c\n" +
 	"\n" +
 	"name_or_id\x18\x01 \x01(\tR\bnameOrId\x12\x10\n" +
 	"\x03cmd\x18\x02 \x03(\tR\x03cmd\"i\n" +
@@ -1006,14 +1093,14 @@ const file_mesa_v1_mesa_proto_rawDesc = "" +
 	"\x06stdout\x18\x01 \x01(\fH\x00R\x06stdout\x12\x18\n" +
 	"\x06stderr\x18\x02 \x01(\fH\x00R\x06stderr\x12\x1d\n" +
 	"\texit_code\x18\x03 \x01(\x05H\x00R\bexitCodeB\x05\n" +
-	"\x03msg2\xb2\x03\n" +
+	"\x03msg2\xb6\x03\n" +
 	"\x10WorkspaceService\x12F\n" +
 	"\x0fCreateWorkspace\x12\x1f.mesa.v1.CreateWorkspaceRequest\x1a\x12.mesa.v1.Workspace\x12@\n" +
 	"\fGetWorkspace\x12\x1c.mesa.v1.GetWorkspaceRequest\x1a\x12.mesa.v1.Workspace\x12Q\n" +
 	"\x0eListWorkspaces\x12\x1e.mesa.v1.ListWorkspacesRequest\x1a\x1f.mesa.v1.ListWorkspacesResponse\x12J\n" +
 	"\x0fDeleteWorkspace\x12\x1f.mesa.v1.DeleteWorkspaceRequest\x1a\x16.google.protobuf.Empty\x12=\n" +
-	"\x05Shell\x12\x17.mesa.v1.ShellClientMsg\x1a\x17.mesa.v1.ShellServerMsg(\x010\x01\x126\n" +
-	"\x04Exec\x12\x14.mesa.v1.ExecRequest\x1a\x16.mesa.v1.ExecServerMsg0\x01B\x81\x01\n" +
+	"\x05Shell\x12\x17.mesa.v1.ShellClientMsg\x1a\x17.mesa.v1.ShellServerMsg(\x010\x01\x12:\n" +
+	"\x04Exec\x12\x16.mesa.v1.ExecClientMsg\x1a\x16.mesa.v1.ExecServerMsg(\x010\x01B\x81\x01\n" +
 	"\vcom.mesa.v1B\tMesaProtoP\x01Z*github.com/mesadev/mesa/gen/mesa/v1;mesav1\xa2\x02\x03MXX\xaa\x02\aMesa.V1\xca\x02\aMesa\\V1\xe2\x02\x13Mesa\\V1\\GPBMetadata\xea\x02\bMesa::V1b\x06proto3"
 
 var (
@@ -1028,7 +1115,7 @@ func file_mesa_v1_mesa_proto_rawDescGZIP() []byte {
 	return file_mesa_v1_mesa_proto_rawDescData
 }
 
-var file_mesa_v1_mesa_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_mesa_v1_mesa_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_mesa_v1_mesa_proto_goTypes = []any{
 	(*Workspace)(nil),              // 0: mesa.v1.Workspace
 	(*IngressPort)(nil),            // 1: mesa.v1.IngressPort
@@ -1042,9 +1129,10 @@ var file_mesa_v1_mesa_proto_goTypes = []any{
 	(*OpenShell)(nil),              // 9: mesa.v1.OpenShell
 	(*Resize)(nil),                 // 10: mesa.v1.Resize
 	(*ShellServerMsg)(nil),         // 11: mesa.v1.ShellServerMsg
-	(*ExecRequest)(nil),            // 12: mesa.v1.ExecRequest
-	(*ExecServerMsg)(nil),          // 13: mesa.v1.ExecServerMsg
-	(*emptypb.Empty)(nil),          // 14: google.protobuf.Empty
+	(*ExecClientMsg)(nil),          // 12: mesa.v1.ExecClientMsg
+	(*ExecOpen)(nil),               // 13: mesa.v1.ExecOpen
+	(*ExecServerMsg)(nil),          // 14: mesa.v1.ExecServerMsg
+	(*emptypb.Empty)(nil),          // 15: google.protobuf.Empty
 }
 var file_mesa_v1_mesa_proto_depIdxs = []int32{
 	2,  // 0: mesa.v1.Workspace.endpoints:type_name -> mesa.v1.Endpoint
@@ -1052,23 +1140,24 @@ var file_mesa_v1_mesa_proto_depIdxs = []int32{
 	0,  // 2: mesa.v1.ListWorkspacesResponse.workspaces:type_name -> mesa.v1.Workspace
 	9,  // 3: mesa.v1.ShellClientMsg.open:type_name -> mesa.v1.OpenShell
 	10, // 4: mesa.v1.ShellClientMsg.resize:type_name -> mesa.v1.Resize
-	3,  // 5: mesa.v1.WorkspaceService.CreateWorkspace:input_type -> mesa.v1.CreateWorkspaceRequest
-	4,  // 6: mesa.v1.WorkspaceService.GetWorkspace:input_type -> mesa.v1.GetWorkspaceRequest
-	5,  // 7: mesa.v1.WorkspaceService.ListWorkspaces:input_type -> mesa.v1.ListWorkspacesRequest
-	7,  // 8: mesa.v1.WorkspaceService.DeleteWorkspace:input_type -> mesa.v1.DeleteWorkspaceRequest
-	8,  // 9: mesa.v1.WorkspaceService.Shell:input_type -> mesa.v1.ShellClientMsg
-	12, // 10: mesa.v1.WorkspaceService.Exec:input_type -> mesa.v1.ExecRequest
-	0,  // 11: mesa.v1.WorkspaceService.CreateWorkspace:output_type -> mesa.v1.Workspace
-	0,  // 12: mesa.v1.WorkspaceService.GetWorkspace:output_type -> mesa.v1.Workspace
-	6,  // 13: mesa.v1.WorkspaceService.ListWorkspaces:output_type -> mesa.v1.ListWorkspacesResponse
-	14, // 14: mesa.v1.WorkspaceService.DeleteWorkspace:output_type -> google.protobuf.Empty
-	11, // 15: mesa.v1.WorkspaceService.Shell:output_type -> mesa.v1.ShellServerMsg
-	13, // 16: mesa.v1.WorkspaceService.Exec:output_type -> mesa.v1.ExecServerMsg
-	11, // [11:17] is the sub-list for method output_type
-	5,  // [5:11] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	13, // 5: mesa.v1.ExecClientMsg.open:type_name -> mesa.v1.ExecOpen
+	3,  // 6: mesa.v1.WorkspaceService.CreateWorkspace:input_type -> mesa.v1.CreateWorkspaceRequest
+	4,  // 7: mesa.v1.WorkspaceService.GetWorkspace:input_type -> mesa.v1.GetWorkspaceRequest
+	5,  // 8: mesa.v1.WorkspaceService.ListWorkspaces:input_type -> mesa.v1.ListWorkspacesRequest
+	7,  // 9: mesa.v1.WorkspaceService.DeleteWorkspace:input_type -> mesa.v1.DeleteWorkspaceRequest
+	8,  // 10: mesa.v1.WorkspaceService.Shell:input_type -> mesa.v1.ShellClientMsg
+	12, // 11: mesa.v1.WorkspaceService.Exec:input_type -> mesa.v1.ExecClientMsg
+	0,  // 12: mesa.v1.WorkspaceService.CreateWorkspace:output_type -> mesa.v1.Workspace
+	0,  // 13: mesa.v1.WorkspaceService.GetWorkspace:output_type -> mesa.v1.Workspace
+	6,  // 14: mesa.v1.WorkspaceService.ListWorkspaces:output_type -> mesa.v1.ListWorkspacesResponse
+	15, // 15: mesa.v1.WorkspaceService.DeleteWorkspace:output_type -> google.protobuf.Empty
+	11, // 16: mesa.v1.WorkspaceService.Shell:output_type -> mesa.v1.ShellServerMsg
+	14, // 17: mesa.v1.WorkspaceService.Exec:output_type -> mesa.v1.ExecServerMsg
+	12, // [12:18] is the sub-list for method output_type
+	6,  // [6:12] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_mesa_v1_mesa_proto_init() }
@@ -1085,7 +1174,11 @@ func file_mesa_v1_mesa_proto_init() {
 		(*ShellServerMsg_Data)(nil),
 		(*ShellServerMsg_ExitCode)(nil),
 	}
-	file_mesa_v1_mesa_proto_msgTypes[13].OneofWrappers = []any{
+	file_mesa_v1_mesa_proto_msgTypes[12].OneofWrappers = []any{
+		(*ExecClientMsg_Open)(nil),
+		(*ExecClientMsg_Stdin)(nil),
+	}
+	file_mesa_v1_mesa_proto_msgTypes[14].OneofWrappers = []any{
 		(*ExecServerMsg_Stdout)(nil),
 		(*ExecServerMsg_Stderr)(nil),
 		(*ExecServerMsg_ExitCode)(nil),
@@ -1096,7 +1189,7 @@ func file_mesa_v1_mesa_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mesa_v1_mesa_proto_rawDesc), len(file_mesa_v1_mesa_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

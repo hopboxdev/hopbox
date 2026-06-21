@@ -55,9 +55,11 @@ type ExecHeader struct {
 // stream: [type:1][len:4][payload]. stdout/stderr payloads are raw bytes; the
 // exit payload is a 4-byte big-endian int32 process exit code (sent last).
 const (
-	ExecStdout byte = 1
-	ExecStderr byte = 2
-	ExecExit   byte = 3
+	ExecStdout     byte = 1
+	ExecStderr     byte = 2
+	ExecExit       byte = 3
+	ExecStdin      byte = 4 // controller -> agent: stdin bytes
+	ExecStdinClose byte = 5 // controller -> agent: no more stdin (EOF cmd.Stdin)
 )
 
 // WriteExecData writes a stdout/stderr frame. Callers must chunk payloads to
@@ -73,6 +75,15 @@ func WriteExecData(w io.Writer, typ byte, data []byte) error {
 		return err
 	}
 	_, err := w.Write(data)
+	return err
+}
+
+// WriteExecStdinClose signals end-of-stdin to the agent (EOFs cmd.Stdin).
+func WriteExecStdinClose(w io.Writer) error {
+	var hdr [5]byte
+	hdr[0] = ExecStdinClose
+	binary.BigEndian.PutUint32(hdr[1:], 0)
+	_, err := w.Write(hdr[:])
 	return err
 }
 
