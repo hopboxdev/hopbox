@@ -12,13 +12,15 @@ import (
 
 	pb "github.com/mesadev/mesa/gen/mesa/provider/v1"
 	"github.com/mesadev/mesa/internal/plugin/server"
+	"github.com/mesadev/mesa/providers/ingress/subdomain"
 )
 
 func main() {
 	fs := flag.NewFlagSet("mesa-provider", flag.ExitOnError)
 	addr := fs.String("listen", ":9090", "gRPC listen address")
-	kind := fs.String("serve", "compute", "what to serve: compute|storage")
+	kind := fs.String("serve", "compute", "what to serve: compute|storage|ingress")
 	advertise := fs.String("advertise", "", "advertise address passed to the compute provider")
+	zone := fs.String("zone", "gw.example.com", "wildcard DNS zone for the subdomain ingress provider")
 	_ = fs.Parse(os.Args[1:])
 
 	ln, err := net.Listen("tcp", *addr)
@@ -35,6 +37,8 @@ func main() {
 		pb.RegisterComputeServer(gs, server.NewCompute(c))
 	case "storage":
 		pb.RegisterStorageServer(gs, server.NewStorage(newStorage()))
+	case "ingress":
+		pb.RegisterIngressServer(gs, server.NewIngress(subdomain.New(*zone)))
 	default:
 		log.Fatalf("mesa-provider: unknown --serve %q", *kind)
 	}

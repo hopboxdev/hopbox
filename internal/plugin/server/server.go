@@ -57,3 +57,22 @@ func (s *StorageServer) EnsureHome(ctx context.Context, r *pb.HomeRequest) (*pb.
 func (s *StorageServer) Delete(ctx context.Context, r *pb.HomeRef) (*pb.Empty, error) {
 	return &pb.Empty{}, s.impl.Delete(ctx, r.Source)
 }
+
+// IngressServer adapts a ports.Ingress to the gRPC Ingress service.
+type IngressServer struct {
+	pb.UnimplementedIngressServer
+	impl ports.Ingress
+}
+
+func NewIngress(impl ports.Ingress) *IngressServer { return &IngressServer{impl: impl} }
+
+func (s *IngressServer) Expose(ctx context.Context, r *pb.ExposeRequest) (*pb.Endpoint, error) {
+	ep, err := s.impl.Expose(ctx, plugin.FromProtoExposeRequest(r))
+	if err != nil {
+		return nil, err
+	}
+	return plugin.ToProtoEndpoint(ep), nil
+}
+func (s *IngressServer) Unexpose(ctx context.Context, r *pb.EndpointRef) (*pb.Empty, error) {
+	return &pb.Empty{}, s.impl.Unexpose(ctx, r.Ref)
+}

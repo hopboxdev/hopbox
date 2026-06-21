@@ -110,3 +110,23 @@ func FromProtoHomeRequest(h *pb.HomeRequest) ports.HomeRequest {
 	}
 	return ports.HomeRequest{WorkspaceID: h.WorkspaceId, TenantID: h.TenantId, Owner: h.Owner}
 }
+
+func ToProtoExposeRequest(r ports.ExposeRequest) *pb.ExposeRequest {
+	return &pb.ExposeRequest{WorkspaceId: r.WorkspaceID, Name: r.Name, Port: r.Port, Scheme: r.Scheme, TenantId: r.TenantID}
+}
+func FromProtoExposeRequest(r *pb.ExposeRequest) ports.ExposeRequest {
+	if r == nil {
+		return ports.ExposeRequest{}
+	}
+	return ports.ExposeRequest{WorkspaceID: r.WorkspaceId, Name: r.Name, Port: r.Port, Scheme: r.Scheme, TenantID: r.TenantId}
+}
+
+func ToProtoEndpoint(e ports.Endpoint) *pb.Endpoint {
+	return &pb.Endpoint{Ref: e.Ref, Url: e.URL, Name: e.Name, Port: e.Port}
+}
+func FromProtoEndpoint(e *pb.Endpoint) ports.Endpoint {
+	if e == nil {
+		return ports.Endpoint{}
+	}
+	return ports.Endpoint{Ref: e.Ref, URL: e.Url, Name: e.Name, Port: e.Port}
+}

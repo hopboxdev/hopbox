@@ -58,6 +58,23 @@ type HomeRequest struct {
 	Owner       string
 }
 
+// ExposeRequest asks an Ingress provider to make a workspace port reachable.
+type ExposeRequest struct {
+	WorkspaceID string
+	Name        string // logical endpoint name within the workspace (e.g. "app")
+	Port        int32  // port inside the workspace
+	Scheme      string // subdomain | port-range | tcp-tunnel
+	TenantID    string
+}
+
+// Endpoint is a reachable address for an exposed workspace port.
+type Endpoint struct {
+	Ref  string // provider-opaque handle (also the gateway route key)
+	URL  string // reachable address, e.g. https://app-alice.gw.host
+	Name string
+	Port int32
+}
+
 // ---- the contracts ----
 
 type Compute interface {
@@ -70,4 +87,10 @@ type Compute interface {
 type Storage interface {
 	EnsureHome(ctx context.Context, r HomeRequest) (Mount, error)
 	Delete(ctx context.Context, homeRef string) error
+}
+
+// Ingress maps a workspace port onto a reachable Endpoint at the service gateway.
+type Ingress interface {
+	Expose(ctx context.Context, r ExposeRequest) (Endpoint, error)
+	Unexpose(ctx context.Context, ref string) error
 }

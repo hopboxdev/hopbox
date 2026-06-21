@@ -68,3 +68,25 @@ func LoadStorage(cfg ProviderConfig, inproc ports.Storage) (ports.Storage, error
 		return nil, fmt.Errorf("plugin: unknown storage transport %q", cfg.Transport)
 	}
 }
+
+// LoadIngress mirrors LoadCompute for ports.Ingress.
+func LoadIngress(cfg ProviderConfig, inproc ports.Ingress) (ports.Ingress, error) {
+	switch cfg.Transport {
+	case "", "inproc":
+		if inproc == nil {
+			return nil, fmt.Errorf("plugin: inproc ingress provider is nil")
+		}
+		return inproc, nil
+	case "remote":
+		if cfg.RemoteAddr == "" {
+			return nil, fmt.Errorf("plugin: remote ingress transport requires RemoteAddr")
+		}
+		conn, err := dial(cfg.RemoteAddr)
+		if err != nil {
+			return nil, fmt.Errorf("plugin: dial ingress %q: %w", cfg.RemoteAddr, err)
+		}
+		return NewRemoteIngress(conn), nil
+	default:
+		return nil, fmt.Errorf("plugin: unknown ingress transport %q", cfg.Transport)
+	}
+}

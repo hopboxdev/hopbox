@@ -37,3 +37,21 @@ func TestLoadComputeUnknownTransport(t *testing.T) {
 		t.Fatal("expected error for unknown transport")
 	}
 }
+
+func TestLoadIngressInprocNilIsError(t *testing.T) {
+	if _, err := plugin.LoadIngress(plugin.ProviderConfig{Transport: "inproc"}, nil); err == nil {
+		t.Fatal("expected error when inproc ingress provider is nil")
+	}
+}
+
+func TestLoadIngressRemoteRequiresAddr(t *testing.T) {
+	if _, err := plugin.LoadIngress(plugin.ProviderConfig{Transport: "remote"}, nil); err == nil {
+		t.Fatal("expected error when remote addr is empty")
+	}
+}
+
+func TestLoadIngressUnknownTransport(t *testing.T) {
+	if _, err := plugin.LoadIngress(plugin.ProviderConfig{Transport: "carrier-pigeon"}, nil); err == nil {
+		t.Fatal("expected error for unknown transport")
+	}
+}

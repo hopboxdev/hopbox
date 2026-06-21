@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package mesa.provider.v1;
+
+import "mesa/provider/v1/compute.proto";
+
+// Ingress decides HOW a workspace port is addressed at the service gateway
+// (mesa-gw). A provider maps a workspace port onto a reachable endpoint: the
+// subdomain provider returns an L7 Host-routed URL (app-alice.gw.host, unlimited
+// endpoints); the port-range provider (post-MVP) returns gw.host:NNNNN.
+service Ingress {
+  rpc Expose   (ExposeRequest) returns (Endpoint);
+  rpc Unexpose (EndpointRef)   returns (Empty);
+}
+
+message ExposeRequest {
+  string workspace_id = 1;
+  string name = 2;       // logical endpoint name within the workspace (e.g. "app")
+  int32 port = 3;        // port inside the workspace the endpoint targets
+  string scheme = 4;     // subdomain | port-range | tcp-tunnel
+  string tenant_id = 5;
+}
+
+message Endpoint {
+  string ref = 1;        // provider-opaque handle (also the gateway route key)
+  string url = 2;        // reachable address, e.g. https://app-alice.gw.host
+  string name = 3;       // echoes ExposeRequest.name
+  int32 port = 4;        // echoes the workspace port
+}
+
+message EndpointRef {
+  string ref = 1;
+}
+// Empty is defined in compute.proto (same package).

@@ -37,6 +37,17 @@ func TestInstancePhaseRoundTrip(t *testing.T) {
 	}
 }
 
+func TestExposeRequestAndEndpointRoundTrip(t *testing.T) {
+	er := ports.ExposeRequest{WorkspaceID: "w1", Name: "app", Port: 3000, Scheme: "subdomain", TenantID: "default"}
+	if got := FromProtoExposeRequest(ToProtoExposeRequest(er)); got != er {
+		t.Fatalf("exposerequest round-trip: %+v", got)
+	}
+	ep := ports.Endpoint{Ref: "app-w1.gw.host", URL: "https://app-w1.gw.host", Name: "app", Port: 3000}
+	if got := FromProtoEndpoint(ToProtoEndpoint(ep)); got != ep {
+		t.Fatalf("endpoint round-trip: %+v", got)
+	}
+}
+
 func TestHomeRequestAndMountRoundTrip(t *testing.T) {
 	hr := ports.HomeRequest{WorkspaceID: "w1", TenantID: "default", Owner: "alice"}
 	if got := FromProtoHomeRequest(ToProtoHomeRequest(hr)); got != hr {

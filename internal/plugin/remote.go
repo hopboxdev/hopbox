@@ -65,3 +65,26 @@ func (r *remoteStorage) Delete(ctx context.Context, ref string) error {
 	_, err := r.cli.Delete(ctx, &pb.HomeRef{Source: ref})
 	return err
 }
+
+// remoteIngress implements ports.Ingress over a gRPC connection.
+type remoteIngress struct{ cli pb.IngressClient }
+
+var _ ports.Ingress = (*remoteIngress)(nil)
+
+// NewRemoteIngress returns a ports.Ingress backed by a gRPC Ingress service.
+// The caller owns conn and must Close it; the returned provider does not.
+func NewRemoteIngress(conn *grpc.ClientConn) ports.Ingress {
+	return &remoteIngress{cli: pb.NewIngressClient(conn)}
+}
+
+func (r *remoteIngress) Expose(ctx context.Context, req ports.ExposeRequest) (ports.Endpoint, error) {
+	ep, err := r.cli.Expose(ctx, ToProtoExposeRequest(req))
+	if err != nil {
+		return ports.Endpoint{}, err
+	}
+	return FromProtoEndpoint(ep), nil
+}
+func (r *remoteIngress) Unexpose(ctx context.Context, ref string) error {
+	_, err := r.cli.Unexpose(ctx, &pb.EndpointRef{Ref: ref})
+	return err
+}
