@@ -1,0 +1,173 @@
+package plugin
+
+import (
+	"context"
+
+	"google.golang.org/grpc"
+
+	pb "github.com/hopboxdev/hopbox/gen/hopbox/provider/v1"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
+)
+
+// remoteCompute implements ports.Compute over a gRPC connection.
+type remoteCompute struct{ cli pb.ComputeClient }
+
+var _ ports.Compute = (*remoteCompute)(nil)
+
+// NewRemoteCompute returns a ports.Compute backed by a gRPC Compute service.
+// The caller owns conn and must Close it; the returned provider does not.
+func NewRemoteCompute(conn *grpc.ClientConn) ports.Compute {
+	return &remoteCompute{cli: pb.NewComputeClient(conn)}
+}
+
+func (r *remoteCompute) Provision(ctx context.Context, req ports.ProvisionRequest) (ports.Instance, error) {
+	inst, err := r.cli.Provision(ctx, ToProtoProvisionRequest(req))
+	if err != nil {
+		return ports.Instance{}, err
+	}
+	return FromProtoInstance(inst), nil
+}
+func (r *remoteCompute) Status(ctx context.Context, ref string) (ports.Instance, error) {
+	inst, err := r.cli.Status(ctx, &pb.InstanceRef{Ref: ref})
+	if err != nil {
+		return ports.Instance{}, err
+	}
+	return FromProtoInstance(inst), nil
+}
+func (r *remoteCompute) Stop(ctx context.Context, ref string) error {
+	_, err := r.cli.Stop(ctx, &pb.InstanceRef{Ref: ref})
+	return err
+}
+func (r *remoteCompute) Destroy(ctx context.Context, ref string) error {
+	_, err := r.cli.Destroy(ctx, &pb.InstanceRef{Ref: ref})
+	return err
+}
+
+// remoteStorage implements ports.Storage over a gRPC connection.
+type remoteStorage struct{ cli pb.StorageClient }
+
+var _ ports.Storage = (*remoteStorage)(nil)
+
+// NewRemoteStorage returns a ports.Storage backed by a gRPC Storage service.
+// The caller owns conn and must Close it; the returned provider does not.
+func NewRemoteStorage(conn *grpc.ClientConn) ports.Storage {
+	return &remoteStorage{cli: pb.NewStorageClient(conn)}
+}
+
+func (r *remoteStorage) EnsureHome(ctx context.Context, req ports.HomeRequest) (ports.Mount, error) {
+	m, err := r.cli.EnsureHome(ctx, ToProtoHomeRequest(req))
+	if err != nil {
+		return ports.Mount{}, err
+	}
+	return FromProtoMount(m), nil
+}
+func (r *remoteStorage) Delete(ctx context.Context, ref string) error {
+	_, err := r.cli.Delete(ctx, &pb.HomeRef{Source: ref})
+	return err
+}
+
+// remoteIngress implements ports.Ingress over a gRPC connection.
+type remoteIngress struct{ cli pb.IngressClient }
+
+var _ ports.Ingress = (*remoteIngress)(nil)
+
+// NewRemoteIngress returns a ports.Ingress backed by a gRPC Ingress service.
+// The caller owns conn and must Close it; the returned provider does not.
+func NewRemoteIngress(conn *grpc.ClientConn) ports.Ingress {
+	return &remoteIngress{cli: pb.NewIngressClient(conn)}
+}
+
+func (r *remoteIngress) Expose(ctx context.Context, req ports.ExposeRequest) (ports.Endpoint, error) {
+	ep, err := r.cli.Expose(ctx, ToProtoExposeRequest(req))
+	if err != nil {
+		return ports.Endpoint{}, err
+	}
+	return FromProtoEndpoint(ep), nil
+}
+func (r *remoteIngress) Unexpose(ctx context.Context, ref string) error {
+	_, err := r.cli.Unexpose(ctx, &pb.EndpointRef{Ref: ref})
+	return err
+}
+
+// remoteIdentity implements ports.Identity over a gRPC connection.
+type remoteIdentity struct{ cli pb.IdentityClient }
+
+var _ ports.Identity = (*remoteIdentity)(nil)
+
+// NewRemoteIdentity returns a ports.Identity backed by a gRPC Identity service.
+// The caller owns conn and must Close it; the returned provider does not.
+func NewRemoteIdentity(conn *grpc.ClientConn) ports.Identity {
+	return &remoteIdentity{cli: pb.NewIdentityClient(conn)}
+}
+
+func (r *remoteIdentity) Authenticate(ctx context.Context, c ports.Credential) (ports.Principal, error) {
+	p, err := r.cli.Authenticate(ctx, ToProtoCredential(c))
+	if err != nil {
+		return ports.Principal{}, err
+	}
+	return FromProtoPrincipal(p), nil
+}
+func (r *remoteIdentity) Authorize(ctx context.Context, req ports.AccessRequest) (ports.Decision, error) {
+	d, err := r.cli.Authorize(ctx, ToProtoAccessRequest(req))
+	if err != nil {
+		return ports.Decision{}, err
+	}
+	return FromProtoDecision(d), nil
+}
+
+// remoteMetering implements ports.Metering over a gRPC connection.
+type remoteMetering struct{ cli pb.MeteringClient }
+
+var _ ports.Metering = (*remoteMetering)(nil)
+
+// NewRemoteMetering returns a ports.Metering backed by a gRPC Metering service.
+// The caller owns conn and must Close it; the returned provider does not.
+func NewRemoteMetering(conn *grpc.ClientConn) ports.Metering {
+	return &remoteMetering{cli: pb.NewMeteringClient(conn)}
+}
+
+// Emit sends one event over a fresh client stream and waits for the close ack.
+func (r *remoteMetering) Emit(ctx context.Context, e ports.UsageEvent) error {
+	stream, err := r.cli.Emit(ctx)
+	if err != nil {
+		return err
+	}
+	if err := stream.Send(ToProtoUsageEvent(e)); err != nil {
+		return err
+	}
+	_, err = stream.CloseAndRecv()
+	return err
+}
+func (r *remoteMetering) Quota(ctx context.Context, ref ports.PrincipalRef) (ports.QuotaState, error) {
+	q, err := r.cli.Quota(ctx, ToProtoPrincipalRef(ref))
+	if err != nil {
+		return ports.QuotaState{}, err
+	}
+	return FromProtoQuotaState(q), nil
+}
+
+// remoteBuild implements ports.Build over a gRPC connection.
+type remoteBuild struct{ cli pb.BuildClient }
+
+var _ ports.Build = (*remoteBuild)(nil)
+
+// NewRemoteBuild returns a ports.Build backed by a gRPC Build service.
+// The caller owns conn and must Close it; the returned provider does not.
+func NewRemoteBuild(conn *grpc.ClientConn) ports.Build {
+	return &remoteBuild{cli: pb.NewBuildClient(conn)}
+}
+
+func (r *remoteBuild) Resolve(ctx context.Context, req ports.BuildRequest) (ports.ImageRef, error) {
+	img, err := r.cli.Resolve(ctx, ToProtoBuildRequest(req))
+	if err != nil {
+		return ports.ImageRef{}, err
+	}
+	return FromProtoImageRef(img), nil
+}
+func (r *remoteBuild) Status(ctx context.Context, buildRef string) (ports.BuildStatus, error) {
+	st, err := r.cli.Status(ctx, &pb.BuildRef{BuildRef: buildRef})
+	if err != nil {
+		return ports.BuildStatus{}, err
+	}
+	return FromProtoBuildStatus(st), nil
+}

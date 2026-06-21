@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS workspaces (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL,
+    owner           TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    image_ref       TEXT NOT NULL,
+    mem_mb          INTEGER NOT NULL DEFAULT 0,
+    phase           TEXT NOT NULL,
+    instance_ref    TEXT NOT NULL DEFAULT '',
+    home_mount      TEXT NOT NULL DEFAULT '',
+    bootstrap_token TEXT NOT NULL DEFAULT '',
+    agent_connected INTEGER NOT NULL DEFAULT 0,
+    message         TEXT NOT NULL DEFAULT '',
+    ingress_spec    TEXT NOT NULL DEFAULT '[]',
+    endpoints       TEXT NOT NULL DEFAULT '[]',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    UNIQUE(tenant_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_ws_token ON workspaces(bootstrap_token);
