@@ -32,6 +32,9 @@ func TestServeSessionRunsCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := agentproto.WriteOpenFrame(st, agentproto.OpenFrame{Kind: agentproto.KindShell}); err != nil {
+		t.Fatal(err)
+	}
 	if err := agentproto.WriteShellHeader(st, agentproto.ShellHeader{
 		Cmd: "/bin/sh -c 'echo mesa-ok'", Cols: 80, Rows: 24,
 	}); err != nil {
@@ -68,6 +71,9 @@ func TestHandleStreamNoGoroutineLeak(t *testing.T) {
 	}
 	st, err := ctrlSess.Open()
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agentproto.WriteOpenFrame(st, agentproto.OpenFrame{Kind: agentproto.KindShell}); err != nil {
 		t.Fatal(err)
 	}
 	if err := agentproto.WriteShellHeader(st, agentproto.ShellHeader{Cmd: "/bin/sh -c 'echo hi'"}); err != nil {
