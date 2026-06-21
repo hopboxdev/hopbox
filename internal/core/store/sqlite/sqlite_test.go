@@ -38,6 +38,31 @@ func TestCreateGetRoundTrip(t *testing.T) {
 	}
 }
 
+func TestIngressAndEndpointsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	w.Ingress = []workspace.IngressPort{{Name: "app", Port: 3000}}
+	if err := s.CreateWorkspace(ctx, w); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// reconciler later resolves and persists an endpoint
+	w.Endpoints = []workspace.Endpoint{{Name: "app", URL: "https://app-x.gw", Port: 3000, Ref: "app-x.gw"}}
+	if err := s.UpdateWorkspace(ctx, w); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, err := s.GetWorkspace(ctx, "default", w.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Ingress) != 1 || got.Ingress[0] != (workspace.IngressPort{Name: "app", Port: 3000}) {
+		t.Fatalf("ingress spec round-trip: %+v", got.Ingress)
+	}
+	if len(got.Endpoints) != 1 || got.Endpoints[0].URL != "https://app-x.gw" || got.Endpoints[0].Ref != "app-x.gw" {
+		t.Fatalf("endpoints round-trip: %+v", got.Endpoints)
+	}
+}
+
 func TestGetByNameAndToken(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)

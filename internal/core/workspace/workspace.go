@@ -17,7 +17,22 @@ const (
 	PhaseDestroying   Phase = "Destroying"
 )
 
-// Workspace is Mesa's single declarative resource (M1 subset).
+// IngressPort is a desired exposed endpoint: a named port inside the workspace.
+type IngressPort struct {
+	Name string `json:"name"` // logical endpoint name (e.g. "app")
+	Port int32  `json:"port"` // port the workspace service listens on
+}
+
+// Endpoint is an observed exposed endpoint, written by the reconciler after the
+// Ingress provider resolves an IngressPort to a reachable address.
+type Endpoint struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`  // reachable address, e.g. https://app-w1.gw.host
+	Port int32  `json:"port"` // the workspace port it targets
+	Ref  string `json:"ref"`  // provider-opaque handle / gateway route key
+}
+
+// Workspace is Mesa's single declarative resource (M1 subset + M3 ingress).
 type Workspace struct {
 	// metadata
 	ID       string
@@ -26,14 +41,16 @@ type Workspace struct {
 	Name     string
 	// spec (desired)
 	ImageRef string
-	MemMB    int64 // 0 = provider default
+	MemMB    int64         // 0 = provider default
+	Ingress  []IngressPort // desired exposed endpoints
 	// status (observed, written by the reconciler / agenthub)
 	Phase          Phase
-	InstanceRef    string // provider-opaque (docker container id)
-	HomeMount      string // host path of the persistent home
-	BootstrapToken string // one-time, workspace-scoped agent token
-	AgentConnected bool   // set by agenthub when the agent dials in
-	Message        string // last status / failure detail
+	InstanceRef    string     // provider-opaque (docker container id)
+	HomeMount      string     // host path of the persistent home
+	BootstrapToken string     // one-time, workspace-scoped agent token
+	AgentConnected bool       // set by agenthub when the agent dials in
+	Endpoints      []Endpoint // resolved endpoints (one per Ingress, set when Running)
+	Message        string     // last status / failure detail
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
