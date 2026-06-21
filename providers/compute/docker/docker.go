@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -16,9 +17,19 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/mesadev/mesa/internal/core/ports"
 )
+
+// hostPlatform pins workspace containers (and image pulls) to the host's arch.
+// The mesa-agent is a native binary injected and run as the entrypoint, so the
+// workspace image's arch MUST match the agent's. Without pinning, a multi-arch
+// image could resolve to a different arch than the injected agent (e.g. an
+// amd64 image with an arm64 agent on Apple Silicon) and the agent fails to exec.
+var hostPlatform = ocispec.Platform{OS: "linux", Architecture: runtime.GOARCH}
+
+func platformString() string { return hostPlatform.OS + "/" + hostPlatform.Architecture }
 
 const (
 	labelWorkspace = "mesa.workspace_id"
@@ -89,8 +100,7 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 	if err := p.ensureImage(ctx, r.ImageRef); err != nil {
 		return ports.Instance{}, err
 	}
-	// TODO(arch): platform is nil — agent binary is linux/amd64; arch-mismatch on non-amd64 hosts is unhandled in M1.
-	created, err := p.cli.ContainerCreate(ctx, cfg, host, nil, nil, name)
+	created, err := p.cli.ContainerCreate(ctx, cfg, host, nil, &hostPlatform, name)
 	if err != nil {
 		return ports.Instance{}, fmt.Errorf("docker: create: %w", err)
 	}
@@ -110,7 +120,7 @@ func (p *Provider) ensureImage(ctx context.Context, ref string) error {
 	} else if !client.IsErrNotFound(err) {
 		return fmt.Errorf("docker: inspect image %q: %w", ref, err)
 	}
-	rc, err := p.cli.ImagePull(ctx, ref, image.PullOptions{})
+	rc, err := p.cli.ImagePull(ctx, ref, image.PullOptions{Platform: platformString()})
 	if err != nil {
 		return fmt.Errorf("docker: pull image %q: %w", ref, err)
 	}
@@ -130,7 +140,7 @@ func (p *Provider) stageAgent(ctx context.Context, a ports.AgentImage, target st
 	if a.ImageRef == "" || a.BinaryPath == "" {
 		return mount.Mount{}, nil, fmt.Errorf("docker: Agent needs HostBinaryPath or (ImageRef+BinaryPath)")
 	}
-	rc, err := p.cli.ImagePull(ctx, a.ImageRef, image.PullOptions{})
+	rc, err := p.cli.ImagePull(ctx, a.ImageRef, image.PullOptions{Platform: platformString()})
 	if err != nil {
 		return mount.Mount{}, nil, fmt.Errorf("docker: pull agent image %q: %w", a.ImageRef, err)
 	}
@@ -149,7 +159,7 @@ func (p *Provider) stageAgent(ctx context.Context, a ports.AgentImage, target st
 		Entrypoint: []string{"cp", a.BinaryPath, target},
 	}, &container.HostConfig{
 		Mounts: []mount.Mount{{Type: mount.TypeVolume, Source: volName, Target: dir}},
-	}, nil, nil, "")
+	}, nil, &hostPlatform, "")
 	if err != nil {
 		return mount.Mount{}, nil, fmt.Errorf("docker: create agent seeder: %w", err)
 	}

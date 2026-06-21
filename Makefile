@@ -9,6 +9,7 @@ proto:
 
 agent:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -o $(BIN)/mesa-agent-linux-amd64 ./cmd/mesa-agent
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 $(GO) build -o $(BIN)/mesa-agent-linux-arm64 ./cmd/mesa-agent
 
 agent-image: agent
 	docker build -f cmd/mesa-agent/Dockerfile -t $(AGENT_IMAGE) .

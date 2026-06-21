@@ -1,7 +1,10 @@
 // Package config parses mesad's flags/env into a Config struct.
 package config
 
-import "flag"
+import (
+	"flag"
+	"runtime"
+)
 
 type Config struct {
 	APIAddr        string // gRPC API listen (CLI clients)
@@ -35,7 +38,9 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.AgentListen, "agent-listen", ":7777", "agent reverse-dial listen address")
 	fs.StringVar(&c.AgentAdvertise, "agent-advertise", "host.docker.internal:7777", "address agents dial back to")
 	fs.StringVar(&c.DBPath, "db", "./mesa.db", "sqlite database path")
-	fs.StringVar(&c.AgentBin, "agent-bin", "./bin/mesa-agent-linux-amd64", "mesa-agent binary to side-load")
+	// Default to the host-arch agent: the binary is injected and exec'd inside the
+	// workspace container, which the docker provider pins to the host arch.
+	fs.StringVar(&c.AgentBin, "agent-bin", "./bin/mesa-agent-linux-"+runtime.GOARCH, "mesa-agent binary to side-load")
 	fs.StringVar(&c.Tenant, "tenant", "default", "single-tenant id (M1)")
 	fs.StringVar(&c.Owner, "owner", "dev", "single principal (M1)")
 	fs.StringVar(&c.AgentImageRef, "agent-image", "", "OCI image carrying the mesa-agent binary")
