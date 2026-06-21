@@ -5,6 +5,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -19,6 +20,7 @@ import (
 	"github.com/mesadev/mesa/internal/core/reconciler"
 	"github.com/mesadev/mesa/internal/core/store/sqlite"
 	"github.com/mesadev/mesa/internal/plugin"
+	"github.com/mesadev/mesa/providers/ingress/subdomain"
 )
 
 func main() {
@@ -81,7 +83,11 @@ func run(cfg config.Config) error {
 		}
 	}()
 
-	rec := reconciler.New(st, compute, storage, nil, reconciler.Config{
+	// One subdomain ingress provider instance is shared by the reconciler (which
+	// Exposes endpoints into its route table) and the gateway (which Lookups them).
+	ingress := subdomain.New(cfg.GatewayZone)
+
+	rec := reconciler.New(st, compute, storage, ingress, reconciler.Config{
 		AgentAddr: cfg.AgentAdvertise,
 		Agent: ports.AgentImage{
 			ImageRef:       cfg.AgentImageRef,
@@ -91,6 +97,23 @@ func run(cfg config.Config) error {
 		},
 	})
 	go rec.Run(ctx)
+
+	// Service gateway (mesa-gw): resolves Host -> workspace via the ingress route
+	// table and proxies INTO the workspace over the agent reverse-connection.
+	if cfg.GatewayAddr != "" {
+		gwLn, err := net.Listen("tcp", cfg.GatewayAddr)
+		if err != nil {
+			return err
+		}
+		gwSrv := &http.Server{Handler: newGateway(ingress, hub)}
+		go func() { <-ctx.Done(); _ = gwSrv.Close() }()
+		go func() {
+			log.Printf("mesad: gateway on %s (zone %s)", cfg.GatewayAddr, cfg.GatewayZone)
+			if err := gwSrv.Serve(gwLn); err != nil && err != http.ErrServerClosed {
+				log.Printf("mesad: gateway stopped: %v", err)
+			}
+		}()
+	}
 
 	apiLn, err := net.Listen("tcp", cfg.APIAddr)
 	if err != nil {

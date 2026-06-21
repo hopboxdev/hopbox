@@ -29,6 +29,9 @@ type Config struct {
 	Kubeconfig       string
 	KubeStorageClass string
 	KubeHomeSize     string
+
+	GatewayAddr string
+	GatewayZone string
 }
 
 func Parse(args []string) (Config, error) {
@@ -56,6 +59,8 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.Kubeconfig, "kubeconfig", "", "path to kubeconfig; empty = in-cluster config (kubernetes provider)")
 	fs.StringVar(&c.KubeStorageClass, "kube-storageclass", "", "PVC StorageClass; empty = cluster default (k8spvc storage)")
 	fs.StringVar(&c.KubeHomeSize, "kube-home-size", "1Gi", "PVC size for a workspace home (k8spvc storage)")
+	fs.StringVar(&c.GatewayAddr, "gateway-addr", ":8088", "service gateway (mesa-gw) HTTP listen address; empty disables")
+	fs.StringVar(&c.GatewayZone, "gateway-zone", "gw.example.com", "wildcard DNS zone for the subdomain ingress provider")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}
