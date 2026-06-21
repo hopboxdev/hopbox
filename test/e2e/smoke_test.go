@@ -69,7 +69,7 @@ func TestEndToEndShell(t *testing.T) {
 	}
 	go hub.Serve(ctx, agentLn)
 
-	rec := reconciler.New(st, compute, storage, reconciler.Config{
+	rec := reconciler.New(st, compute, storage, nil, reconciler.Config{
 		AgentAddr: advertise,
 		Agent:     ports.AgentImage{HostBinaryPath: agentBin, TargetPath: "/mesa/mesa-agent"},
 		Interval:  500 * time.Millisecond,

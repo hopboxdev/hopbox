@@ -81,7 +81,7 @@ func run(cfg config.Config) error {
 		}
 	}()
 
-	rec := reconciler.New(st, compute, storage, reconciler.Config{
+	rec := reconciler.New(st, compute, storage, nil, reconciler.Config{
 		AgentAddr: cfg.AgentAdvertise,
 		Agent: ports.AgentImage{
 			ImageRef:       cfg.AgentImageRef,

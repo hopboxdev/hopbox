@@ -44,6 +44,18 @@ func (f *fakeStorage) EnsureHome(_ context.Context, r ports.HomeRequest) (ports.
 }
 func (f *fakeStorage) Delete(_ context.Context, _ string) error { return nil }
 
+type fakeIngress struct {
+	exposed   int
+	unexposed int
+}
+
+func (f *fakeIngress) Expose(_ context.Context, r ports.ExposeRequest) (ports.Endpoint, error) {
+	f.exposed++
+	host := r.Name + "-" + r.WorkspaceID + ".gw"
+	return ports.Endpoint{Ref: host, URL: "https://" + host, Name: r.Name, Port: r.Port}, nil
+}
+func (f *fakeIngress) Unexpose(_ context.Context, _ string) error { f.unexposed++; return nil }
+
 func newStore(t *testing.T) store.Store {
 	t.Helper()
 	s, err := sqlite.Open(t.TempDir() + "/r.db")
@@ -58,7 +70,7 @@ func TestPendingProvisions(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
 	comp, strg := &fakeCompute{}, &fakeStorage{}
-	r := reconciler.New(st, comp, strg, reconciler.Config{AgentAddr: "host:7777", Agent: ports.AgentImage{HostBinaryPath: "/x/agent"}})
+	r := reconciler.New(st, comp, strg, nil, reconciler.Config{AgentAddr: "host:7777", Agent: ports.AgentImage{HostBinaryPath: "/x/agent"}})
 
 	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
 	_ = st.CreateWorkspace(ctx, w)
@@ -81,7 +93,7 @@ func TestPendingProvisions(t *testing.T) {
 func TestProvisioningBecomesRunningWhenAgentConnects(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	r := reconciler.New(st, &fakeCompute{}, &fakeStorage{}, reconciler.Config{})
+	r := reconciler.New(st, &fakeCompute{}, &fakeStorage{}, nil, reconciler.Config{})
 
 	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
 	w.Phase = workspace.PhaseProvisioning
@@ -102,7 +114,7 @@ func TestRunningWithDeadAgentReprovisions(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
 	comp := &fakeCompute{phase: ports.InstanceGone}
-	r := reconciler.New(st, comp, &fakeStorage{}, reconciler.Config{})
+	r := reconciler.New(st, comp, &fakeStorage{}, nil, reconciler.Config{})
 
 	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
 	w.Phase = workspace.PhaseRunning
@@ -126,7 +138,7 @@ func TestRunningWithBlippedAgentDoesNotReprovision(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
 	comp := &fakeCompute{phase: ports.InstanceRunning} // container still alive
-	r := reconciler.New(st, comp, &fakeStorage{}, reconciler.Config{})
+	r := reconciler.New(st, comp, &fakeStorage{}, nil, reconciler.Config{})
 
 	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
 	w.Phase = workspace.PhaseRunning
@@ -149,11 +161,60 @@ func TestRunningWithBlippedAgentDoesNotReprovision(t *testing.T) {
 	}
 }
 
+func TestRunningExposesIngressIdempotently(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	ig := &fakeIngress{}
+	r := reconciler.New(st, &fakeCompute{}, &fakeStorage{}, ig, reconciler.Config{})
+
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	w.Phase = workspace.PhaseRunning
+	w.InstanceRef = "c-x"
+	w.AgentConnected = true
+	w.Ingress = []workspace.IngressPort{{Name: "app", Port: 3000}}
+	_ = st.CreateWorkspace(ctx, w)
+
+	if err := r.ReconcileOne(ctx, w.ID, "default"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.GetWorkspace(ctx, "default", w.ID)
+	if len(got.Endpoints) != 1 || got.Endpoints[0].URL != "https://app-"+w.ID+".gw" {
+		t.Fatalf("endpoint not resolved: %+v", got.Endpoints)
+	}
+	// second tick must NOT re-expose (idempotent: endpoint already recorded)
+	if err := r.ReconcileOne(ctx, w.ID, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if ig.exposed != 1 {
+		t.Fatalf("expose called %d times, want 1 (idempotent)", ig.exposed)
+	}
+}
+
+func TestDestroyingUnexposesEndpoints(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	ig := &fakeIngress{}
+	r := reconciler.New(st, &fakeCompute{}, &fakeStorage{}, ig, reconciler.Config{})
+
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	w.Phase = workspace.PhaseDestroying
+	w.InstanceRef = "c-1"
+	w.Endpoints = []workspace.Endpoint{{Name: "app", Ref: "app-x.gw", URL: "https://app-x.gw", Port: 3000}}
+	_ = st.CreateWorkspace(ctx, w)
+
+	if err := r.ReconcileOne(ctx, w.ID, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if ig.unexposed != 1 {
+		t.Fatalf("unexpose called %d times, want 1", ig.unexposed)
+	}
+}
+
 func TestDestroyingRemoves(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
 	comp := &fakeCompute{}
-	r := reconciler.New(st, comp, &fakeStorage{}, reconciler.Config{})
+	r := reconciler.New(st, comp, &fakeStorage{}, nil, reconciler.Config{})
 
 	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
 	w.Phase = workspace.PhaseDestroying

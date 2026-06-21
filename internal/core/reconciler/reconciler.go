@@ -27,14 +27,15 @@ type Reconciler struct {
 	store   store.Store
 	compute ports.Compute
 	storage ports.Storage
+	ingress ports.Ingress // optional; nil disables endpoint reconciliation
 	cfg     Config
 }
 
-func New(s store.Store, c ports.Compute, st ports.Storage, cfg Config) *Reconciler {
+func New(s store.Store, c ports.Compute, st ports.Storage, ig ports.Ingress, cfg Config) *Reconciler {
 	if cfg.Interval == 0 {
 		cfg.Interval = time.Second
 	}
-	return &Reconciler{store: s, compute: c, storage: st, cfg: cfg}
+	return &Reconciler{store: s, compute: c, storage: st, ingress: ig, cfg: cfg}
 }
 
 func newToken() string {
@@ -84,7 +85,7 @@ func (r *Reconciler) ReconcileOne(ctx context.Context, id, tenantID string) erro
 		if !w.AgentConnected {
 			return r.healIfInstanceDead(ctx, w)
 		}
-		return nil
+		return r.reconcileIngress(ctx, w)
 	case workspace.PhaseDestroying:
 		return r.destroy(ctx, w)
 	default:
@@ -166,7 +167,43 @@ func (r *Reconciler) checkComputeAlive(ctx context.Context, w *workspace.Workspa
 	return nil
 }
 
+// reconcileIngress exposes each desired IngressPort that lacks a resolved
+// Endpoint, via the Ingress provider, and persists the new endpoints. Expose is
+// idempotent, so a missed persist just re-resolves to the same address next tick.
+func (r *Reconciler) reconcileIngress(ctx context.Context, w *workspace.Workspace) error {
+	if r.ingress == nil || len(w.Ingress) == 0 {
+		return nil
+	}
+	have := make(map[string]bool, len(w.Endpoints))
+	for _, e := range w.Endpoints {
+		have[e.Name] = true
+	}
+	changed := false
+	for _, ip := range w.Ingress {
+		if have[ip.Name] {
+			continue
+		}
+		ep, err := r.ingress.Expose(ctx, ports.ExposeRequest{
+			WorkspaceID: w.ID, Name: ip.Name, Port: ip.Port, Scheme: "subdomain", TenantID: w.TenantID,
+		})
+		if err != nil {
+			return fmt.Errorf("ingress expose %q: %w", ip.Name, err)
+		}
+		w.Endpoints = append(w.Endpoints, workspace.Endpoint{Name: ep.Name, URL: ep.URL, Port: ep.Port, Ref: ep.Ref})
+		changed = true
+	}
+	if changed {
+		return r.store.UpdateWorkspace(ctx, w)
+	}
+	return nil
+}
+
 func (r *Reconciler) destroy(ctx context.Context, w *workspace.Workspace) error {
+	if r.ingress != nil {
+		for _, e := range w.Endpoints {
+			_ = r.ingress.Unexpose(ctx, e.Ref) // best-effort; route removal must not block teardown
+		}
+	}
 	if w.InstanceRef != "" {
 		if err := r.compute.Destroy(ctx, w.InstanceRef); err != nil {
 			return err
