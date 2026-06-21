@@ -1,0 +1,20 @@
+# Example Caddy config to front hopbox-gw with automatic wildcard HTTPS.
+# Routing is by Host, so one on-demand cert per workspace subdomain covers an
+# unlimited number of endpoints without a DNS-provider plugin. The `ask`
+# endpoint (served by hopbox-gw) bounds cert issuance to your zone.
+#
+# Requires a wildcard DNS record: *.gw.example.com -> <server public IP>
+# Append these blocks to /etc/caddy/Caddyfile, then: caddy reload
+
+{
+	on_demand_tls {
+		ask http://127.0.0.1:8089
+	}
+}
+
+*.gw.example.com {
+	tls {
+		on_demand
+	}
+	reverse_proxy 127.0.0.1:8088
+}

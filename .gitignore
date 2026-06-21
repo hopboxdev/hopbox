@@ -1,9 +1,10 @@
 /bin/
+/dist/
 *.db
 *.db-shm
 *.db-wal
 
 # Go test crash dumps (anchored: must NOT match the internal/core/ tree)
 /core
-/hopboxd
-/hopbox-provider
+/mesad
+/mesa-provider
