@@ -17,12 +17,31 @@ type Handshake struct {
 	Token       string `json:"token"`
 }
 
-// ShellHeader is the first frame mesad writes on each new yamux stream; after
-// it, the stream is a raw bidirectional pty byte pipe.
+// Stream kinds carried by OpenFrame.
+const (
+	KindShell   = "shell"
+	KindForward = "forward"
+)
+
+// OpenFrame is the first frame on every yamux stream; Kind selects the handler.
+// A kind-specific header follows (ShellHeader for shell, ForwardHeader for
+// forward), then the stream is a raw bidirectional byte pipe.
+type OpenFrame struct {
+	Kind string `json:"kind"`
+}
+
+// ShellHeader follows an OpenFrame{Kind:shell}; after it the stream is a raw
+// bidirectional pty byte pipe.
 type ShellHeader struct {
 	Cmd  string `json:"cmd"` // "" => agent default ("/bin/bash")
 	Cols uint16 `json:"cols"`
 	Rows uint16 `json:"rows"`
+}
+
+// ForwardHeader follows an OpenFrame{Kind:forward}; the agent dials
+// 127.0.0.1:Port inside the workspace and pipes the stream to it.
+type ForwardHeader struct {
+	Port uint32 `json:"port"`
 }
 
 const maxFrame = 1 << 16
@@ -62,5 +81,13 @@ func readFrame(r io.Reader, v any) error {
 
 func WriteHandshake(w io.Writer, h Handshake) error     { return writeFrame(w, h) }
 func ReadHandshake(r io.Reader) (Handshake, error)      { var h Handshake; return h, readFrame(r, &h) }
+func WriteOpenFrame(w io.Writer, f OpenFrame) error     { return writeFrame(w, f) }
+func ReadOpenFrame(r io.Reader) (OpenFrame, error)      { var f OpenFrame; return f, readFrame(r, &f) }
 func WriteShellHeader(w io.Writer, h ShellHeader) error { return writeFrame(w, h) }
 func ReadShellHeader(r io.Reader) (ShellHeader, error)  { var h ShellHeader; return h, readFrame(r, &h) }
+
+func WriteForwardHeader(w io.Writer, h ForwardHeader) error { return writeFrame(w, h) }
+func ReadForwardHeader(r io.Reader) (ForwardHeader, error) {
+	var h ForwardHeader
+	return h, readFrame(r, &h)
+}

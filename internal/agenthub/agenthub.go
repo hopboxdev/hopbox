@@ -75,9 +75,44 @@ func (h *Hub) get(workspaceID string) (*yamux.Session, bool) {
 	return s, ok
 }
 
-// OpenShell opens a yamux stream to the workspace agent and writes the shell
-// header; the returned stream is then a raw bidirectional pty pipe.
+// OpenShell opens a yamux stream to the workspace agent and writes the open +
+// shell headers; the returned stream is then a raw bidirectional pty pipe.
 func (h *Hub) OpenShell(ctx context.Context, workspaceID string, hdr agentproto.ShellHeader) (io.ReadWriteCloser, error) {
+	stream, err := h.openStream(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if err := agentproto.WriteOpenFrame(stream, agentproto.OpenFrame{Kind: agentproto.KindShell}); err != nil {
+		_ = stream.Close()
+		return nil, fmt.Errorf("agenthub: write open frame: %w", err)
+	}
+	if err := agentproto.WriteShellHeader(stream, hdr); err != nil {
+		_ = stream.Close()
+		return nil, fmt.Errorf("agenthub: write shell header: %w", err)
+	}
+	return stream, nil
+}
+
+// OpenForward opens a yamux stream and asks the agent to dial 127.0.0.1:port
+// inside the workspace. The returned net.Conn is a raw pipe to that service —
+// mesa-gw uses it to proxy an inbound request into the workspace.
+func (h *Hub) OpenForward(workspaceID string, port uint32) (net.Conn, error) {
+	stream, err := h.openStream(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if err := agentproto.WriteOpenFrame(stream, agentproto.OpenFrame{Kind: agentproto.KindForward}); err != nil {
+		_ = stream.Close()
+		return nil, fmt.Errorf("agenthub: write open frame: %w", err)
+	}
+	if err := agentproto.WriteForwardHeader(stream, agentproto.ForwardHeader{Port: port}); err != nil {
+		_ = stream.Close()
+		return nil, fmt.Errorf("agenthub: write forward header: %w", err)
+	}
+	return stream, nil
+}
+
+func (h *Hub) openStream(workspaceID string) (*yamux.Stream, error) {
 	sess, ok := h.get(workspaceID)
 	if !ok || sess.IsClosed() {
 		return nil, fmt.Errorf("agenthub: workspace %q has no connected agent", workspaceID)
@@ -85,10 +120,6 @@ func (h *Hub) OpenShell(ctx context.Context, workspaceID string, hdr agentproto.
 	stream, err := sess.OpenStream()
 	if err != nil {
 		return nil, fmt.Errorf("agenthub: open stream: %w", err)
-	}
-	if err := agentproto.WriteShellHeader(stream, hdr); err != nil {
-		_ = stream.Close()
-		return nil, fmt.Errorf("agenthub: write shell header: %w", err)
 	}
 	return stream, nil
 }

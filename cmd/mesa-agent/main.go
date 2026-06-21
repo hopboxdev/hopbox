@@ -4,8 +4,10 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -60,12 +62,46 @@ func serveSession(sess *yamux.Session) error {
 	}
 }
 
-// handleStream reads a ShellHeader, then bridges a pty to the stream.
+// handleStream reads the OpenFrame and dispatches to the shell or forward handler.
 func handleStream(stream io.ReadWriteCloser) {
 	defer stream.Close()
+	of, err := agentproto.ReadOpenFrame(stream)
+	if err != nil {
+		log.Printf("mesa-agent: read open frame: %v", err)
+		return
+	}
+	switch of.Kind {
+	case agentproto.KindForward:
+		handleForward(stream)
+	default: // KindShell
+		handleShell(stream)
+	}
+}
+
+// handleForward dials a local TCP service in the workspace and pipes the stream
+// to it (mesa-gw -> agent -> localhost:port). This is how an exposed workspace
+// service is reached from the gateway.
+func handleForward(stream io.ReadWriteCloser) {
+	hdr, err := agentproto.ReadForwardHeader(stream)
+	if err != nil {
+		log.Printf("mesa-agent: read forward header: %v", err)
+		return
+	}
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", hdr.Port))
+	if err != nil {
+		log.Printf("mesa-agent: forward dial 127.0.0.1:%d: %v", hdr.Port, err)
+		return
+	}
+	defer conn.Close()
+	go func() { _, _ = io.Copy(conn, stream) }() // gateway -> service
+	_, _ = io.Copy(stream, conn)                 // service -> gateway
+}
+
+// handleShell reads a ShellHeader, then bridges a pty to the stream.
+func handleShell(stream io.ReadWriteCloser) {
 	hdr, err := agentproto.ReadShellHeader(stream)
 	if err != nil {
-		log.Printf("mesa-agent: read header: %v", err)
+		log.Printf("mesa-agent: read shell header: %v", err)
 		return
 	}
 	cmd := buildCommand(hdr.Cmd)

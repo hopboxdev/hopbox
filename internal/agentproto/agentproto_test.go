@@ -39,6 +39,24 @@ func TestShellHeaderRoundTrip(t *testing.T) {
 	}
 }
 
+func TestOpenFrameAndForwardHeaderRoundTrip(t *testing.T) {
+	var buf bytes.Buffer
+	of := agentproto.OpenFrame{Kind: agentproto.KindForward}
+	if err := agentproto.WriteOpenFrame(&buf, of); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := agentproto.ReadOpenFrame(&buf); err != nil || out != of {
+		t.Fatalf("openframe roundtrip: %+v err=%v", out, err)
+	}
+	fh := agentproto.ForwardHeader{Port: 3000}
+	if err := agentproto.WriteForwardHeader(&buf, fh); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := agentproto.ReadForwardHeader(&buf); err != nil || out != fh {
+		t.Fatalf("forwardheader roundtrip: %+v err=%v", out, err)
+	}
+}
+
 func TestReadHandshakeRejectsOversizeLength(t *testing.T) {
 	// craft a header claiming a body far larger than maxFrame (1<<16)
 	var hdr [4]byte
