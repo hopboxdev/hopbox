@@ -4,6 +4,8 @@ package e2e
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"io"
 	"net"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -69,10 +72,22 @@ func TestEndToEndShell(t *testing.T) {
 	}
 	go hub.Serve(ctx, agentLn)
 
+	// generate a throwaway user key and authorize it so we can `ssh` in below.
+	_, userPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	userSigner, err := ssh.NewSignerFromSigner(userPriv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorizedLine := string(ssh.MarshalAuthorizedKey(userSigner.PublicKey()))
+
 	rec := reconciler.New(st, compute, storage, nil, reconciler.Config{
-		AgentAddr: advertise,
-		Agent:     ports.AgentImage{HostBinaryPath: agentBin, TargetPath: "/hopbox/hopbox-agent"},
-		Interval:  500 * time.Millisecond,
+		AgentAddr:      advertise,
+		Agent:          ports.AgentImage{HostBinaryPath: agentBin, TargetPath: "/hopbox/hopbox-agent"},
+		AuthorizedKeys: authorizedLine,
+		Interval:       500 * time.Millisecond,
 	})
 	go rec.Run(ctx)
 
@@ -140,7 +155,79 @@ func TestEndToEndShell(t *testing.T) {
 	if !strings.Contains(out.String(), "HOPBOX_E2E_OK") {
 		t.Fatalf("missing marker in shell output: %q", out.String())
 	}
+
+	// --- native SSH: drive the agent's embedded sshd over the SSH RPC, exactly
+	// as `hopbox proxy` (the OpenSSH ProxyCommand) would. ---
+	sshStream, err := c.SSH(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sshStream.Send(&hopboxv1.SSHClientMsg{
+		Msg: &hopboxv1.SSHClientMsg_Open{Open: &hopboxv1.SSHOpen{NameOrId: "e2e"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cc, chans, reqs, err := ssh.NewClientConn(&sshTransport{stream: sshStream}, "e2e", &ssh.ClientConfig{
+		User:            "dev",
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(userSigner)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("ssh handshake: %v", err)
+	}
+	sshClient := ssh.NewClient(cc, chans, reqs)
+	defer sshClient.Close()
+	sess, err := sshClient.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	sshOut, err := sess.Output("echo HOPBOX_SSH_LIVE_OK")
+	if err != nil {
+		t.Fatalf("ssh exec: %v", err)
+	}
+	if !strings.Contains(string(sshOut), "HOPBOX_SSH_LIVE_OK") {
+		t.Fatalf("missing marker in ssh output: %q", sshOut)
+	}
 }
+
+// sshTransport adapts the SSH gRPC bidi stream to net.Conn, the same bridge
+// `hopbox proxy` performs between stdin/stdout and the control plane.
+type sshTransport struct {
+	stream hopboxv1.WorkspaceService_SSHClient
+	rbuf   []byte
+}
+
+func (s *sshTransport) Read(p []byte) (int, error) {
+	for len(s.rbuf) == 0 {
+		msg, err := s.stream.Recv()
+		if err != nil {
+			return 0, err
+		}
+		s.rbuf = msg.GetData()
+	}
+	n := copy(p, s.rbuf)
+	s.rbuf = s.rbuf[n:]
+	return n, nil
+}
+func (s *sshTransport) Write(p []byte) (int, error) {
+	if err := s.stream.Send(&hopboxv1.SSHClientMsg{Msg: &hopboxv1.SSHClientMsg_Data{Data: append([]byte(nil), p...)}}); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+func (s *sshTransport) Close() error                     { return s.stream.CloseSend() }
+func (s *sshTransport) LocalAddr() net.Addr              { return e2eAddr{} }
+func (s *sshTransport) RemoteAddr() net.Addr             { return e2eAddr{} }
+func (s *sshTransport) SetDeadline(time.Time) error      { return nil }
+func (s *sshTransport) SetReadDeadline(time.Time) error  { return nil }
+func (s *sshTransport) SetWriteDeadline(time.Time) error { return nil }
+
+type e2eAddr struct{}
+
+func (e2eAddr) Network() string { return "hopbox" }
+func (e2eAddr) String() string  { return "hopbox" }
 
 type sink struct{ st *sqlite.Store }
 

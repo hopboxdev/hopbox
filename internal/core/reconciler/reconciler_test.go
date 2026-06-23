@@ -17,10 +17,12 @@ type fakeCompute struct {
 	provisioned int
 	destroyed   int
 	phase       ports.InstancePhase
+	lastEnv     map[string]string
 }
 
 func (f *fakeCompute) Provision(_ context.Context, r ports.ProvisionRequest) (ports.Instance, error) {
 	f.provisioned++
+	f.lastEnv = r.Env
 	return ports.Instance{Ref: "c-" + r.WorkspaceID, Phase: ports.InstanceRunning}, nil
 }
 func (f *fakeCompute) Status(_ context.Context, ref string) (ports.Instance, error) {
@@ -87,6 +89,48 @@ func TestPendingProvisions(t *testing.T) {
 	}
 	if got.InstanceRef == "" || got.HomeMount == "" || got.BootstrapToken == "" {
 		t.Fatalf("status not populated: %+v", got)
+	}
+}
+
+func TestProvisionInjectsSSHEnv(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	comp, strg := &fakeCompute{}, &fakeStorage{}
+	r := reconciler.New(st, comp, strg, nil, reconciler.Config{
+		AgentAddr:      "host:7777",
+		Agent:          ports.AgentImage{HostBinaryPath: "/x/agent"},
+		AuthorizedKeys: "ssh-ed25519 AAAAkey user@host\n",
+	})
+
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	_ = st.CreateWorkspace(ctx, w)
+	if err := r.ReconcileOne(ctx, w.ID, "default"); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	if got := comp.lastEnv["HOPBOX_AUTHORIZED_KEYS"]; got != "ssh-ed25519 AAAAkey user@host\n" {
+		t.Fatalf("HOPBOX_AUTHORIZED_KEYS = %q", got)
+	}
+	// host key persists on the home volume (/home/dev) so known_hosts survives restarts.
+	if got := comp.lastEnv["HOPBOX_SSH_HOST_KEY"]; got != "/home/dev/.hopbox/ssh_host_ed25519_key" {
+		t.Fatalf("HOPBOX_SSH_HOST_KEY = %q", got)
+	}
+}
+
+// With no authorized keys configured, SSH stays off: the key var is absent.
+func TestProvisionNoSSHWhenUnconfigured(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	comp := &fakeCompute{}
+	r := reconciler.New(st, comp, &fakeStorage{}, nil, reconciler.Config{AgentAddr: "host:7777"})
+
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	_ = st.CreateWorkspace(ctx, w)
+	if err := r.ReconcileOne(ctx, w.ID, "default"); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if _, ok := comp.lastEnv["HOPBOX_AUTHORIZED_KEYS"]; ok {
+		t.Fatal("HOPBOX_AUTHORIZED_KEYS should be absent when no keys configured")
 	}
 }
 

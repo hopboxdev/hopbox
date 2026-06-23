@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"path"
 	"time"
 
 	"github.com/hopboxdev/hopbox/internal/core/ports"
@@ -18,9 +19,10 @@ import (
 )
 
 type Config struct {
-	AgentAddr string           // what the agent dials, e.g. host.docker.internal:7777
-	Agent     ports.AgentImage // how to side-load the agent into a workspace
-	Interval  time.Duration
+	AgentAddr      string           // what the agent dials, e.g. host.docker.internal:7777
+	Agent          ports.AgentImage // how to side-load the agent into a workspace
+	AuthorizedKeys string           // SSH authorized_keys injected into every workspace (empty = SSH off)
+	Interval       time.Duration
 }
 
 type Reconciler struct {
@@ -106,17 +108,24 @@ func (r *Reconciler) provision(ctx context.Context, w *workspace.Workspace) erro
 	if w.BootstrapToken == "" {
 		w.BootstrapToken = newToken()
 	}
+	env := map[string]string{
+		"HOPBOX_AGENT_TOKEN":  w.BootstrapToken,
+		"HOPBOX_CONTROL_ADDR": r.cfg.AgentAddr,
+		"HOPBOX_WORKSPACE_ID": w.ID,
+		// persist the SSH host key on the home volume so known_hosts pinning
+		// survives workspace restarts.
+		"HOPBOX_SSH_HOST_KEY": path.Join(mount.Target, ".hopbox", "ssh_host_ed25519_key"),
+	}
+	if r.cfg.AuthorizedKeys != "" {
+		env["HOPBOX_AUTHORIZED_KEYS"] = r.cfg.AuthorizedKeys
+	}
 	inst, err := r.compute.Provision(ctx, ports.ProvisionRequest{
 		WorkspaceID: w.ID,
 		ImageRef:    w.ImageRef,
 		MemMB:       w.MemMB,
 		Mounts:      []ports.Mount{mount},
 		Agent:       r.cfg.Agent,
-		Env: map[string]string{
-			"HOPBOX_AGENT_TOKEN":  w.BootstrapToken,
-			"HOPBOX_CONTROL_ADDR": r.cfg.AgentAddr,
-			"HOPBOX_WORKSPACE_ID": w.ID,
-		},
+		Env:         env,
 	})
 	if err != nil {
 		return r.fail(ctx, w, fmt.Errorf("compute: %w", err))

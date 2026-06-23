@@ -33,6 +33,26 @@ func main() {
 	}
 }
 
+// loadAuthorizedKeys returns the SSH authorized_keys injected into every
+// workspace: the contents of file if set, else the HOPBOX_AUTHORIZED_KEYS env.
+// Empty disables SSH access.
+func loadAuthorizedKeys(file string) string {
+	if file != "" {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			log.Printf("hopboxd: authorized-keys %s: %v (ssh disabled)", file, err)
+			return ""
+		}
+		log.Printf("hopboxd: ssh enabled (authorized keys from %s)", file)
+		return string(b)
+	}
+	if env := os.Getenv("HOPBOX_AUTHORIZED_KEYS"); env != "" {
+		log.Printf("hopboxd: ssh enabled (authorized keys from HOPBOX_AUTHORIZED_KEYS)")
+		return env
+	}
+	return ""
+}
+
 func run(cfg config.Config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -87,6 +107,7 @@ func run(cfg config.Config) error {
 	// Exposes endpoints into its route table) and the gateway (which Lookups them).
 	ingress := subdomain.New(cfg.GatewayZone)
 
+	authKeys := loadAuthorizedKeys(cfg.AuthorizedKeysFile)
 	rec := reconciler.New(st, compute, storage, ingress, reconciler.Config{
 		AgentAddr: cfg.AgentAdvertise,
 		Agent: ports.AgentImage{
@@ -95,6 +116,7 @@ func run(cfg config.Config) error {
 			TargetPath:     cfg.AgentTargetPath,
 			HostBinaryPath: cfg.AgentBin, // M1 dev fast-path
 		},
+		AuthorizedKeys: authKeys,
 	})
 	go rec.Run(ctx)
 
