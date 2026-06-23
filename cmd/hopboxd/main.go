@@ -25,9 +25,21 @@ import (
 	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
 	"github.com/hopboxdev/hopbox/internal/plugin"
 	"github.com/hopboxdev/hopbox/internal/sshca"
+	"github.com/hopboxdev/hopbox/providers/identity/oidc"
 	"github.com/hopboxdev/hopbox/providers/identity/static"
 	"github.com/hopboxdev/hopbox/providers/ingress/subdomain"
 )
+
+// splitComma parses a comma-separated flag value, trimming blanks.
+func splitComma(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
 
 func main() {
 	cfg, err := config.Parse(os.Args[1:])
@@ -142,14 +154,27 @@ func run(cfg config.Config) error {
 	// Exposes endpoints into its route table) and the gateway (which Lookups them).
 	ingress := subdomain.New(cfg.GatewayZone)
 
-	// SSH user CA: auto-created on first run. Every workspace trusts its public
-	// key, so `hopbox login` certs work without distributing per-box keys.
-	caSigner, err := sshca.LoadOrCreateCA(cfg.SSHCAPath)
-	if err != nil {
-		return fmt.Errorf("ssh ca: %w", err)
+	// SSH user CA: either trust an external CA's public key (the org issues certs
+	// with their own tooling — Vault/Smallstep/Teleport) or run a built-in CA,
+	// auto-created on first run, that `hopbox login` issues short-lived certs from.
+	var caSigner ssh.Signer // nil when trusting an external CA (built-in issuance off)
+	var caTrustLine string
+	if cfg.SSHCAPubFile != "" {
+		b, err := os.ReadFile(cfg.SSHCAPubFile)
+		if err != nil {
+			return fmt.Errorf("ssh-ca-pub: %w", err)
+		}
+		caTrustLine = strings.TrimSpace(string(b))
+		log.Printf("hopboxd: trusting external SSH CA from %s (built-in `hopbox login` issuance disabled)", cfg.SSHCAPubFile)
+	} else {
+		signer, err := sshca.LoadOrCreateCA(cfg.SSHCAPath)
+		if err != nil {
+			return fmt.Errorf("ssh ca: %w", err)
+		}
+		caSigner = signer
+		caTrustLine = string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
+		log.Printf("hopboxd: ssh user CA %s (workspaces trust %s)", cfg.SSHCAPath, strings.TrimSpace(caTrustLine))
 	}
-	caTrustLine := string(ssh.MarshalAuthorizedKey(caSigner.PublicKey()))
-	log.Printf("hopboxd: ssh user CA %s (workspaces trust %s)", cfg.SSHCAPath, strings.TrimSpace(caTrustLine))
 
 	authKeys := loadAuthorizedKeys(cfg.AuthorizedKeysFile)
 	rec := reconciler.New(st, compute, storage, ingress, reconciler.Config{
@@ -202,16 +227,33 @@ func run(cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	// Multi-user auth: if a users file is configured, authenticate every call to a
-	// Principal; otherwise run open (single-user) with the default owner.
+	// Multi-user auth. OIDC (SSO) takes precedence; else a static token file; else
+	// open single-user mode (no interceptor, default owner).
+	var idp ports.Identity
+	switch {
+	case cfg.OIDCIssuer != "":
+		ver, err := oidc.NewVerifier(ctx, cfg.OIDCIssuer, cfg.OIDCAudience)
+		if err != nil {
+			return err
+		}
+		idp = oidc.New(ver, oidc.Config{
+			TenantID:       cfg.Tenant,
+			PrincipalClaim: cfg.OIDCPrincipalClaim,
+			AdminGroups:    splitComma(cfg.OIDCAdminGroups),
+		})
+		log.Printf("hopboxd: OIDC auth on (issuer %s)", cfg.OIDCIssuer)
+	default:
+		if users := loadUsers(cfg.UsersFile, cfg.Tenant); len(users) > 0 {
+			idp = static.New(users)
+			log.Printf("hopboxd: multi-user auth on (%d principals from %s)", len(users), cfg.UsersFile)
+		}
+	}
 	var opts []grpc.ServerOption
-	if users := loadUsers(cfg.UsersFile, cfg.Tenant); len(users) > 0 {
-		idp := static.New(users)
+	if idp != nil {
 		opts = append(opts,
 			grpc.UnaryInterceptor(api.AuthUnaryInterceptor(idp)),
 			grpc.StreamInterceptor(api.AuthStreamInterceptor(idp)),
 		)
-		log.Printf("hopboxd: multi-user auth on (%d principals from %s)", len(users), cfg.UsersFile)
 	}
 	gs := grpc.NewServer(opts...)
 	hopboxv1.RegisterWorkspaceServiceServer(gs, api.NewServer(st, hub, cfg.Tenant, cfg.Owner, caSigner))

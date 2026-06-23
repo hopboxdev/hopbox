@@ -17,7 +17,13 @@ type Config struct {
 
 	UsersFile          string // token->principal map enabling multi-user auth; empty = open single-user mode
 	SSHCAPath          string // path to the SSH user CA private key (created on first run); workspaces trust its public key
+	SSHCAPubFile       string // trust an EXTERNAL SSH CA (public key); disables built-in issuance (enterprise)
 	AuthorizedKeysFile string // fallback static authorized_keys file injected into workspaces (no-login mode)
+
+	OIDCIssuer         string // OIDC issuer URL; set to authenticate via SSO instead of static tokens
+	OIDCAudience       string // expected token audience (client id)
+	OIDCPrincipalClaim string // claim used as the principal id: "sub" (default) or "email"
+	OIDCAdminGroups    string // comma-separated groups granting the tenant-admin role
 
 	AgentImageRef    string
 	AgentBinaryPath  string
@@ -53,6 +59,11 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.Owner, "owner", "dev", "single principal (M1)")
 	fs.StringVar(&c.UsersFile, "users", "", "token->principal file enabling multi-user auth (lines: `<token> <principal>`); empty = open single-user mode")
 	fs.StringVar(&c.SSHCAPath, "ssh-ca", "./hopbox-ssh-ca", "SSH user-CA private key path (auto-created); workspaces trust its public key for `hopbox login` certs")
+	fs.StringVar(&c.SSHCAPubFile, "ssh-ca-pub", "", "trust an external SSH CA public key instead of the built-in one (disables `hopbox login` issuance; use your own CA tooling)")
+	fs.StringVar(&c.OIDCIssuer, "oidc-issuer", "", "OIDC issuer URL for SSO auth (e.g. https://accounts.google.com); overrides --users")
+	fs.StringVar(&c.OIDCAudience, "oidc-audience", "", "expected OIDC token audience (client id)")
+	fs.StringVar(&c.OIDCPrincipalClaim, "oidc-principal-claim", "sub", "OIDC claim used as the principal id: sub|email")
+	fs.StringVar(&c.OIDCAdminGroups, "oidc-admin-groups", "", "comma-separated OIDC groups granted the tenant-admin role")
 	fs.StringVar(&c.AuthorizedKeysFile, "authorized-keys", "", "fallback authorized_keys file injected into workspaces (no-login single-user mode)")
 	fs.StringVar(&c.AgentImageRef, "agent-image", "", "OCI image carrying the hopbox-agent binary")
 	fs.StringVar(&c.AgentBinaryPath, "agent-binary-path", "/hopbox-agent", "agent binary path inside the agent image")
