@@ -43,7 +43,7 @@ func main() {
 	root := &cobra.Command{Use: "hopbox", Short: "Hopbox dev-environment CLI"}
 	root.PersistentFlags().StringVar(&apiAddr, "addr", "localhost:7700", "hopboxd API address")
 
-	root.AddCommand(newCreateCmd(), newListCmd(), newRmCmd(), newShellCmd(dial), newExecCmd(dial))
+	root.AddCommand(newCreateCmd(), newListCmd(), newRmCmd(), newShellCmd(dial), newExecCmd(dial), newProxyCmd(dial))
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)

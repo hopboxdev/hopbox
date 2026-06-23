@@ -22,6 +22,7 @@ type Hub interface {
 	Connected(workspaceID string) bool
 	OpenShell(ctx context.Context, workspaceID string, hdr agentproto.ShellHeader) (io.ReadWriteCloser, error)
 	OpenExec(workspaceID string, cmd []string) (io.ReadWriteCloser, error)
+	OpenSSH(workspaceID string) (io.ReadWriteCloser, error)
 }
 
 type Server struct {
@@ -248,6 +249,73 @@ func (s *Server) Shell(stream hopboxv1.WorkspaceService_ShellServer) error {
 				}
 			}
 			// M1: Resize is accepted but not yet forwarded (window-change is a follow-up).
+		}
+	}()
+	err = <-errc
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	return err
+}
+
+// SSH bridges a raw SSH transport between the client (`hopbox proxy`, used as an
+// OpenSSH ProxyCommand) and the workspace agent's embedded SSH server. The
+// control plane never inspects the bytes; auth is the user's SSH key, verified
+// inside the workspace.
+func (s *Server) SSH(stream hopboxv1.WorkspaceService_SSHServer) error {
+	first, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	open := first.GetOpen()
+	if open == nil {
+		return status.Error(codes.InvalidArgument, "first SSH message must be `open`")
+	}
+	w, err := s.resolve(stream.Context(), open.NameOrId)
+	if err != nil {
+		return err
+	}
+	if !s.hub.Connected(w.ID) {
+		return status.Errorf(codes.FailedPrecondition, "workspace %q agent not connected (phase=%s)", w.Name, w.Phase)
+	}
+	agentStream, err := s.hub.OpenSSH(w.ID)
+	if err != nil {
+		return status.Errorf(codes.Internal, "open ssh: %v", err)
+	}
+	defer agentStream.Close()
+
+	errc := make(chan error, 2)
+	// agent -> client
+	go func() {
+		buf := make([]byte, 32*1024)
+		for {
+			n, rerr := agentStream.Read(buf)
+			if n > 0 {
+				if serr := stream.Send(&hopboxv1.SSHServerMsg{Data: append([]byte(nil), buf[:n]...)}); serr != nil {
+					errc <- serr
+					return
+				}
+			}
+			if rerr != nil {
+				errc <- rerr
+				return
+			}
+		}
+	}()
+	// client -> agent
+	go func() {
+		for {
+			msg, rerr := stream.Recv()
+			if rerr != nil {
+				errc <- rerr
+				return
+			}
+			if d := msg.GetData(); d != nil {
+				if _, werr := agentStream.Write(d); werr != nil {
+					errc <- werr
+					return
+				}
+			}
 		}
 	}()
 	err = <-errc

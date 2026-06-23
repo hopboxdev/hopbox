@@ -32,6 +32,12 @@ func (f *fakeHub) OpenShell(_ context.Context, _ string, _ agentproto.ShellHeade
 	return c1, nil
 }
 
+func (f *fakeHub) OpenSSH(string) (io.ReadWriteCloser, error) {
+	c1, c2 := net.Pipe()
+	go func() { _, _ = io.Copy(c2, c2) }() // echo, like OpenShell
+	return c1, nil
+}
+
 func (f *fakeHub) OpenExec(_ string, cmd []string) (io.ReadWriteCloser, error) {
 	c1, c2 := net.Pipe()
 	// far ("agent") end: emit "ran:<cmd>", echo any stdin back as stdout, exit 0.

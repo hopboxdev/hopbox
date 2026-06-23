@@ -112,6 +112,21 @@ func (h *Hub) OpenForward(workspaceID string, port uint32) (net.Conn, error) {
 	return stream, nil
 }
 
+// OpenSSH opens a yamux stream the agent will serve an SSH server on. The
+// returned pipe carries the SSH wire protocol; the API bridges a client's
+// `hopbox proxy` to it.
+func (h *Hub) OpenSSH(workspaceID string) (io.ReadWriteCloser, error) {
+	stream, err := h.openStream(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if err := agentproto.WriteOpenFrame(stream, agentproto.OpenFrame{Kind: agentproto.KindSSH}); err != nil {
+		_ = stream.Close()
+		return nil, fmt.Errorf("agenthub: write open frame: %w", err)
+	}
+	return stream, nil
+}
+
 // OpenExec opens a yamux stream and asks the agent to run cmd (argv, no pty).
 // The returned stream yields exec frames (stdout/stderr/exit) via
 // agentproto.ReadExecFrame.

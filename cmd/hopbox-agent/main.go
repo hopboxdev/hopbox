@@ -27,6 +27,7 @@ func main() {
 	if addr == "" || token == "" {
 		log.Fatal("hopbox-agent: HOPBOX_CONTROL_ADDR and HOPBOX_AGENT_TOKEN are required")
 	}
+	loadSSHConfig() // host key + authorized keys for the embedded SSH server
 	for {
 		if err := connectAndServe(addr, agentproto.Handshake{WorkspaceID: wsID, Token: token}); err != nil {
 			log.Printf("hopbox-agent: connection ended: %v; retrying in 2s", err)
@@ -76,6 +77,8 @@ func handleStream(stream io.ReadWriteCloser) {
 		handleForward(stream)
 	case agentproto.KindExec:
 		handleExec(stream)
+	case agentproto.KindSSH:
+		handleSSH(stream)
 	default: // KindShell
 		handleShell(stream)
 	}

@@ -1023,6 +1023,180 @@ func (*ExecServerMsg_Stderr) isExecServerMsg_Msg() {}
 
 func (*ExecServerMsg_ExitCode) isExecServerMsg_Msg() {}
 
+// SSH tunnels a full SSH session to the workspace's embedded SSH server. The
+// CLI's `hopbox proxy` is used as an OpenSSH ProxyCommand: first client msg MUST
+// be `open` (selects the workspace); every later msg in both directions carries
+// opaque SSH transport bytes. No public port is ever exposed.
+type SSHClientMsg struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Msg:
+	//
+	//	*SSHClientMsg_Open
+	//	*SSHClientMsg_Data
+	Msg           isSSHClientMsg_Msg `protobuf_oneof:"msg"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SSHClientMsg) Reset() {
+	*x = SSHClientMsg{}
+	mi := &file_hopbox_v1_hopbox_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SSHClientMsg) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SSHClientMsg) ProtoMessage() {}
+
+func (x *SSHClientMsg) ProtoReflect() protoreflect.Message {
+	mi := &file_hopbox_v1_hopbox_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SSHClientMsg.ProtoReflect.Descriptor instead.
+func (*SSHClientMsg) Descriptor() ([]byte, []int) {
+	return file_hopbox_v1_hopbox_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *SSHClientMsg) GetMsg() isSSHClientMsg_Msg {
+	if x != nil {
+		return x.Msg
+	}
+	return nil
+}
+
+func (x *SSHClientMsg) GetOpen() *SSHOpen {
+	if x != nil {
+		if x, ok := x.Msg.(*SSHClientMsg_Open); ok {
+			return x.Open
+		}
+	}
+	return nil
+}
+
+func (x *SSHClientMsg) GetData() []byte {
+	if x != nil {
+		if x, ok := x.Msg.(*SSHClientMsg_Data); ok {
+			return x.Data
+		}
+	}
+	return nil
+}
+
+type isSSHClientMsg_Msg interface {
+	isSSHClientMsg_Msg()
+}
+
+type SSHClientMsg_Open struct {
+	Open *SSHOpen `protobuf:"bytes,1,opt,name=open,proto3,oneof"`
+}
+
+type SSHClientMsg_Data struct {
+	Data []byte `protobuf:"bytes,2,opt,name=data,proto3,oneof"`
+}
+
+func (*SSHClientMsg_Open) isSSHClientMsg_Msg() {}
+
+func (*SSHClientMsg_Data) isSSHClientMsg_Msg() {}
+
+type SSHOpen struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NameOrId      string                 `protobuf:"bytes,1,opt,name=name_or_id,json=nameOrId,proto3" json:"name_or_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SSHOpen) Reset() {
+	*x = SSHOpen{}
+	mi := &file_hopbox_v1_hopbox_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SSHOpen) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SSHOpen) ProtoMessage() {}
+
+func (x *SSHOpen) ProtoReflect() protoreflect.Message {
+	mi := &file_hopbox_v1_hopbox_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SSHOpen.ProtoReflect.Descriptor instead.
+func (*SSHOpen) Descriptor() ([]byte, []int) {
+	return file_hopbox_v1_hopbox_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *SSHOpen) GetNameOrId() string {
+	if x != nil {
+		return x.NameOrId
+	}
+	return ""
+}
+
+type SSHServerMsg struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SSHServerMsg) Reset() {
+	*x = SSHServerMsg{}
+	mi := &file_hopbox_v1_hopbox_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SSHServerMsg) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SSHServerMsg) ProtoMessage() {}
+
+func (x *SSHServerMsg) ProtoReflect() protoreflect.Message {
+	mi := &file_hopbox_v1_hopbox_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SSHServerMsg.ProtoReflect.Descriptor instead.
+func (*SSHServerMsg) Descriptor() ([]byte, []int) {
+	return file_hopbox_v1_hopbox_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *SSHServerMsg) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
 var File_hopbox_v1_hopbox_proto protoreflect.FileDescriptor
 
 const file_hopbox_v1_hopbox_proto_rawDesc = "" +
@@ -1093,14 +1267,24 @@ const file_hopbox_v1_hopbox_proto_rawDesc = "" +
 	"\x06stdout\x18\x01 \x01(\fH\x00R\x06stdout\x12\x18\n" +
 	"\x06stderr\x18\x02 \x01(\fH\x00R\x06stderr\x12\x1d\n" +
 	"\texit_code\x18\x03 \x01(\x05H\x00R\bexitCodeB\x05\n" +
-	"\x03msg2\xcc\x03\n" +
+	"\x03msg\"U\n" +
+	"\fSSHClientMsg\x12(\n" +
+	"\x04open\x18\x01 \x01(\v2\x12.hopbox.v1.SSHOpenH\x00R\x04open\x12\x14\n" +
+	"\x04data\x18\x02 \x01(\fH\x00R\x04dataB\x05\n" +
+	"\x03msg\"'\n" +
+	"\aSSHOpen\x12\x1c\n" +
+	"\n" +
+	"name_or_id\x18\x01 \x01(\tR\bnameOrId\"\"\n" +
+	"\fSSHServerMsg\x12\x12\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data2\x89\x04\n" +
 	"\x10WorkspaceService\x12J\n" +
 	"\x0fCreateWorkspace\x12!.hopbox.v1.CreateWorkspaceRequest\x1a\x14.hopbox.v1.Workspace\x12D\n" +
 	"\fGetWorkspace\x12\x1e.hopbox.v1.GetWorkspaceRequest\x1a\x14.hopbox.v1.Workspace\x12U\n" +
 	"\x0eListWorkspaces\x12 .hopbox.v1.ListWorkspacesRequest\x1a!.hopbox.v1.ListWorkspacesResponse\x12L\n" +
 	"\x0fDeleteWorkspace\x12!.hopbox.v1.DeleteWorkspaceRequest\x1a\x16.google.protobuf.Empty\x12A\n" +
 	"\x05Shell\x12\x19.hopbox.v1.ShellClientMsg\x1a\x19.hopbox.v1.ShellServerMsg(\x010\x01\x12>\n" +
-	"\x04Exec\x12\x18.hopbox.v1.ExecClientMsg\x1a\x18.hopbox.v1.ExecServerMsg(\x010\x01B\x95\x01\n" +
+	"\x04Exec\x12\x18.hopbox.v1.ExecClientMsg\x1a\x18.hopbox.v1.ExecServerMsg(\x010\x01\x12;\n" +
+	"\x03SSH\x12\x17.hopbox.v1.SSHClientMsg\x1a\x17.hopbox.v1.SSHServerMsg(\x010\x01B\x95\x01\n" +
 	"\rcom.hopbox.v1B\vHopboxProtoP\x01Z2github.com/hopboxdev/hopbox/gen/hopbox/v1;hopboxv1\xa2\x02\x03HXX\xaa\x02\tHopbox.V1\xca\x02\tHopbox\\V1\xe2\x02\x15Hopbox\\V1\\GPBMetadata\xea\x02\n" +
 	"Hopbox::V1b\x06proto3"
 
@@ -1116,7 +1300,7 @@ func file_hopbox_v1_hopbox_proto_rawDescGZIP() []byte {
 	return file_hopbox_v1_hopbox_proto_rawDescData
 }
 
-var file_hopbox_v1_hopbox_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_hopbox_v1_hopbox_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_hopbox_v1_hopbox_proto_goTypes = []any{
 	(*Workspace)(nil),              // 0: hopbox.v1.Workspace
 	(*IngressPort)(nil),            // 1: hopbox.v1.IngressPort
@@ -1133,7 +1317,10 @@ var file_hopbox_v1_hopbox_proto_goTypes = []any{
 	(*ExecClientMsg)(nil),          // 12: hopbox.v1.ExecClientMsg
 	(*ExecOpen)(nil),               // 13: hopbox.v1.ExecOpen
 	(*ExecServerMsg)(nil),          // 14: hopbox.v1.ExecServerMsg
-	(*emptypb.Empty)(nil),          // 15: google.protobuf.Empty
+	(*SSHClientMsg)(nil),           // 15: hopbox.v1.SSHClientMsg
+	(*SSHOpen)(nil),                // 16: hopbox.v1.SSHOpen
+	(*SSHServerMsg)(nil),           // 17: hopbox.v1.SSHServerMsg
+	(*emptypb.Empty)(nil),          // 18: google.protobuf.Empty
 }
 var file_hopbox_v1_hopbox_proto_depIdxs = []int32{
 	2,  // 0: hopbox.v1.Workspace.endpoints:type_name -> hopbox.v1.Endpoint
@@ -1142,23 +1329,26 @@ var file_hopbox_v1_hopbox_proto_depIdxs = []int32{
 	9,  // 3: hopbox.v1.ShellClientMsg.open:type_name -> hopbox.v1.OpenShell
 	10, // 4: hopbox.v1.ShellClientMsg.resize:type_name -> hopbox.v1.Resize
 	13, // 5: hopbox.v1.ExecClientMsg.open:type_name -> hopbox.v1.ExecOpen
-	3,  // 6: hopbox.v1.WorkspaceService.CreateWorkspace:input_type -> hopbox.v1.CreateWorkspaceRequest
-	4,  // 7: hopbox.v1.WorkspaceService.GetWorkspace:input_type -> hopbox.v1.GetWorkspaceRequest
-	5,  // 8: hopbox.v1.WorkspaceService.ListWorkspaces:input_type -> hopbox.v1.ListWorkspacesRequest
-	7,  // 9: hopbox.v1.WorkspaceService.DeleteWorkspace:input_type -> hopbox.v1.DeleteWorkspaceRequest
-	8,  // 10: hopbox.v1.WorkspaceService.Shell:input_type -> hopbox.v1.ShellClientMsg
-	12, // 11: hopbox.v1.WorkspaceService.Exec:input_type -> hopbox.v1.ExecClientMsg
-	0,  // 12: hopbox.v1.WorkspaceService.CreateWorkspace:output_type -> hopbox.v1.Workspace
-	0,  // 13: hopbox.v1.WorkspaceService.GetWorkspace:output_type -> hopbox.v1.Workspace
-	6,  // 14: hopbox.v1.WorkspaceService.ListWorkspaces:output_type -> hopbox.v1.ListWorkspacesResponse
-	15, // 15: hopbox.v1.WorkspaceService.DeleteWorkspace:output_type -> google.protobuf.Empty
-	11, // 16: hopbox.v1.WorkspaceService.Shell:output_type -> hopbox.v1.ShellServerMsg
-	14, // 17: hopbox.v1.WorkspaceService.Exec:output_type -> hopbox.v1.ExecServerMsg
-	12, // [12:18] is the sub-list for method output_type
-	6,  // [6:12] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	16, // 6: hopbox.v1.SSHClientMsg.open:type_name -> hopbox.v1.SSHOpen
+	3,  // 7: hopbox.v1.WorkspaceService.CreateWorkspace:input_type -> hopbox.v1.CreateWorkspaceRequest
+	4,  // 8: hopbox.v1.WorkspaceService.GetWorkspace:input_type -> hopbox.v1.GetWorkspaceRequest
+	5,  // 9: hopbox.v1.WorkspaceService.ListWorkspaces:input_type -> hopbox.v1.ListWorkspacesRequest
+	7,  // 10: hopbox.v1.WorkspaceService.DeleteWorkspace:input_type -> hopbox.v1.DeleteWorkspaceRequest
+	8,  // 11: hopbox.v1.WorkspaceService.Shell:input_type -> hopbox.v1.ShellClientMsg
+	12, // 12: hopbox.v1.WorkspaceService.Exec:input_type -> hopbox.v1.ExecClientMsg
+	15, // 13: hopbox.v1.WorkspaceService.SSH:input_type -> hopbox.v1.SSHClientMsg
+	0,  // 14: hopbox.v1.WorkspaceService.CreateWorkspace:output_type -> hopbox.v1.Workspace
+	0,  // 15: hopbox.v1.WorkspaceService.GetWorkspace:output_type -> hopbox.v1.Workspace
+	6,  // 16: hopbox.v1.WorkspaceService.ListWorkspaces:output_type -> hopbox.v1.ListWorkspacesResponse
+	18, // 17: hopbox.v1.WorkspaceService.DeleteWorkspace:output_type -> google.protobuf.Empty
+	11, // 18: hopbox.v1.WorkspaceService.Shell:output_type -> hopbox.v1.ShellServerMsg
+	14, // 19: hopbox.v1.WorkspaceService.Exec:output_type -> hopbox.v1.ExecServerMsg
+	17, // 20: hopbox.v1.WorkspaceService.SSH:output_type -> hopbox.v1.SSHServerMsg
+	14, // [14:21] is the sub-list for method output_type
+	7,  // [7:14] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_hopbox_v1_hopbox_proto_init() }
@@ -1184,13 +1374,17 @@ func file_hopbox_v1_hopbox_proto_init() {
 		(*ExecServerMsg_Stderr)(nil),
 		(*ExecServerMsg_ExitCode)(nil),
 	}
+	file_hopbox_v1_hopbox_proto_msgTypes[15].OneofWrappers = []any{
+		(*SSHClientMsg_Open)(nil),
+		(*SSHClientMsg_Data)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hopbox_v1_hopbox_proto_rawDesc), len(file_hopbox_v1_hopbox_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

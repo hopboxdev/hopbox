@@ -26,6 +26,7 @@ const (
 	WorkspaceService_DeleteWorkspace_FullMethodName = "/hopbox.v1.WorkspaceService/DeleteWorkspace"
 	WorkspaceService_Shell_FullMethodName           = "/hopbox.v1.WorkspaceService/Shell"
 	WorkspaceService_Exec_FullMethodName            = "/hopbox.v1.WorkspaceService/Exec"
+	WorkspaceService_SSH_FullMethodName             = "/hopbox.v1.WorkspaceService/SSH"
 )
 
 // WorkspaceServiceClient is the client API for WorkspaceService service.
@@ -40,6 +41,7 @@ type WorkspaceServiceClient interface {
 	DeleteWorkspace(ctx context.Context, in *DeleteWorkspaceRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Shell(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ShellClientMsg, ShellServerMsg], error)
 	Exec(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecClientMsg, ExecServerMsg], error)
+	SSH(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SSHClientMsg, SSHServerMsg], error)
 }
 
 type workspaceServiceClient struct {
@@ -116,6 +118,19 @@ func (c *workspaceServiceClient) Exec(ctx context.Context, opts ...grpc.CallOpti
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type WorkspaceService_ExecClient = grpc.BidiStreamingClient[ExecClientMsg, ExecServerMsg]
 
+func (c *workspaceServiceClient) SSH(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SSHClientMsg, SSHServerMsg], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &WorkspaceService_ServiceDesc.Streams[2], WorkspaceService_SSH_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SSHClientMsg, SSHServerMsg]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkspaceService_SSHClient = grpc.BidiStreamingClient[SSHClientMsg, SSHServerMsg]
+
 // WorkspaceServiceServer is the server API for WorkspaceService service.
 // All implementations must embed UnimplementedWorkspaceServiceServer
 // for forward compatibility.
@@ -128,6 +143,7 @@ type WorkspaceServiceServer interface {
 	DeleteWorkspace(context.Context, *DeleteWorkspaceRequest) (*emptypb.Empty, error)
 	Shell(grpc.BidiStreamingServer[ShellClientMsg, ShellServerMsg]) error
 	Exec(grpc.BidiStreamingServer[ExecClientMsg, ExecServerMsg]) error
+	SSH(grpc.BidiStreamingServer[SSHClientMsg, SSHServerMsg]) error
 	mustEmbedUnimplementedWorkspaceServiceServer()
 }
 
@@ -155,6 +171,9 @@ func (UnimplementedWorkspaceServiceServer) Shell(grpc.BidiStreamingServer[ShellC
 }
 func (UnimplementedWorkspaceServiceServer) Exec(grpc.BidiStreamingServer[ExecClientMsg, ExecServerMsg]) error {
 	return status.Error(codes.Unimplemented, "method Exec not implemented")
+}
+func (UnimplementedWorkspaceServiceServer) SSH(grpc.BidiStreamingServer[SSHClientMsg, SSHServerMsg]) error {
+	return status.Error(codes.Unimplemented, "method SSH not implemented")
 }
 func (UnimplementedWorkspaceServiceServer) mustEmbedUnimplementedWorkspaceServiceServer() {}
 func (UnimplementedWorkspaceServiceServer) testEmbeddedByValue()                          {}
@@ -263,6 +282,13 @@ func _WorkspaceService_Exec_Handler(srv interface{}, stream grpc.ServerStream) e
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type WorkspaceService_ExecServer = grpc.BidiStreamingServer[ExecClientMsg, ExecServerMsg]
 
+func _WorkspaceService_SSH_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(WorkspaceServiceServer).SSH(&grpc.GenericServerStream[SSHClientMsg, SSHServerMsg]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkspaceService_SSHServer = grpc.BidiStreamingServer[SSHClientMsg, SSHServerMsg]
+
 // WorkspaceService_ServiceDesc is the grpc.ServiceDesc for WorkspaceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -297,6 +323,12 @@ var WorkspaceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Exec",
 			Handler:       _WorkspaceService_Exec_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "SSH",
+			Handler:       _WorkspaceService_SSH_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

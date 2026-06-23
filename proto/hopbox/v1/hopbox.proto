@@ -12,6 +12,7 @@ service WorkspaceService {
   rpc DeleteWorkspace(DeleteWorkspaceRequest) returns (google.protobuf.Empty);
   rpc Shell(stream ShellClientMsg) returns (stream ShellServerMsg);
   rpc Exec(stream ExecClientMsg) returns (stream ExecServerMsg);
+  rpc SSH(stream SSHClientMsg) returns (stream SSHServerMsg);
 }
 
 message Workspace {
@@ -92,3 +93,16 @@ message ExecServerMsg {
     int32 exit_code = 3;
   }
 }
+
+// SSH tunnels a full SSH session to the workspace's embedded SSH server. The
+// CLI's `hopbox proxy` is used as an OpenSSH ProxyCommand: first client msg MUST
+// be `open` (selects the workspace); every later msg in both directions carries
+// opaque SSH transport bytes. No public port is ever exposed.
+message SSHClientMsg {
+  oneof msg {
+    SSHOpen open = 1;
+    bytes   data = 2;
+  }
+}
+message SSHOpen { string name_or_id = 1; }
+message SSHServerMsg { bytes data = 1; }
