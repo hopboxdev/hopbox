@@ -1,0 +1,22 @@
+/* Midnight brand — match hopbox.dev */
+:root {
+  --vp-c-brand-1: #a07bff;
+  --vp-c-brand-2: #8b5cff;
+  --vp-c-brand-3: #7a4fff;
+  --vp-c-brand-soft: rgba(139, 92, 255, 0.16);
+}
+
+.dark {
+  --vp-c-bg: #08070d;
+  --vp-c-bg-alt: #0f0e17;
+  --vp-c-bg-soft: #0f0e17;
+  --vp-c-brand-1: #b794ff;
+  --vp-c-brand-2: #9d6bff;
+}
+
+.dark .VPHero .name {
+  background: linear-gradient(110deg, #8b5cff, #c08bff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
