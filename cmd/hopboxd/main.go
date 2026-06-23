@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
@@ -24,6 +25,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
 	"github.com/hopboxdev/hopbox/internal/plugin"
 	"github.com/hopboxdev/hopbox/internal/sshca"
+	"github.com/hopboxdev/hopbox/providers/identity/static"
 	"github.com/hopboxdev/hopbox/providers/ingress/subdomain"
 )
 
@@ -55,6 +57,35 @@ func loadAuthorizedKeys(file string) string {
 		return env
 	}
 	return ""
+}
+
+// loadUsers parses a token->principal file (lines `<token> <principal>`, '#'
+// comments) into the static identity provider's key map. Empty path => open
+// single-user mode (no entries).
+func loadUsers(file, tenant string) map[string]ports.Principal {
+	if file == "" {
+		return nil
+	}
+	f, err := os.Open(file)
+	if err != nil {
+		log.Printf("hopboxd: users %s: %v (auth disabled)", file, err)
+		return nil
+	}
+	defer f.Close()
+	users := map[string]ports.Principal{}
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		users[parts[0]] = ports.Principal{ID: parts[1], TenantID: tenant, Roles: []string{"owner"}}
+	}
+	return users
 }
 
 func run(cfg config.Config) error {
@@ -171,7 +202,18 @@ func run(cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	gs := grpc.NewServer()
+	// Multi-user auth: if a users file is configured, authenticate every call to a
+	// Principal; otherwise run open (single-user) with the default owner.
+	var opts []grpc.ServerOption
+	if users := loadUsers(cfg.UsersFile, cfg.Tenant); len(users) > 0 {
+		idp := static.New(users)
+		opts = append(opts,
+			grpc.UnaryInterceptor(api.AuthUnaryInterceptor(idp)),
+			grpc.StreamInterceptor(api.AuthStreamInterceptor(idp)),
+		)
+		log.Printf("hopboxd: multi-user auth on (%d principals from %s)", len(users), cfg.UsersFile)
+	}
+	gs := grpc.NewServer(opts...)
 	hopboxv1.RegisterWorkspaceServiceServer(gs, api.NewServer(st, hub, cfg.Tenant, cfg.Owner, caSigner))
 	go func() { <-ctx.Done(); gs.GracefulStop() }()
 

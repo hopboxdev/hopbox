@@ -31,8 +31,21 @@ func parseExpose(s string) (*hopboxv1.IngressPort, error) {
 
 var apiAddr string
 
+// tokenCreds sends the saved api token on every call so hopboxd can authenticate
+// the caller. Allowed over insecure transport (localhost / self-hosted).
+type tokenCreds struct{ token string }
+
+func (t tokenCreds) GetRequestMetadata(context.Context, ...string) (map[string]string, error) {
+	return map[string]string{"authorization": "Bearer " + t.token}, nil
+}
+func (tokenCreds) RequireTransportSecurity() bool { return false }
+
 func dial() (hopboxv1.WorkspaceServiceClient, func(), error) {
-	conn, err := grpc.NewClient(apiAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	if tok := readToken(); tok != "" {
+		opts = append(opts, grpc.WithPerRPCCredentials(tokenCreds{tok}))
+	}
+	conn, err := grpc.NewClient(apiAddr, opts...)
 	if err != nil {
 		return nil, nil, err
 	}

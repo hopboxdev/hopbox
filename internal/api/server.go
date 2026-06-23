@@ -15,6 +15,7 @@ import (
 
 	hopboxv1 "github.com/hopboxdev/hopbox/gen/hopbox/v1"
 	"github.com/hopboxdev/hopbox/internal/agentproto"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 	"github.com/hopboxdev/hopbox/internal/core/store"
 	"github.com/hopboxdev/hopbox/internal/core/workspace"
 	"github.com/hopboxdev/hopbox/internal/sshca"
@@ -44,10 +45,19 @@ func NewServer(s store.Store, hub Hub, tenant, owner string, ca ssh.Signer) *Ser
 	return &Server{store: s, hub: hub, tenant: tenant, owner: owner, ca: ca}
 }
 
+// principal returns the authenticated caller (set by the auth interceptor), or
+// the server's default principal in open (no-auth) mode.
+func (s *Server) principal(ctx context.Context) ports.Principal {
+	if pr, ok := principalFromCtx(ctx); ok {
+		return pr
+	}
+	return ports.Principal{ID: s.owner, TenantID: s.tenant, Roles: []string{"owner"}}
+}
+
 // IssueSSHCert signs the caller's SSH public key into a short-lived user
 // certificate for their principal. In M1 the principal is the single configured
 // owner; once API callers are authenticated it becomes the caller's identity.
-func (s *Server) IssueSSHCert(_ context.Context, req *hopboxv1.IssueSSHCertRequest) (*hopboxv1.IssueSSHCertResponse, error) {
+func (s *Server) IssueSSHCert(ctx context.Context, req *hopboxv1.IssueSSHCertRequest) (*hopboxv1.IssueSSHCertResponse, error) {
 	if s.ca == nil {
 		return nil, status.Error(codes.FailedPrecondition, "ssh certificate login is not enabled on this server")
 	}
@@ -55,13 +65,14 @@ func (s *Server) IssueSSHCert(_ context.Context, req *hopboxv1.IssueSSHCertReque
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "parse public key: %v", err)
 	}
-	cert, err := sshca.SignUserCert(s.ca, pub, s.owner+"@hopbox", []string{s.owner}, certTTL)
+	principal := s.principal(ctx).ID // the cert is valid only for the caller's identity
+	cert, err := sshca.SignUserCert(s.ca, pub, principal+"@hopbox", []string{principal}, certTTL)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "sign cert: %v", err)
 	}
 	return &hopboxv1.IssueSSHCertResponse{
 		Certificate:     string(sshca.MarshalCert(cert)),
-		Principal:       s.owner,
+		Principal:       principal,
 		ValidBeforeUnix: int64(cert.ValidBefore),
 	}, nil
 }
@@ -79,28 +90,40 @@ func toProto(w *workspace.Workspace) *hopboxv1.Workspace {
 }
 
 func (s *Server) resolve(ctx context.Context, nameOrID string) (*workspace.Workspace, error) {
-	w, err := s.store.GetWorkspace(ctx, s.tenant, nameOrID)
-	if err == nil {
-		return w, nil
+	pr := s.principal(ctx)
+	w, err := s.store.GetWorkspace(ctx, pr.TenantID, nameOrID)
+	if errors.Is(err, store.ErrNotFound) {
+		w, err = s.store.GetByName(ctx, pr.TenantID, nameOrID)
 	}
-	if !errors.Is(err, store.ErrNotFound) {
-		return nil, status.Errorf(codes.Internal, "resolve %q: %v", nameOrID, err)
-	}
-	w, err = s.store.GetByName(ctx, s.tenant, nameOrID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "workspace %q not found", nameOrID)
 	}
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "resolve %q: %v", nameOrID, err)
 	}
+	// owner scoping: a caller only ever sees its own boxes. Hide others as NotFound.
+	if w.Owner != pr.ID && !privileged(pr) {
+		return nil, status.Errorf(codes.NotFound, "workspace %q not found", nameOrID)
+	}
 	return w, nil
+}
+
+// privileged is the coarse RBAC escape hatch (admins see all workspaces).
+func privileged(pr ports.Principal) bool {
+	for _, r := range pr.Roles {
+		if r == "system" || r == "tenant-admin" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) CreateWorkspace(ctx context.Context, r *hopboxv1.CreateWorkspaceRequest) (*hopboxv1.Workspace, error) {
 	if r.Name == "" || r.ImageRef == "" {
 		return nil, status.Error(codes.InvalidArgument, "name and image_ref are required")
 	}
-	w := workspace.New(s.tenant, s.owner, r.Name, r.ImageRef)
+	pr := s.principal(ctx)
+	w := workspace.New(pr.TenantID, pr.ID, r.Name, r.ImageRef)
 	w.MemMB = r.MemMb
 	for _, ip := range r.Ingress {
 		if ip.Name == "" || ip.Port <= 0 {
@@ -123,13 +146,16 @@ func (s *Server) GetWorkspace(ctx context.Context, r *hopboxv1.GetWorkspaceReque
 }
 
 func (s *Server) ListWorkspaces(ctx context.Context, _ *hopboxv1.ListWorkspacesRequest) (*hopboxv1.ListWorkspacesResponse, error) {
-	ws, err := s.store.ListWorkspaces(ctx, s.tenant)
+	pr := s.principal(ctx)
+	ws, err := s.store.ListWorkspaces(ctx, pr.TenantID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "list: %v", err)
 	}
 	out := &hopboxv1.ListWorkspacesResponse{}
 	for _, w := range ws {
-		out.Workspaces = append(out.Workspaces, toProto(w))
+		if w.Owner == pr.ID || privileged(pr) { // a caller only lists its own boxes
+			out.Workspaces = append(out.Workspaces, toProto(w))
+		}
 	}
 	return out, nil
 }

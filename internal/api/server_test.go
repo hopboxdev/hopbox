@@ -19,8 +19,96 @@ import (
 	hopboxv1 "github.com/hopboxdev/hopbox/gen/hopbox/v1"
 	"github.com/hopboxdev/hopbox/internal/agentproto"
 	"github.com/hopboxdev/hopbox/internal/api"
+	"github.com/hopboxdev/hopbox/internal/core/ports"
 	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
+	"github.com/hopboxdev/hopbox/providers/identity/static"
 )
+
+// testToken sends an api token like the real CLI does.
+type testToken struct{ tok string }
+
+func (t testToken) GetRequestMetadata(context.Context, ...string) (map[string]string, error) {
+	return map[string]string{"authorization": "Bearer " + t.tok}, nil
+}
+func (testToken) RequireTransportSecurity() bool { return false }
+
+func TestMultiUserOwnerIsolation(t *testing.T) {
+	ctx := context.Background()
+	s, err := sqlite.Open(t.TempDir() + "/mu.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	_, caPriv, _ := ed25519.GenerateKey(rand.Reader)
+	ca, _ := ssh.NewSignerFromSigner(caPriv)
+	srv := api.NewServer(s, &fakeHub{connected: true}, "default", "system", ca)
+
+	idp := static.New(map[string]ports.Principal{
+		"tok-alice": {ID: "alice", TenantID: "default", Roles: []string{"owner"}},
+		"tok-bob":   {ID: "bob", TenantID: "default", Roles: []string{"owner"}},
+	})
+	lis := bufconn.Listen(1 << 20)
+	gs := grpc.NewServer(
+		grpc.UnaryInterceptor(api.AuthUnaryInterceptor(idp)),
+		grpc.StreamInterceptor(api.AuthStreamInterceptor(idp)),
+	)
+	hopboxv1.RegisterWorkspaceServiceServer(gs, srv)
+	go func() { _ = gs.Serve(lis) }()
+	defer gs.Stop()
+
+	client := func(creds ...grpc.DialOption) hopboxv1.WorkspaceServiceClient {
+		opts := append([]grpc.DialOption{
+			grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return lis.Dial() }),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}, creds...)
+		conn, err := grpc.NewClient("passthrough:///bufnet", opts...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = conn.Close() })
+		return hopboxv1.NewWorkspaceServiceClient(conn)
+	}
+	alice := client(grpc.WithPerRPCCredentials(testToken{"tok-alice"}))
+	bob := client(grpc.WithPerRPCCredentials(testToken{"tok-bob"}))
+	anon := client()
+
+	if _, err := alice.CreateWorkspace(ctx, &hopboxv1.CreateWorkspaceRequest{Name: "abox", ImageRef: "ubuntu:24.04"}); err != nil {
+		t.Fatalf("alice create: %v", err)
+	}
+	if _, err := bob.CreateWorkspace(ctx, &hopboxv1.CreateWorkspaceRequest{Name: "bbox", ImageRef: "ubuntu:24.04"}); err != nil {
+		t.Fatalf("bob create: %v", err)
+	}
+
+	// each user lists only their own box, owned by them.
+	la, _ := alice.ListWorkspaces(ctx, &hopboxv1.ListWorkspacesRequest{})
+	if len(la.Workspaces) != 1 || la.Workspaces[0].Name != "abox" || la.Workspaces[0].Owner != "alice" {
+		t.Fatalf("alice list = %+v", la.Workspaces)
+	}
+	lb, _ := bob.ListWorkspaces(ctx, &hopboxv1.ListWorkspacesRequest{})
+	if len(lb.Workspaces) != 1 || lb.Workspaces[0].Name != "bbox" {
+		t.Fatalf("bob list = %+v", lb.Workspaces)
+	}
+
+	// bob cannot see or touch alice's box.
+	if _, err := bob.GetWorkspace(ctx, &hopboxv1.GetWorkspaceRequest{NameOrId: "abox"}); status.Code(err) != codes.NotFound {
+		t.Fatalf("bob get abox: want NotFound, got %v", err)
+	}
+
+	// certs are scoped to the caller.
+	_, userPriv, _ := ed25519.GenerateKey(rand.Reader)
+	us, _ := ssh.NewSignerFromSigner(userPriv)
+	pub := string(ssh.MarshalAuthorizedKey(us.PublicKey()))
+	ra, _ := alice.IssueSSHCert(ctx, &hopboxv1.IssueSSHCertRequest{PublicKey: pub})
+	rb, _ := bob.IssueSSHCert(ctx, &hopboxv1.IssueSSHCertRequest{PublicKey: pub})
+	if ra.Principal != "alice" || rb.Principal != "bob" {
+		t.Fatalf("cert principals: alice=%q bob=%q", ra.Principal, rb.Principal)
+	}
+
+	// no token -> unauthenticated.
+	if _, err := anon.ListWorkspaces(ctx, &hopboxv1.ListWorkspacesRequest{}); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("anon list: want Unauthenticated, got %v", err)
+	}
+}
 
 func TestIssueSSHCert(t *testing.T) {
 	_, caPriv, _ := ed25519.GenerateKey(rand.Reader)

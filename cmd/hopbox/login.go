@@ -45,14 +45,36 @@ func readPrincipal() string {
 	return strings.TrimSpace(string(b))
 }
 
+// readToken returns the saved api token (from `hopbox login --token`), if any.
+func readToken() string {
+	d, err := hopboxDir()
+	if err != nil {
+		return ""
+	}
+	b, _ := os.ReadFile(filepath.Join(d, "token"))
+	return strings.TrimSpace(string(b))
+}
+
 // newLoginCmd ensures a local SSH key exists and exchanges it for a short-lived
 // certificate signed by the server's CA — the credential `ssh`/VS Code present.
 func newLoginCmd(dial func() (hopboxv1.WorkspaceServiceClient, func(), error)) *cobra.Command {
-	return &cobra.Command{
+	var token string
+	c := &cobra.Command{
 		Use:   "login",
 		Short: "Authenticate and fetch a short-lived SSH certificate",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			// --token saves the api token first, so the cert request below (and all
+			// later calls) authenticate as this user on multi-user servers.
+			if token != "" {
+				d, err := hopboxDir()
+				if err != nil {
+					return err
+				}
+				if err := os.WriteFile(filepath.Join(d, "token"), []byte(token), 0o600); err != nil {
+					return err
+				}
+			}
 			keyPath, err := identityKeyPath()
 			if err != nil {
 				return err
@@ -92,6 +114,8 @@ func newLoginCmd(dial func() (hopboxv1.WorkspaceServiceClient, func(), error)) *
 			return nil
 		},
 	}
+	c.Flags().StringVar(&token, "token", "", "api token for multi-user servers (saved to ~/.hopbox/token)")
+	return c
 }
 
 // generateIdentity writes a new ed25519 SSH keypair at path (+ ".pub").
