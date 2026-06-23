@@ -11,6 +11,8 @@ import (
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+
+	"github.com/hopboxdev/hopbox/internal/sshca"
 )
 
 // serve runs agentssh.Serve behind a loopback TCP listener (OS-buffered, so the
@@ -183,6 +185,96 @@ func TestUnauthorizedKeyRejected(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected handshake to fail for an unauthorized key")
+	}
+}
+
+// serveCA starts a server that trusts a CA and scopes access to `owner`.
+func serveCA(t *testing.T, ca ssh.PublicKey, owner string) (addr string, hostKey ssh.Signer) {
+	t.Helper()
+	hostKey = mustSigner(t)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go Serve(c, Config{HostKey: hostKey, TrustedUserCA: ca, Principal: owner, Shell: "/bin/sh"})
+		}
+	}()
+	return ln.Addr().String(), hostKey
+}
+
+// dialCert dials addr presenting a CA-signed cert for `principals`, as user `user`.
+func dialCert(t *testing.T, addr string, hostKey ssh.Signer, ca, userKey ssh.Signer, user string, principals []string) (*ssh.Client, error) {
+	t.Helper()
+	cert, err := sshca.SignUserCert(ca, userKey.PublicKey(), "test", principals, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certSigner, err := ssh.NewCertSigner(cert, userKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ssh.Dial("tcp", addr, &ssh.ClientConfig{
+		User:            user,
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(certSigner)},
+		HostKeyCallback: ssh.FixedHostKey(hostKey.PublicKey()),
+		Timeout:         5 * time.Second,
+	})
+}
+
+func TestCertAuth(t *testing.T) {
+	ca := mustSigner(t)
+	user := mustSigner(t)
+	addr, hostKey := serveCA(t, ca.PublicKey(), "alice")
+
+	client, err := dialCert(t, addr, hostKey, ca, user, "alice", []string{"alice"})
+	if err != nil {
+		t.Fatalf("cert dial: %v", err)
+	}
+	defer client.Close()
+	sess, err := client.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	out, err := sess.Output("echo cert-ok")
+	if err != nil || strings.TrimSpace(string(out)) != "cert-ok" {
+		t.Fatalf("exec via cert: out=%q err=%v", out, err)
+	}
+}
+
+func TestCertWrongOwnerRejected(t *testing.T) {
+	ca := mustSigner(t)
+	bob := mustSigner(t)
+	addr, hostKey := serveCA(t, ca.PublicKey(), "alice") // box owned by alice
+
+	// bob's cert, connecting as bob: rejected (bob is not the owner).
+	if c, err := dialCert(t, addr, hostKey, ca, bob, "bob", []string{"bob"}); err == nil {
+		c.Close()
+		t.Fatal("bob's cert must not open alice's box")
+	}
+	// bob's cert, connecting as alice: rejected (cert isn't valid for alice).
+	if c, err := dialCert(t, addr, hostKey, ca, bob, "alice", []string{"bob"}); err == nil {
+		c.Close()
+		t.Fatal("bob's cert presented as alice must be rejected")
+	}
+}
+
+func TestCertWrongCARejected(t *testing.T) {
+	trustedCA := mustSigner(t)
+	otherCA := mustSigner(t)
+	user := mustSigner(t)
+	addr, hostKey := serveCA(t, trustedCA.PublicKey(), "alice")
+
+	if c, err := dialCert(t, addr, hostKey, otherCA, user, "alice", []string{"alice"}); err == nil {
+		c.Close()
+		t.Fatal("a cert from an untrusted CA must be rejected")
 	}
 }
 

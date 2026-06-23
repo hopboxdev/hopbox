@@ -21,7 +21,8 @@ import (
 type Config struct {
 	AgentAddr      string           // what the agent dials, e.g. host.docker.internal:7777
 	Agent          ports.AgentImage // how to side-load the agent into a workspace
-	AuthorizedKeys string           // SSH authorized_keys injected into every workspace (empty = SSH off)
+	TrustedUserCA  string           // SSH CA public key (authorized_keys line) every workspace trusts
+	AuthorizedKeys string           // fallback static authorized_keys injected into every workspace (no-login mode)
 	Interval       time.Duration
 }
 
@@ -112,9 +113,16 @@ func (r *Reconciler) provision(ctx context.Context, w *workspace.Workspace) erro
 		"HOPBOX_AGENT_TOKEN":  w.BootstrapToken,
 		"HOPBOX_CONTROL_ADDR": r.cfg.AgentAddr,
 		"HOPBOX_WORKSPACE_ID": w.ID,
+		// the SSH principal this box authorizes — its owner. A CA-signed cert must
+		// name this principal, so every box can trust one CA yet only its owner's
+		// certs open it.
+		"HOPBOX_PRINCIPAL": w.Owner,
 		// persist the SSH host key on the home volume so known_hosts pinning
 		// survives workspace restarts.
 		"HOPBOX_SSH_HOST_KEY": path.Join(mount.Target, ".hopbox", "ssh_host_ed25519_key"),
+	}
+	if r.cfg.TrustedUserCA != "" {
+		env["HOPBOX_TRUSTED_USER_CA"] = r.cfg.TrustedUserCA
 	}
 	if r.cfg.AuthorizedKeys != "" {
 		env["HOPBOX_AUTHORIZED_KEYS"] = r.cfg.AuthorizedKeys

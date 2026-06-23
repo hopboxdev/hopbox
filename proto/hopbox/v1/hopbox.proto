@@ -13,6 +13,7 @@ service WorkspaceService {
   rpc Shell(stream ShellClientMsg) returns (stream ShellServerMsg);
   rpc Exec(stream ExecClientMsg) returns (stream ExecServerMsg);
   rpc SSH(stream SSHClientMsg) returns (stream SSHServerMsg);
+  rpc IssueSSHCert(IssueSSHCertRequest) returns (IssueSSHCertResponse);
 }
 
 message Workspace {
@@ -106,3 +107,15 @@ message SSHClientMsg {
 }
 message SSHOpen { string name_or_id = 1; }
 message SSHServerMsg { bytes data = 1; }
+
+// IssueSSHCert signs the caller's SSH public key into a short-lived user
+// certificate (`hopbox login`). The cert names the caller's principal; boxes
+// trust the CA and admit only certs for their owner's principal.
+message IssueSSHCertRequest {
+  string public_key = 1; // OpenSSH authorized_keys line for the user's key
+}
+message IssueSSHCertResponse {
+  string certificate       = 1; // signed cert (authorized_keys line) -> write as <key>-cert.pub
+  string principal         = 2; // the principal/username the cert authorizes
+  int64  valid_before_unix = 3; // cert expiry
+}

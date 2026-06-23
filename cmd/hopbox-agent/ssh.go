@@ -28,6 +28,16 @@ func loadSSHConfig() {
 	}
 	agentSSH.HostKey = signer
 
+	// CA model: trust one user CA, scoped to this workspace's owner.
+	agentSSH.Principal = os.Getenv("HOPBOX_PRINCIPAL")
+	if ca := os.Getenv("HOPBOX_TRUSTED_USER_CA"); ca != "" {
+		if keys, err := agentssh.ParseAuthorizedKeys([]byte(ca)); err == nil {
+			agentSSH.TrustedUserCA = keys[0]
+		} else {
+			log.Printf("hopbox-agent: trusted user CA: %v", err)
+		}
+	}
+
 	var blob []byte
 	if inline := os.Getenv("HOPBOX_AUTHORIZED_KEYS"); inline != "" {
 		blob = []byte(inline)
@@ -43,7 +53,8 @@ func loadSSHConfig() {
 			log.Printf("hopbox-agent: authorized keys: %v", err)
 		}
 	}
-	log.Printf("hopbox-agent: ssh ready (host key %s, %d authorized keys)", keyPath, len(agentSSH.AuthorizedKeys))
+	log.Printf("hopbox-agent: ssh ready (host key %s, CA=%t principal=%q, %d static keys)",
+		keyPath, agentSSH.TrustedUserCA != nil, agentSSH.Principal, len(agentSSH.AuthorizedKeys))
 }
 
 // handleSSH serves the SSH protocol over a yamux stream (hopboxd bridges the

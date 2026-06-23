@@ -1197,6 +1197,113 @@ func (x *SSHServerMsg) GetData() []byte {
 	return nil
 }
 
+// IssueSSHCert signs the caller's SSH public key into a short-lived user
+// certificate (`hopbox login`). The cert names the caller's principal; boxes
+// trust the CA and admit only certs for their owner's principal.
+type IssueSSHCertRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PublicKey     string                 `protobuf:"bytes,1,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"` // OpenSSH authorized_keys line for the user's key
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IssueSSHCertRequest) Reset() {
+	*x = IssueSSHCertRequest{}
+	mi := &file_hopbox_v1_hopbox_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IssueSSHCertRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IssueSSHCertRequest) ProtoMessage() {}
+
+func (x *IssueSSHCertRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hopbox_v1_hopbox_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IssueSSHCertRequest.ProtoReflect.Descriptor instead.
+func (*IssueSSHCertRequest) Descriptor() ([]byte, []int) {
+	return file_hopbox_v1_hopbox_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *IssueSSHCertRequest) GetPublicKey() string {
+	if x != nil {
+		return x.PublicKey
+	}
+	return ""
+}
+
+type IssueSSHCertResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Certificate     string                 `protobuf:"bytes,1,opt,name=certificate,proto3" json:"certificate,omitempty"`                                   // signed cert (authorized_keys line) -> write as <key>-cert.pub
+	Principal       string                 `protobuf:"bytes,2,opt,name=principal,proto3" json:"principal,omitempty"`                                       // the principal/username the cert authorizes
+	ValidBeforeUnix int64                  `protobuf:"varint,3,opt,name=valid_before_unix,json=validBeforeUnix,proto3" json:"valid_before_unix,omitempty"` // cert expiry
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *IssueSSHCertResponse) Reset() {
+	*x = IssueSSHCertResponse{}
+	mi := &file_hopbox_v1_hopbox_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IssueSSHCertResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IssueSSHCertResponse) ProtoMessage() {}
+
+func (x *IssueSSHCertResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_hopbox_v1_hopbox_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IssueSSHCertResponse.ProtoReflect.Descriptor instead.
+func (*IssueSSHCertResponse) Descriptor() ([]byte, []int) {
+	return file_hopbox_v1_hopbox_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *IssueSSHCertResponse) GetCertificate() string {
+	if x != nil {
+		return x.Certificate
+	}
+	return ""
+}
+
+func (x *IssueSSHCertResponse) GetPrincipal() string {
+	if x != nil {
+		return x.Principal
+	}
+	return ""
+}
+
+func (x *IssueSSHCertResponse) GetValidBeforeUnix() int64 {
+	if x != nil {
+		return x.ValidBeforeUnix
+	}
+	return 0
+}
+
 var File_hopbox_v1_hopbox_proto protoreflect.FileDescriptor
 
 const file_hopbox_v1_hopbox_proto_rawDesc = "" +
@@ -1276,7 +1383,14 @@ const file_hopbox_v1_hopbox_proto_rawDesc = "" +
 	"\n" +
 	"name_or_id\x18\x01 \x01(\tR\bnameOrId\"\"\n" +
 	"\fSSHServerMsg\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data2\x89\x04\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\"4\n" +
+	"\x13IssueSSHCertRequest\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x01 \x01(\tR\tpublicKey\"\x82\x01\n" +
+	"\x14IssueSSHCertResponse\x12 \n" +
+	"\vcertificate\x18\x01 \x01(\tR\vcertificate\x12\x1c\n" +
+	"\tprincipal\x18\x02 \x01(\tR\tprincipal\x12*\n" +
+	"\x11valid_before_unix\x18\x03 \x01(\x03R\x0fvalidBeforeUnix2\xda\x04\n" +
 	"\x10WorkspaceService\x12J\n" +
 	"\x0fCreateWorkspace\x12!.hopbox.v1.CreateWorkspaceRequest\x1a\x14.hopbox.v1.Workspace\x12D\n" +
 	"\fGetWorkspace\x12\x1e.hopbox.v1.GetWorkspaceRequest\x1a\x14.hopbox.v1.Workspace\x12U\n" +
@@ -1284,7 +1398,8 @@ const file_hopbox_v1_hopbox_proto_rawDesc = "" +
 	"\x0fDeleteWorkspace\x12!.hopbox.v1.DeleteWorkspaceRequest\x1a\x16.google.protobuf.Empty\x12A\n" +
 	"\x05Shell\x12\x19.hopbox.v1.ShellClientMsg\x1a\x19.hopbox.v1.ShellServerMsg(\x010\x01\x12>\n" +
 	"\x04Exec\x12\x18.hopbox.v1.ExecClientMsg\x1a\x18.hopbox.v1.ExecServerMsg(\x010\x01\x12;\n" +
-	"\x03SSH\x12\x17.hopbox.v1.SSHClientMsg\x1a\x17.hopbox.v1.SSHServerMsg(\x010\x01B\x95\x01\n" +
+	"\x03SSH\x12\x17.hopbox.v1.SSHClientMsg\x1a\x17.hopbox.v1.SSHServerMsg(\x010\x01\x12O\n" +
+	"\fIssueSSHCert\x12\x1e.hopbox.v1.IssueSSHCertRequest\x1a\x1f.hopbox.v1.IssueSSHCertResponseB\x95\x01\n" +
 	"\rcom.hopbox.v1B\vHopboxProtoP\x01Z2github.com/hopboxdev/hopbox/gen/hopbox/v1;hopboxv1\xa2\x02\x03HXX\xaa\x02\tHopbox.V1\xca\x02\tHopbox\\V1\xe2\x02\x15Hopbox\\V1\\GPBMetadata\xea\x02\n" +
 	"Hopbox::V1b\x06proto3"
 
@@ -1300,7 +1415,7 @@ func file_hopbox_v1_hopbox_proto_rawDescGZIP() []byte {
 	return file_hopbox_v1_hopbox_proto_rawDescData
 }
 
-var file_hopbox_v1_hopbox_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_hopbox_v1_hopbox_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_hopbox_v1_hopbox_proto_goTypes = []any{
 	(*Workspace)(nil),              // 0: hopbox.v1.Workspace
 	(*IngressPort)(nil),            // 1: hopbox.v1.IngressPort
@@ -1320,7 +1435,9 @@ var file_hopbox_v1_hopbox_proto_goTypes = []any{
 	(*SSHClientMsg)(nil),           // 15: hopbox.v1.SSHClientMsg
 	(*SSHOpen)(nil),                // 16: hopbox.v1.SSHOpen
 	(*SSHServerMsg)(nil),           // 17: hopbox.v1.SSHServerMsg
-	(*emptypb.Empty)(nil),          // 18: google.protobuf.Empty
+	(*IssueSSHCertRequest)(nil),    // 18: hopbox.v1.IssueSSHCertRequest
+	(*IssueSSHCertResponse)(nil),   // 19: hopbox.v1.IssueSSHCertResponse
+	(*emptypb.Empty)(nil),          // 20: google.protobuf.Empty
 }
 var file_hopbox_v1_hopbox_proto_depIdxs = []int32{
 	2,  // 0: hopbox.v1.Workspace.endpoints:type_name -> hopbox.v1.Endpoint
@@ -1337,15 +1454,17 @@ var file_hopbox_v1_hopbox_proto_depIdxs = []int32{
 	8,  // 11: hopbox.v1.WorkspaceService.Shell:input_type -> hopbox.v1.ShellClientMsg
 	12, // 12: hopbox.v1.WorkspaceService.Exec:input_type -> hopbox.v1.ExecClientMsg
 	15, // 13: hopbox.v1.WorkspaceService.SSH:input_type -> hopbox.v1.SSHClientMsg
-	0,  // 14: hopbox.v1.WorkspaceService.CreateWorkspace:output_type -> hopbox.v1.Workspace
-	0,  // 15: hopbox.v1.WorkspaceService.GetWorkspace:output_type -> hopbox.v1.Workspace
-	6,  // 16: hopbox.v1.WorkspaceService.ListWorkspaces:output_type -> hopbox.v1.ListWorkspacesResponse
-	18, // 17: hopbox.v1.WorkspaceService.DeleteWorkspace:output_type -> google.protobuf.Empty
-	11, // 18: hopbox.v1.WorkspaceService.Shell:output_type -> hopbox.v1.ShellServerMsg
-	14, // 19: hopbox.v1.WorkspaceService.Exec:output_type -> hopbox.v1.ExecServerMsg
-	17, // 20: hopbox.v1.WorkspaceService.SSH:output_type -> hopbox.v1.SSHServerMsg
-	14, // [14:21] is the sub-list for method output_type
-	7,  // [7:14] is the sub-list for method input_type
+	18, // 14: hopbox.v1.WorkspaceService.IssueSSHCert:input_type -> hopbox.v1.IssueSSHCertRequest
+	0,  // 15: hopbox.v1.WorkspaceService.CreateWorkspace:output_type -> hopbox.v1.Workspace
+	0,  // 16: hopbox.v1.WorkspaceService.GetWorkspace:output_type -> hopbox.v1.Workspace
+	6,  // 17: hopbox.v1.WorkspaceService.ListWorkspaces:output_type -> hopbox.v1.ListWorkspacesResponse
+	20, // 18: hopbox.v1.WorkspaceService.DeleteWorkspace:output_type -> google.protobuf.Empty
+	11, // 19: hopbox.v1.WorkspaceService.Shell:output_type -> hopbox.v1.ShellServerMsg
+	14, // 20: hopbox.v1.WorkspaceService.Exec:output_type -> hopbox.v1.ExecServerMsg
+	17, // 21: hopbox.v1.WorkspaceService.SSH:output_type -> hopbox.v1.SSHServerMsg
+	19, // 22: hopbox.v1.WorkspaceService.IssueSSHCert:output_type -> hopbox.v1.IssueSSHCertResponse
+	15, // [15:23] is the sub-list for method output_type
+	7,  // [7:15] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
 	7,  // [7:7] is the sub-list for extension extendee
 	0,  // [0:7] is the sub-list for field type_name
@@ -1384,7 +1503,7 @@ func file_hopbox_v1_hopbox_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hopbox_v1_hopbox_proto_rawDesc), len(file_hopbox_v1_hopbox_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

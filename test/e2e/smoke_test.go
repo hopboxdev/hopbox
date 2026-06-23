@@ -96,7 +96,7 @@ func TestEndToEndShell(t *testing.T) {
 		t.Fatal(err)
 	}
 	gs := grpc.NewServer()
-	hopboxv1.RegisterWorkspaceServiceServer(gs, api.NewServer(st, hub, "default", "dev"))
+	hopboxv1.RegisterWorkspaceServiceServer(gs, api.NewServer(st, hub, "default", "dev", nil))
 	go gs.Serve(apiLn)
 	defer gs.Stop()
 

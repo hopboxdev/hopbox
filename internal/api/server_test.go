@@ -2,11 +2,14 @@ package api_test
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"io"
 	"net"
 	"strings"
 	"testing"
 
+	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -18,6 +21,44 @@ import (
 	"github.com/hopboxdev/hopbox/internal/api"
 	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
 )
+
+func TestIssueSSHCert(t *testing.T) {
+	_, caPriv, _ := ed25519.GenerateKey(rand.Reader)
+	ca, _ := ssh.NewSignerFromSigner(caPriv)
+	srv := api.NewServer(nil, nil, "default", "alice", ca)
+
+	_, userPriv, _ := ed25519.GenerateKey(rand.Reader)
+	userSigner, _ := ssh.NewSignerFromSigner(userPriv)
+	pubLine := ssh.MarshalAuthorizedKey(userSigner.PublicKey())
+
+	resp, err := srv.IssueSSHCert(context.Background(), &hopboxv1.IssueSSHCertRequest{PublicKey: string(pubLine)})
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	if resp.Principal != "alice" {
+		t.Fatalf("principal = %q, want alice", resp.Principal)
+	}
+	pk, _, _, _, err := ssh.ParseAuthorizedKey([]byte(resp.Certificate))
+	if err != nil {
+		t.Fatalf("parse cert: %v", err)
+	}
+	cert, ok := pk.(*ssh.Certificate)
+	if !ok {
+		t.Fatal("response is not a certificate")
+	}
+	checker := &ssh.CertChecker{IsUserAuthority: func(k ssh.PublicKey) bool {
+		return string(k.Marshal()) == string(ca.PublicKey().Marshal())
+	}}
+	if err := checker.CheckCert("alice", cert); err != nil {
+		t.Fatalf("issued cert fails verification: %v", err)
+	}
+
+	// no CA configured -> issuance disabled.
+	if _, err := api.NewServer(nil, nil, "default", "alice", nil).
+		IssueSSHCert(context.Background(), &hopboxv1.IssueSSHCertRequest{PublicKey: string(pubLine)}); err == nil {
+		t.Fatal("expected error when CA is not configured")
+	}
+}
 
 // fakeHub returns a pre-baked pipe whose far end echoes input back, so the
 // Shell bridge can be tested without a real agent.
@@ -67,7 +108,7 @@ func dialer(t *testing.T) (hopboxv1.WorkspaceServiceClient, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := api.NewServer(s, &fakeHub{connected: true}, "default", "alice")
+	srv := api.NewServer(s, &fakeHub{connected: true}, "default", "alice", nil)
 
 	lis := bufconn.Listen(1 << 20)
 	gs := grpc.NewServer()

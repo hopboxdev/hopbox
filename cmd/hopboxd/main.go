@@ -3,13 +3,16 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
+	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
 
 	hopboxv1 "github.com/hopboxdev/hopbox/gen/hopbox/v1"
@@ -20,6 +23,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/core/reconciler"
 	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
 	"github.com/hopboxdev/hopbox/internal/plugin"
+	"github.com/hopboxdev/hopbox/internal/sshca"
 	"github.com/hopboxdev/hopbox/providers/ingress/subdomain"
 )
 
@@ -107,6 +111,15 @@ func run(cfg config.Config) error {
 	// Exposes endpoints into its route table) and the gateway (which Lookups them).
 	ingress := subdomain.New(cfg.GatewayZone)
 
+	// SSH user CA: auto-created on first run. Every workspace trusts its public
+	// key, so `hopbox login` certs work without distributing per-box keys.
+	caSigner, err := sshca.LoadOrCreateCA(cfg.SSHCAPath)
+	if err != nil {
+		return fmt.Errorf("ssh ca: %w", err)
+	}
+	caTrustLine := string(ssh.MarshalAuthorizedKey(caSigner.PublicKey()))
+	log.Printf("hopboxd: ssh user CA %s (workspaces trust %s)", cfg.SSHCAPath, strings.TrimSpace(caTrustLine))
+
 	authKeys := loadAuthorizedKeys(cfg.AuthorizedKeysFile)
 	rec := reconciler.New(st, compute, storage, ingress, reconciler.Config{
 		AgentAddr: cfg.AgentAdvertise,
@@ -116,6 +129,7 @@ func run(cfg config.Config) error {
 			TargetPath:     cfg.AgentTargetPath,
 			HostBinaryPath: cfg.AgentBin, // M1 dev fast-path
 		},
+		TrustedUserCA:  caTrustLine,
 		AuthorizedKeys: authKeys,
 	})
 	go rec.Run(ctx)
@@ -158,7 +172,7 @@ func run(cfg config.Config) error {
 		return err
 	}
 	gs := grpc.NewServer()
-	hopboxv1.RegisterWorkspaceServiceServer(gs, api.NewServer(st, hub, cfg.Tenant, cfg.Owner))
+	hopboxv1.RegisterWorkspaceServiceServer(gs, api.NewServer(st, hub, cfg.Tenant, cfg.Owner, caSigner))
 	go func() { <-ctx.Done(); gs.GracefulStop() }()
 
 	log.Printf("hopboxd: API on %s", cfg.APIAddr)

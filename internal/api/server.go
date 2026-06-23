@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"time"
 
+	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -15,7 +17,11 @@ import (
 	"github.com/hopboxdev/hopbox/internal/agentproto"
 	"github.com/hopboxdev/hopbox/internal/core/store"
 	"github.com/hopboxdev/hopbox/internal/core/workspace"
+	"github.com/hopboxdev/hopbox/internal/sshca"
 )
+
+// certTTL is how long an issued user certificate is valid.
+const certTTL = 12 * time.Hour
 
 // Hub is the subset of agenthub.Hub the API needs (kept small for testing).
 type Hub interface {
@@ -29,12 +35,35 @@ type Server struct {
 	hopboxv1.UnimplementedWorkspaceServiceServer
 	store  store.Store
 	hub    Hub
-	tenant string // M1 single tenant
-	owner  string // M1 single principal
+	tenant string     // M1 single tenant
+	owner  string     // M1 single principal
+	ca     ssh.Signer // SSH user CA for `hopbox login` (nil = SSH-cert login disabled)
 }
 
-func NewServer(s store.Store, hub Hub, tenant, owner string) *Server {
-	return &Server{store: s, hub: hub, tenant: tenant, owner: owner}
+func NewServer(s store.Store, hub Hub, tenant, owner string, ca ssh.Signer) *Server {
+	return &Server{store: s, hub: hub, tenant: tenant, owner: owner, ca: ca}
+}
+
+// IssueSSHCert signs the caller's SSH public key into a short-lived user
+// certificate for their principal. In M1 the principal is the single configured
+// owner; once API callers are authenticated it becomes the caller's identity.
+func (s *Server) IssueSSHCert(_ context.Context, req *hopboxv1.IssueSSHCertRequest) (*hopboxv1.IssueSSHCertResponse, error) {
+	if s.ca == nil {
+		return nil, status.Error(codes.FailedPrecondition, "ssh certificate login is not enabled on this server")
+	}
+	pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(req.PublicKey))
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "parse public key: %v", err)
+	}
+	cert, err := sshca.SignUserCert(s.ca, pub, s.owner+"@hopbox", []string{s.owner}, certTTL)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "sign cert: %v", err)
+	}
+	return &hopboxv1.IssueSSHCertResponse{
+		Certificate:     string(sshca.MarshalCert(cert)),
+		Principal:       s.owner,
+		ValidBeforeUnix: int64(cert.ValidBefore),
+	}, nil
 }
 
 func toProto(w *workspace.Workspace) *hopboxv1.Workspace {

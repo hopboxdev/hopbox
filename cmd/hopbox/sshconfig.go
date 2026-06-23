@@ -26,9 +26,18 @@ func newSSHConfigCmd() *cobra.Command {
 			if alias == "" {
 				alias = name
 			}
+			if user == "" { // default to the principal from `hopbox login`
+				if user = readPrincipal(); user == "" {
+					user = "dev"
+				}
+			}
 			self, err := os.Executable()
 			if err != nil || self == "" {
 				self = "hopbox" // fall back to PATH lookup
+			}
+			idPath, err := identityKeyPath()
+			if err != nil {
+				return err
 			}
 
 			home, err := os.UserHomeDir()
@@ -46,10 +55,12 @@ func newSSHConfigCmd() *cobra.Command {
 			block := fmt.Sprintf(`# managed by hopbox — workspace %q (regenerate with: hopbox ssh-config %s)
 Host %s
     User %s
+    IdentityFile %s
+    IdentitiesOnly yes
     ProxyCommand %q proxy %s --addr %s
     StrictHostKeyChecking accept-new
     UserKnownHostsFile ~/.ssh/known_hosts
-`, name, name, alias, user, self, name, apiAddr)
+`, name, name, alias, user, idPath, self, name, apiAddr)
 
 			path := filepath.Join(sshDir, "hopbox", alias+".config")
 			if err := os.WriteFile(path, []byte(block), 0o600); err != nil {
@@ -60,7 +71,7 @@ Host %s
 		},
 	}
 	c.Flags().StringVar(&alias, "alias", "", "SSH host alias (default: the workspace name)")
-	c.Flags().StringVar(&user, "user", "dev", "remote user")
+	c.Flags().StringVar(&user, "user", "", "remote user (default: your principal from `hopbox login`)")
 	return c
 }
 
@@ -91,7 +102,7 @@ func newSSHCmd() *cobra.Command {
 		DisableFlagParsing: true,
 		RunE: func(_ *cobra.Command, args []string) error {
 			// crude flag handling so DisableFlagParsing still honours --user.
-			user = "dev"
+			user = ""
 			var rest []string
 			for i := 0; i < len(args); i++ {
 				if args[i] == "--user" && i+1 < len(args) {
@@ -101,6 +112,11 @@ func newSSHCmd() *cobra.Command {
 				}
 				rest = append(rest, args[i])
 			}
+			if user == "" {
+				if user = readPrincipal(); user == "" {
+					user = "dev"
+				}
+			}
 			if len(rest) == 0 {
 				return fmt.Errorf("a workspace name is required")
 			}
@@ -109,11 +125,15 @@ func newSSHCmd() *cobra.Command {
 			if err != nil || self == "" {
 				self = "hopbox"
 			}
+			idPath, _ := identityKeyPath()
 			sshArgs := []string{
 				"-o", fmt.Sprintf("ProxyCommand=%q proxy %s --addr %s", self, name, apiAddr),
 				"-o", "StrictHostKeyChecking=accept-new",
-				user + "@" + name,
 			}
+			if idPath != "" {
+				sshArgs = append(sshArgs, "-o", "IdentityFile="+idPath, "-o", "IdentitiesOnly=yes")
+			}
+			sshArgs = append(sshArgs, user+"@"+name)
 			sshArgs = append(sshArgs, extra...)
 			ssh := exec.Command("ssh", sshArgs...)
 			ssh.Stdin, ssh.Stdout, ssh.Stderr = os.Stdin, os.Stdout, os.Stderr

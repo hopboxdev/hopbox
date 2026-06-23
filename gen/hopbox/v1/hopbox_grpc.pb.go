@@ -27,6 +27,7 @@ const (
 	WorkspaceService_Shell_FullMethodName           = "/hopbox.v1.WorkspaceService/Shell"
 	WorkspaceService_Exec_FullMethodName            = "/hopbox.v1.WorkspaceService/Exec"
 	WorkspaceService_SSH_FullMethodName             = "/hopbox.v1.WorkspaceService/SSH"
+	WorkspaceService_IssueSSHCert_FullMethodName    = "/hopbox.v1.WorkspaceService/IssueSSHCert"
 )
 
 // WorkspaceServiceClient is the client API for WorkspaceService service.
@@ -42,6 +43,7 @@ type WorkspaceServiceClient interface {
 	Shell(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ShellClientMsg, ShellServerMsg], error)
 	Exec(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecClientMsg, ExecServerMsg], error)
 	SSH(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SSHClientMsg, SSHServerMsg], error)
+	IssueSSHCert(ctx context.Context, in *IssueSSHCertRequest, opts ...grpc.CallOption) (*IssueSSHCertResponse, error)
 }
 
 type workspaceServiceClient struct {
@@ -131,6 +133,16 @@ func (c *workspaceServiceClient) SSH(ctx context.Context, opts ...grpc.CallOptio
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type WorkspaceService_SSHClient = grpc.BidiStreamingClient[SSHClientMsg, SSHServerMsg]
 
+func (c *workspaceServiceClient) IssueSSHCert(ctx context.Context, in *IssueSSHCertRequest, opts ...grpc.CallOption) (*IssueSSHCertResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IssueSSHCertResponse)
+	err := c.cc.Invoke(ctx, WorkspaceService_IssueSSHCert_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkspaceServiceServer is the server API for WorkspaceService service.
 // All implementations must embed UnimplementedWorkspaceServiceServer
 // for forward compatibility.
@@ -144,6 +156,7 @@ type WorkspaceServiceServer interface {
 	Shell(grpc.BidiStreamingServer[ShellClientMsg, ShellServerMsg]) error
 	Exec(grpc.BidiStreamingServer[ExecClientMsg, ExecServerMsg]) error
 	SSH(grpc.BidiStreamingServer[SSHClientMsg, SSHServerMsg]) error
+	IssueSSHCert(context.Context, *IssueSSHCertRequest) (*IssueSSHCertResponse, error)
 	mustEmbedUnimplementedWorkspaceServiceServer()
 }
 
@@ -174,6 +187,9 @@ func (UnimplementedWorkspaceServiceServer) Exec(grpc.BidiStreamingServer[ExecCli
 }
 func (UnimplementedWorkspaceServiceServer) SSH(grpc.BidiStreamingServer[SSHClientMsg, SSHServerMsg]) error {
 	return status.Error(codes.Unimplemented, "method SSH not implemented")
+}
+func (UnimplementedWorkspaceServiceServer) IssueSSHCert(context.Context, *IssueSSHCertRequest) (*IssueSSHCertResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method IssueSSHCert not implemented")
 }
 func (UnimplementedWorkspaceServiceServer) mustEmbedUnimplementedWorkspaceServiceServer() {}
 func (UnimplementedWorkspaceServiceServer) testEmbeddedByValue()                          {}
@@ -289,6 +305,24 @@ func _WorkspaceService_SSH_Handler(srv interface{}, stream grpc.ServerStream) er
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type WorkspaceService_SSHServer = grpc.BidiStreamingServer[SSHClientMsg, SSHServerMsg]
 
+func _WorkspaceService_IssueSSHCert_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IssueSSHCertRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkspaceServiceServer).IssueSSHCert(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkspaceService_IssueSSHCert_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkspaceServiceServer).IssueSSHCert(ctx, req.(*IssueSSHCertRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkspaceService_ServiceDesc is the grpc.ServiceDesc for WorkspaceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -311,6 +345,10 @@ var WorkspaceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteWorkspace",
 			Handler:    _WorkspaceService_DeleteWorkspace_Handler,
+		},
+		{
+			MethodName: "IssueSSHCert",
+			Handler:    _WorkspaceService_IssueSSHCert_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

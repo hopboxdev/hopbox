@@ -15,7 +15,8 @@ type Config struct {
 	Tenant         string
 	Owner          string
 
-	AuthorizedKeysFile string // OpenSSH authorized_keys file injected into workspaces (enables `ssh`)
+	SSHCAPath          string // path to the SSH user CA private key (created on first run); workspaces trust its public key
+	AuthorizedKeysFile string // fallback static authorized_keys file injected into workspaces (no-login mode)
 
 	AgentImageRef    string
 	AgentBinaryPath  string
@@ -49,7 +50,8 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.AgentBin, "agent-bin", "./bin/hopbox-agent-linux-"+runtime.GOARCH, "hopbox-agent binary to side-load")
 	fs.StringVar(&c.Tenant, "tenant", "default", "single-tenant id (M1)")
 	fs.StringVar(&c.Owner, "owner", "dev", "single principal (M1)")
-	fs.StringVar(&c.AuthorizedKeysFile, "authorized-keys", "", "OpenSSH authorized_keys file to inject into workspaces (enables `ssh`/VS Code Remote-SSH)")
+	fs.StringVar(&c.SSHCAPath, "ssh-ca", "./hopbox-ssh-ca", "SSH user-CA private key path (auto-created); workspaces trust its public key for `hopbox login` certs")
+	fs.StringVar(&c.AuthorizedKeysFile, "authorized-keys", "", "fallback authorized_keys file injected into workspaces (no-login single-user mode)")
 	fs.StringVar(&c.AgentImageRef, "agent-image", "", "OCI image carrying the hopbox-agent binary")
 	fs.StringVar(&c.AgentBinaryPath, "agent-binary-path", "/hopbox-agent", "agent binary path inside the agent image")
 	fs.StringVar(&c.AgentTargetPath, "agent-target-path", "/hopbox/hopbox-agent", "where to place+run the agent in the workspace")

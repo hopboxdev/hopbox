@@ -23,7 +23,9 @@ import (
 // Config configures one SSH server connection.
 type Config struct {
 	HostKey        ssh.Signer      // server host key (presented to clients)
-	AuthorizedKeys []ssh.PublicKey // a client key must match one of these
+	TrustedUserCA  ssh.PublicKey   // accept user certs signed by this CA (the multi-user model)
+	Principal      string          // the workspace owner; the SSH username must equal it
+	AuthorizedKeys []ssh.PublicKey // fallback: a client key must match one of these (single-user / no login)
 	Shell          string          // login shell; "" => $SHELL, /bin/bash, or /bin/sh
 }
 
@@ -38,15 +40,32 @@ func Serve(rwc io.ReadWriteCloser, cfg Config) error {
 		nc = &rwcConn{rwc}
 	}
 
+	// CA-signed user certificates: trust one CA, and require the cert to name the
+	// workspace owner as a principal — so every box can trust the same CA yet only
+	// its owner's certs open it.
+	checker := &ssh.CertChecker{
+		IsUserAuthority: func(auth ssh.PublicKey) bool {
+			return cfg.TrustedUserCA != nil && keyEqual(auth.Marshal(), cfg.TrustedUserCA.Marshal())
+		},
+	}
 	sc := &ssh.ServerConfig{
-		PublicKeyCallback: func(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			if cfg.TrustedUserCA != nil {
+				if _, ok := key.(*ssh.Certificate); ok {
+					if cfg.Principal != "" && conn.User() != cfg.Principal {
+						return nil, fmt.Errorf("agentssh: %q is not the workspace owner", conn.User())
+					}
+					return checker.Authenticate(conn, key) // validates CA, type, expiry, principal
+				}
+			}
+			// fallback: static authorized_keys (single-user / no login)
 			km := key.Marshal()
 			for _, ak := range cfg.AuthorizedKeys {
 				if keyEqual(km, ak.Marshal()) {
 					return &ssh.Permissions{}, nil
 				}
 			}
-			return nil, fmt.Errorf("agentssh: unauthorized public key")
+			return nil, fmt.Errorf("agentssh: unauthorized credential")
 		},
 	}
 	sc.AddHostKey(cfg.HostKey)
