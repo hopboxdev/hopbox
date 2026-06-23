@@ -45,7 +45,7 @@ func TestEndToEndShell(t *testing.T) {
 	// Address the in-container agent dials back to reach this in-process hopboxd.
 	// Defaults to the Docker host gateway (host.docker.internal); override via
 	// HOPBOX_TEST_ADVERTISE when hopboxd runs somewhere the container reaches by a
-	// different address (e.g. on a remote dev host: the host's own bridge IP).
+	// different address (e.g. on a remote dev host: that host's own bridge IP).
 	advertise := "host.docker.internal:7799"
 	if a := os.Getenv("HOPBOX_TEST_ADVERTISE"); a != "" {
 		advertise = a
