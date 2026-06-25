@@ -25,6 +25,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
 	"github.com/hopboxdev/hopbox/internal/plugin"
 	"github.com/hopboxdev/hopbox/internal/sshca"
+	"github.com/hopboxdev/hopbox/internal/sshfront"
 	"github.com/hopboxdev/hopbox/providers/identity/oidc"
 	"github.com/hopboxdev/hopbox/providers/identity/static"
 	"github.com/hopboxdev/hopbox/providers/ingress/subdomain"
@@ -128,28 +129,6 @@ func run(cfg config.Config) error {
 		return err
 	}
 
-	// agent hub: resolve tokens via the store, report connect state to the store.
-	hub := agenthub.New().
-		WithResolver(func(ctx context.Context, token string) (string, error) {
-			w, err := st.GetByToken(ctx, token)
-			if err != nil {
-				return "", err
-			}
-			return w.ID, nil
-		}).
-		WithSink(storeSink{store: st, tenant: cfg.Tenant})
-
-	agentLn, err := net.Listen("tcp", cfg.AgentListen)
-	if err != nil {
-		return err
-	}
-	go func() {
-		log.Printf("hopboxd: agent gateway on %s (advertise %s)", cfg.AgentListen, cfg.AgentAdvertise)
-		if err := hub.Serve(ctx, agentLn); err != nil {
-			log.Printf("hopboxd: agent hub stopped: %v", err)
-		}
-	}()
-
 	// One subdomain ingress provider instance is shared by the reconciler (which
 	// Exposes endpoints into its route table) and the gateway (which Lookups them).
 	ingress := subdomain.New(cfg.GatewayZone)
@@ -189,6 +168,67 @@ func run(cfg config.Config) error {
 		AuthorizedKeys: authKeys,
 	})
 	go rec.Run(ctx)
+
+	// reconcile wake-up bus: in-proc by default (a direct call to rec.Trigger);
+	// NATS fans wake-ups across nodes. Either way the reconciler's interval sweep
+	// remains the backstop, so a lost wake-up only delays — never drops — a reap.
+	bus, err := newEventBus(cfg)
+	if err != nil {
+		return err
+	}
+	defer bus.Close()
+	if err := bus.Subscribe(rec.Trigger); err != nil {
+		return fmt.Errorf("events subscribe: %w", err)
+	}
+
+	// agent hub: resolve tokens via the store, report connect state to the store,
+	// and wake the reconciler on every connect/disconnect (hybrid event path).
+	hub := agenthub.New().
+		WithResolver(func(ctx context.Context, token string) (string, error) {
+			w, err := st.GetByToken(ctx, token)
+			if err != nil {
+				return "", err
+			}
+			return w.ID, nil
+		}).
+		WithSink(storeSink{store: st, tenant: cfg.Tenant, trigger: bus.Publish})
+
+	agentLn, err := net.Listen("tcp", cfg.AgentListen)
+	if err != nil {
+		return err
+	}
+	go func() {
+		log.Printf("hopboxd: agent gateway on %s (advertise %s)", cfg.AgentListen, cfg.AgentAdvertise)
+		if err := hub.Serve(ctx, agentLn); err != nil {
+			log.Printf("hopboxd: agent hub stopped: %v", err)
+		}
+	}()
+
+	// krillbox-style SSH front door: `ssh proj:python+5m@host` — the username is a
+	// workspace spec, the client key is the identity. Spawns an ephemeral box and
+	// bridges the session into it; on disconnect the reconciler reaps it.
+	if cfg.SSHAddr != "" {
+		hostKey, err := sshca.LoadOrCreateCA(cfg.SSHHostKeyPath)
+		if err != nil {
+			return fmt.Errorf("ssh front-door host key: %w", err)
+		}
+		mgr := sshfront.New(st, bus.Publish, sshfront.Config{
+			Tenant:       cfg.Tenant,
+			DefaultImage: cfg.SSHDefaultImage,
+			Backends:     []string{cfg.ComputeKind},
+		})
+		front := sshfront.NewServer(mgr, hub, hostKey, nil) // AnyKey: key is identity
+		frontLn, err := net.Listen("tcp", cfg.SSHAddr)
+		if err != nil {
+			return err
+		}
+		go func() {
+			log.Printf("hopboxd: SSH front door on %s (default image %s)", cfg.SSHAddr, cfg.SSHDefaultImage)
+			if err := front.Serve(ctx, frontLn); err != nil {
+				log.Printf("hopboxd: SSH front door stopped: %v", err)
+			}
+		}()
+	}
 
 	// Service gateway (hopbox-gw): resolves Host -> workspace via the ingress route
 	// table and proxies INTO the workspace over the agent reverse-connection.

@@ -36,6 +36,9 @@ func Open(path string) (*Store, error) {
 	for _, col := range []string{
 		"ALTER TABLE workspaces ADD COLUMN ingress_spec TEXT NOT NULL DEFAULT '[]'",
 		"ALTER TABLE workspaces ADD COLUMN endpoints TEXT NOT NULL DEFAULT '[]'",
+		"ALTER TABLE workspaces ADD COLUMN backend TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE workspaces ADD COLUMN lifetime TEXT NOT NULL DEFAULT '{}'",
+		"ALTER TABLE workspaces ADD COLUMN attached INTEGER NOT NULL DEFAULT 0",
 	} {
 		if _, err := db.Exec(col); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("migrate: %w", err)
@@ -54,6 +57,34 @@ func marshalJSON(v any) string {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// lifetimeJSON is the on-disk shape of a workspace's ephemeral lifetime. Grace
+// and MaxTTL are nanoseconds (time.Duration); Deadline is nil when unset.
+type lifetimeJSON struct {
+	Ephemeral bool          `json:"ephemeral,omitempty"`
+	Grace     time.Duration `json:"grace,omitempty"`
+	MaxTTL    time.Duration `json:"max_ttl,omitempty"`
+	Deadline  *time.Time    `json:"deadline,omitempty"`
+}
+
+func marshalLifetime(w *workspace.Workspace) string {
+	b, err := json.Marshal(lifetimeJSON{
+		Ephemeral: w.Ephemeral, Grace: w.Grace, MaxTTL: w.MaxTTL, Deadline: w.Deadline,
+	})
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
+func unmarshalLifetime(s string, w *workspace.Workspace) error {
+	var lt lifetimeJSON
+	if err := json.Unmarshal([]byte(s), &lt); err != nil {
+		return fmt.Errorf("parse lifetime %q: %w", s, err)
+	}
+	w.Ephemeral, w.Grace, w.MaxTTL, w.Deadline = lt.Ephemeral, lt.Grace, lt.MaxTTL, lt.Deadline
+	return nil
+}
+
 const ts = time.RFC3339Nano
 
 func b2i(b bool) int {
@@ -67,36 +98,40 @@ func (s *Store) CreateWorkspace(ctx context.Context, w *workspace.Workspace) err
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO workspaces
 		(id,tenant_id,owner,name,image_ref,mem_mb,phase,instance_ref,home_mount,
-		 bootstrap_token,agent_connected,message,ingress_spec,endpoints,created_at,updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		 bootstrap_token,agent_connected,attached,message,ingress_spec,endpoints,backend,lifetime,created_at,updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		w.ID, w.TenantID, w.Owner, w.Name, w.ImageRef, w.MemMB, string(w.Phase),
-		w.InstanceRef, w.HomeMount, w.BootstrapToken, b2i(w.AgentConnected), w.Message,
-		marshalJSON(w.Ingress), marshalJSON(w.Endpoints),
+		w.InstanceRef, w.HomeMount, w.BootstrapToken, b2i(w.AgentConnected), b2i(w.Attached), w.Message,
+		marshalJSON(w.Ingress), marshalJSON(w.Endpoints), w.Backend, marshalLifetime(w),
 		w.CreatedAt.Format(ts), w.UpdatedAt.Format(ts))
 	return err
 }
 
 const cols = `id,tenant_id,owner,name,image_ref,mem_mb,phase,instance_ref,home_mount,
-	bootstrap_token,agent_connected,message,ingress_spec,endpoints,created_at,updated_at`
+	bootstrap_token,agent_connected,attached,message,ingress_spec,endpoints,backend,lifetime,created_at,updated_at`
 
 func scan(row interface{ Scan(...any) error }) (*workspace.Workspace, error) {
 	var w workspace.Workspace
 	var phase string
-	var connected int
-	var ingressJSON, endpointsJSON string
+	var connected, attached int
+	var ingressJSON, endpointsJSON, lifetimeJSONStr string
 	var created, updated string
 	if err := row.Scan(&w.ID, &w.TenantID, &w.Owner, &w.Name, &w.ImageRef, &w.MemMB,
-		&phase, &w.InstanceRef, &w.HomeMount, &w.BootstrapToken, &connected, &w.Message,
-		&ingressJSON, &endpointsJSON, &created, &updated); err != nil {
+		&phase, &w.InstanceRef, &w.HomeMount, &w.BootstrapToken, &connected, &attached, &w.Message,
+		&ingressJSON, &endpointsJSON, &w.Backend, &lifetimeJSONStr, &created, &updated); err != nil {
 		return nil, err
 	}
 	w.Phase = workspace.Phase(phase)
 	w.AgentConnected = connected != 0
+	w.Attached = attached != 0
 	if err := json.Unmarshal([]byte(ingressJSON), &w.Ingress); err != nil {
 		return nil, fmt.Errorf("parse ingress_spec %q: %w", ingressJSON, err)
 	}
 	if err := json.Unmarshal([]byte(endpointsJSON), &w.Endpoints); err != nil {
 		return nil, fmt.Errorf("parse endpoints %q: %w", endpointsJSON, err)
+	}
+	if err := unmarshalLifetime(lifetimeJSONStr, &w); err != nil {
+		return nil, err
 	}
 	var err error
 	if w.CreatedAt, err = time.Parse(ts, created); err != nil {
@@ -163,12 +198,13 @@ func (s *Store) UpdateWorkspace(ctx context.Context, w *workspace.Workspace) err
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE workspaces SET
 		  image_ref=?, mem_mb=?, phase=?, instance_ref=?, home_mount=?,
-		  bootstrap_token=?, agent_connected=?, message=?, ingress_spec=?, endpoints=?, updated_at=?
+		  bootstrap_token=?, agent_connected=?, attached=?, message=?, ingress_spec=?, endpoints=?,
+		  backend=?, lifetime=?, updated_at=?
 		WHERE tenant_id=? AND id=?`,
 		w.ImageRef, w.MemMB, string(w.Phase), w.InstanceRef, w.HomeMount,
-		w.BootstrapToken, b2i(w.AgentConnected), w.Message,
-		marshalJSON(w.Ingress), marshalJSON(w.Endpoints), w.UpdatedAt.Format(ts),
-		w.TenantID, w.ID)
+		w.BootstrapToken, b2i(w.AgentConnected), b2i(w.Attached), w.Message,
+		marshalJSON(w.Ingress), marshalJSON(w.Endpoints), w.Backend, marshalLifetime(w),
+		w.UpdatedAt.Format(ts), w.TenantID, w.ID)
 	if err != nil {
 		return err
 	}

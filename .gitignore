@@ -8,3 +8,6 @@
 /core
 /mesad
 /mesa-provider
+
+# built control-plane binary (use /bin or go run)
+/hopboxd
