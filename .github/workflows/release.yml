@@ -1,9 +1,9 @@
 name: release
 
 # Cut a release by pushing a tag:  git tag v0.3.0 && git push origin v0.3.0
-# Builds the dist matrix (linux server binaries + linux/macOS CLI) and publishes
-# them as raw assets named hopbox-<os>-<arch> — the names deploy/install.sh and
-# deploy/install-cli.sh download.
+# GoReleaser (.goreleaser.yaml) builds the binaries, packages tar.gz archives
+# (hopbox_<os>_<arch>, hopbox-server_linux_<arch>) + checksums, publishes the
+# GitHub release, and pushes the Homebrew cask to hopboxdev/homebrew-tap.
 on:
   push:
     tags:
@@ -13,27 +13,26 @@ permissions:
   contents: write # create releases + upload assets
 
 jobs:
-  release:
+  goreleaser:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # full history so --generate-notes has prior tags
+          fetch-depth: 0 # full history for the changelog
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
-      - name: Build dist
-        run: make dist
-
-      - name: Publish release
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "Hopbox ${GITHUB_REF_NAME}" \
-            --generate-notes \
-            --latest \
-            dist/*
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT with `repo` scope on hopboxdev/homebrew-tap. If unset, the cask
+          # push is skipped (see skip_upload in .goreleaser.yaml) and the release
+          # still succeeds.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

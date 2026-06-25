@@ -47,11 +47,12 @@ if [ "$VERSION" = "latest" ]; then
 else
   dl="$base/download/$VERSION"
 fi
-asset="hopbox-$OS-$ARCH"
+asset="hopbox_${OS}_${ARCH}.tar.gz"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 log "downloading $asset"
-curl -fsSL -o "$tmp/hopbox" "$dl/$asset" \
+curl -fsSL -o "$tmp/cli.tgz" "$dl/$asset" \
   || die "download failed: $dl/$asset (is there a release with $OS/$ARCH assets?)"
+tar -xzf "$tmp/cli.tgz" -C "$tmp" hopbox || die "archive missing hopbox binary"
 
 install -m755 "$tmp/hopbox" "$BINDIR/hopbox"
 log "installed hopbox to $BINDIR/hopbox"
