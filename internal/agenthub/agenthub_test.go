@@ -139,8 +139,45 @@ func TestConnectedReflectsRegistration(t *testing.T) {
 	if !hub.Connected("w1") {
 		t.Fatal("should be connected after register")
 	}
-	hub.Unregister("w1")
+	hub.Unregister("w1", sess)
 	if hub.Connected("w1") {
 		t.Fatal("should be disconnected after unregister")
+	}
+}
+
+// TestRegisterRefusesDuplicateLiveAgent: a second agent for an already-connected
+// workspace (e.g. a box occupant running hopbox-agent by hand) must be refused,
+// leaving the live session untouched — it cannot hijack or evict the real agent.
+func TestRegisterRefusesDuplicateLiveAgent(t *testing.T) {
+	a1, b1 := net.Pipe()
+	defer a1.Close()
+	defer b1.Close()
+	_, _ = yamux.Server(b1, nil)
+	first, _ := yamux.Client(a1, nil)
+
+	a2, b2 := net.Pipe()
+	defer a2.Close()
+	defer b2.Close()
+	_, _ = yamux.Server(b2, nil)
+	second, _ := yamux.Client(a2, nil)
+
+	hub := agenthub.New()
+	if !hub.Register("w1", first) {
+		t.Fatal("first agent should register")
+	}
+	if hub.Register("w1", second) {
+		t.Fatal("second (duplicate) agent must be refused while the first is live")
+	}
+	// The first session must still be the active one, and untouched.
+	if !hub.Connected("w1") {
+		t.Fatal("workspace should still be connected via the first agent")
+	}
+	if first.IsClosed() {
+		t.Fatal("the live first agent must not be closed by a refused duplicate")
+	}
+	// Tearing down the refused second session must not unregister the first.
+	hub.Unregister("w1", second)
+	if !hub.Connected("w1") {
+		t.Fatal("refused duplicate's teardown must not disconnect the real agent")
 	}
 }

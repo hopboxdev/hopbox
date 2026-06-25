@@ -27,6 +27,7 @@ type Config struct {
 	DefaultImage string   // image used when the username names none
 	Backends     []string // compute backends actually configured (for ResolveBackend)
 	DefBackend   string   // default backend when more than one is configured
+	DefaultMemMB int64    // memory cap (MB) applied to every front-door box; 0 = unlimited
 }
 
 // Manager owns the attach/detach lifecycle for SSH front-door sessions.
@@ -68,6 +69,7 @@ func (m *Manager) Attach(ctx context.Context, principal, username string) (*work
 		if err != nil {
 			return nil, nil, err
 		}
+		w.MemMB = m.cfg.DefaultMemMB // cap anonymous front-door boxes so they can't exhaust the host
 		w.Attached = true
 		if err := m.store.CreateWorkspace(ctx, w); err != nil {
 			return nil, nil, fmt.Errorf("create workspace: %w", err)

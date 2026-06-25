@@ -216,6 +216,7 @@ func run(cfg config.Config) error {
 			Tenant:       cfg.Tenant,
 			DefaultImage: cfg.SSHDefaultImage,
 			Backends:     []string{cfg.ComputeKind},
+			DefaultMemMB: cfg.SSHDefaultMemMB,
 		})
 		front := sshfront.NewServer(mgr, hub, hostKey, nil) // AnyKey: key is identity
 		frontLn, err := net.Listen("tcp", cfg.SSHAddr)
