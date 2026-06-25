@@ -6,9 +6,24 @@ local Docker setup; for a real server see [Deploy a server](/guide/deploy).
 ## Prerequisites
 
 - **Docker** running locally (the default compute provider).
-- The **`hopboxd`** (control plane) and **`hopbox`** (CLI) binaries — build from
-  source with `make build`, or grab them from
-  [Releases](https://github.com/hopboxdev/hopbox/releases).
+- The **`hopboxd`** (control plane) and **`hopbox`** (CLI) binaries.
+
+### Install the CLI
+
+The `hopbox` CLI is the client you run on your laptop. **macOS and Linux**
+(amd64 / arm64):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/hopboxdev/hopbox/main/deploy/install-cli.sh | sh
+```
+
+It installs to `/usr/local/bin` (or `~/.local/bin` if that needs root). Pin a
+version with `HOPBOX_VERSION=v0.2.0`, or grab a binary directly from
+[Releases](https://github.com/hopboxdev/hopbox/releases) (`hopbox-darwin-arm64`,
+`hopbox-linux-amd64`, …). You can also build from source with `make build`.
+
+`hopboxd` itself is Linux + Docker — run it locally on Linux (or in Docker), or
+deploy it to a server with [`install.sh`](/guide/deploy).
 
 ## 1. Start the control plane
 
