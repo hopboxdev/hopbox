@@ -236,6 +236,32 @@ func buildCommand(spec string) *exec.Cmd {
 	} else {
 		c = exec.Command(spec)
 	}
-	c.Env = append(os.Environ(), "TERM=xterm-256color")
+	// Open the shell in the workspace home (the persistent volume), not the
+	// container root `/` — otherwise the user lands somewhere their work isn't
+	// even saved. Set HOME to match so `~` and shell startup resolve there.
+	home := workspaceHome()
+	c.Dir = home
+	c.Env = append(envWithout(os.Environ(), "HOME"), "TERM=xterm-256color", "HOME="+home)
 	return c
+}
+
+// workspaceHome is the persistent home mount (/home/dev) when present, else "/".
+func workspaceHome() string {
+	if fi, err := os.Stat("/home/dev"); err == nil && fi.IsDir() {
+		return "/home/dev"
+	}
+	return "/"
+}
+
+// envWithout returns env with any KEY= entries removed, so a replacement can be
+// appended without a duplicate.
+func envWithout(env []string, key string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		if !strings.HasPrefix(e, prefix) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
