@@ -69,6 +69,22 @@ func TestAttachCreatesEphemeralWorkspace(t *testing.T) {
 	}
 }
 
+func TestAttachAppliesMemCap(t *testing.T) {
+	ctx := context.Background()
+	st := newFakeStore()
+	m := sshfront.New(st, nil, sshfront.Config{
+		Tenant: "default", DefaultImage: "alpine", Backends: []string{"docker"}, DefaultMemMB: 2048,
+	})
+	w, release, err := m.Attach(ctx, "alice", "proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if w.MemMB != 2048 {
+		t.Fatalf("front-door box must inherit the memory cap: MemMB=%d want 2048", w.MemMB)
+	}
+}
+
 func TestAttachReusesExistingWorkspace(t *testing.T) {
 	ctx := context.Background()
 	st := newFakeStore()

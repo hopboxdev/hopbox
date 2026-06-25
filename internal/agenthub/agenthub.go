@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/yamux"
 
@@ -40,20 +41,39 @@ func New() *Hub {
 func (h *Hub) WithResolver(r TokenResolver) *Hub { h.resolve = r; return h }
 func (h *Hub) WithSink(s StateSink) *Hub         { h.sink = s; return h }
 
-func (h *Hub) Register(workspaceID string, sess *yamux.Session) {
+// Register binds an agent session to its workspace and reports true when sess
+// becomes the active agent. It will NOT displace a live session: if an agent is
+// already connected, the newcomer is rejected (false). The bootstrap token lives
+// in the box's env, so a box occupant can run hopbox-agent by hand — refusing to
+// displace means that second agent cannot hijack or kill the real one; it is
+// simply turned away. A previously-registered session that has already died
+// (detected by yamux keepalive) is replaced, so a genuine reconnect still works.
+func (h *Hub) Register(workspaceID string, sess *yamux.Session) bool {
 	h.mu.Lock()
 	if old := h.sessions[workspaceID]; old != nil {
-		_ = old.Close()
+		if !old.IsClosed() {
+			h.mu.Unlock()
+			return false // a live agent already owns this workspace
+		}
+		_ = old.Close() // replace a dead session
 	}
 	h.sessions[workspaceID] = sess
 	h.mu.Unlock()
 	if h.sink != nil {
 		h.sink.SetAgentConnected(context.Background(), workspaceID, true)
 	}
+	return true
 }
 
-func (h *Hub) Unregister(workspaceID string) {
+// Unregister removes sess as the workspace's agent — but only if it is still the
+// active one. A displaced or dead session tearing down must not unregister the
+// agent that replaced it (which would wrongly flag the workspace disconnected).
+func (h *Hub) Unregister(workspaceID string, sess *yamux.Session) {
 	h.mu.Lock()
+	if h.sessions[workspaceID] != sess {
+		h.mu.Unlock()
+		return
+	}
 	delete(h.sessions, workspaceID)
 	h.mu.Unlock()
 	if h.sink != nil {
@@ -191,16 +211,28 @@ func (h *Hub) accept(ctx context.Context, conn net.Conn) {
 		_ = conn.Close()
 		return
 	}
-	sess, err := yamux.Client(conn, nil)
+	// Shorter keepalive than the default so a dead agent's session is detected
+	// quickly — otherwise the duplicate-agent guard in Register would turn away a
+	// genuine reconnect until the stale session is noticed.
+	ycfg := yamux.DefaultConfig()
+	ycfg.KeepAliveInterval = 15 * time.Second
+	sess, err := yamux.Client(conn, ycfg)
 	if err != nil {
 		log.Printf("agenthub: yamux client: %v", err)
 		_ = conn.Close()
 		return
 	}
-	h.Register(wsID, sess)
+	if !h.Register(wsID, sess) {
+		// A live agent already owns this workspace (e.g. someone ran hopbox-agent
+		// from inside the box). Refuse — do not disturb the real session.
+		log.Printf("agenthub: refusing duplicate agent for workspace %s", wsID)
+		_ = sess.Close()
+		_ = conn.Close()
+		return
+	}
 	log.Printf("agenthub: agent connected for workspace %s", wsID)
 
 	<-sess.CloseChan() // block until the agent session drops
-	h.Unregister(wsID)
+	h.Unregister(wsID, sess)
 	log.Printf("agenthub: agent disconnected for workspace %s", wsID)
 }
