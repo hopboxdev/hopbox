@@ -1,0 +1,39 @@
+name: release
+
+# Cut a release by pushing a tag:  git tag v0.3.0 && git push origin v0.3.0
+# Builds the dist matrix (linux server binaries + linux/macOS CLI) and publishes
+# them as raw assets named hopbox-<os>-<arch> — the names deploy/install.sh and
+# deploy/install-cli.sh download.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # create releases + upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so --generate-notes has prior tags
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build dist
+        run: make dist
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Hopbox ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --latest \
+            dist/*
