@@ -120,12 +120,22 @@ func (s *Server) serveSession(ctx context.Context, principal, username string, h
 	return nil
 }
 
-// bridge copies between the client and the box shell until either side closes.
-func bridge(a, b io.ReadWriteCloser) {
-	done := make(chan struct{}, 2)
-	go func() { _, _ = io.Copy(a, b); done <- struct{}{} }()
-	go func() { _, _ = io.Copy(b, a); done <- struct{}{} }()
-	<-done
+// bridge copies between the client and the box shell. The session ends when the
+// shell side closes — its output stream hits EOF, i.e. the box shell exited (or
+// the client write fails because the client is gone). Client stdin reaching EOF
+// (a one-shot `ssh host cmd`, which half-closes stdin immediately) must NOT end
+// the session: it only half-closes the write side into the shell, so the shell's
+// output keeps draining to the client until the command actually exits. Waiting
+// on whichever side finished first — the old behaviour — truncated that output.
+func bridge(client, shell io.ReadWriteCloser) {
+	go func() {
+		_, _ = io.Copy(shell, client) // client stdin -> shell
+		// stdin done; tell the shell (half-close) without tearing the session down.
+		if cw, ok := shell.(interface{ CloseWrite() error }); ok {
+			_ = cw.CloseWrite()
+		}
+	}()
+	_, _ = io.Copy(client, shell) // shell -> client; returns only when the shell exits
 }
 
 // --- SSH handshake glue (build-verified; exercised end-to-end, not in unit tests) ---
