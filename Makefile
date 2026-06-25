@@ -14,6 +14,11 @@ dist:
 	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build -o dist/hopbox-gw-linux-$$arch ./cmd/hopbox-gw; \
 	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build -o dist/hopbox-agent-linux-$$arch ./cmd/hopbox-agent; \
 	done
+	# macOS: ship the client CLI only — hopboxd/gw/agent are Linux + Docker server
+	# components. This is what deploy/install-cli.sh installs on a Mac.
+	for arch in amd64 arm64; do \
+	  GOOS=darwin GOARCH=$$arch CGO_ENABLED=0 $(GO) build -o dist/hopbox-darwin-$$arch ./cmd/hopbox; \
+	done
 
 
 proto:
