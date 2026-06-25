@@ -98,6 +98,23 @@ any). A reconnect within the grace window cancels the reap. This is the
 temporary-box model — for a persistent workspace, create one via the
 [`hopbox` CLI](/reference/cli) instead.
 
+### Identity & visibility
+
+The front door has **no signup**: your SSH **key is your identity** and the box
+is owned by that key's fingerprint. This is a separate namespace from your named
+CLI login, so:
+
+- **Front-door boxes do not appear in `hopbox ls`.** `ls` is scoped to your CLI
+  principal (your `hopbox login` identity), while a front-door box is owned by
+  your raw key fingerprint — a different owner. The box is real and running; it
+  is just not listed under your named identity. This is by design: front-door
+  boxes are anonymous and ephemeral, not part of your persistent workspace set.
+- **Reconnecting with the same key** reuses the same box (within its lifetime);
+  a different key connecting to the same name is refused while that box is alive.
+
+For boxes you manage with the CLI (`hopbox ls`, `rm`, `ssh`, VS Code), create
+them with [`hopbox create`](/reference/cli) instead of the front door.
+
 ## Reference
 
 - [`hopbox` CLI](/reference/cli) — `login`, `ssh`, `ssh-config`, `proxy`.
