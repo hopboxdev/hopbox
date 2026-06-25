@@ -1,0 +1,217 @@
+package sshfront
+
+import (
+	"context"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"net"
+	"time"
+
+	"golang.org/x/crypto/ssh"
+
+	"github.com/hopboxdev/hopbox/internal/agentproto"
+)
+
+// Hub is the slice of the agent hub the front door bridges sessions through.
+type Hub interface {
+	Connected(workspaceID string) bool
+	OpenShell(ctx context.Context, workspaceID string, hdr agentproto.ShellHeader) (io.ReadWriteCloser, error)
+}
+
+// Authority turns a client's public key into a principal (its identity). The
+// default AnyKey authority accepts any key and uses its fingerprint — the
+// krillbox "your key is your identity, no signup" model.
+type Authority interface {
+	Authenticate(key ssh.PublicKey) (principal string, err error)
+}
+
+// AnyKey accepts any public key; the principal is the key fingerprint.
+type AnyKey struct{}
+
+func (AnyKey) Authenticate(key ssh.PublicKey) (string, error) {
+	return ssh.FingerprintSHA256(key), nil
+}
+
+// Server is the SSH front door. It terminates client SSH, maps username->spec
+// and key->identity, ensures the workspace, and bridges the session into the box.
+type Server struct {
+	mgr          *Manager
+	hub          Hub
+	hostKey      ssh.Signer
+	authority    Authority
+	readyTimeout time.Duration
+	pollInterval time.Duration
+}
+
+// NewServer builds a front-door SSH server. authority defaults to AnyKey.
+func NewServer(mgr *Manager, hub Hub, hostKey ssh.Signer, authority Authority) *Server {
+	if authority == nil {
+		authority = AnyKey{}
+	}
+	return &Server{
+		mgr: mgr, hub: hub, hostKey: hostKey, authority: authority,
+		readyTimeout: 60 * time.Second,
+		pollInterval: 200 * time.Millisecond,
+	}
+}
+
+// Serve accepts connections until ctx is cancelled.
+func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	go func() { <-ctx.Done(); _ = ln.Close() }()
+	for {
+		nc, err := ln.Accept()
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+				return err
+			}
+		}
+		go s.handleConn(ctx, nc)
+	}
+}
+
+// waitReady polls until the workspace's agent is connected or the timeout
+// elapses — a freshly created box needs a moment to boot and dial back.
+func (s *Server) waitReady(ctx context.Context, workspaceID string) error {
+	deadline := time.NewTimer(s.readyTimeout)
+	defer deadline.Stop()
+	tick := time.NewTicker(s.pollInterval)
+	defer tick.Stop()
+	if s.hub.Connected(workspaceID) {
+		return nil
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return fmt.Errorf("workspace %s not ready within %s", workspaceID, s.readyTimeout)
+		case <-tick.C:
+			if s.hub.Connected(workspaceID) {
+				return nil
+			}
+		}
+	}
+}
+
+// serveSession is the per-session loop: ensure the workspace named by username,
+// wait for it to be ready, bridge the client byte stream to a shell in the box,
+// and detach on exit so the reconciler can reap an ephemeral box.
+func (s *Server) serveSession(ctx context.Context, principal, username string, hdr agentproto.ShellHeader, client io.ReadWriteCloser) error {
+	w, release, err := s.mgr.Attach(ctx, principal, username)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	if err := s.waitReady(ctx, w.ID); err != nil {
+		return err
+	}
+	shell, err := s.hub.OpenShell(ctx, w.ID, hdr)
+	if err != nil {
+		return fmt.Errorf("open shell: %w", err)
+	}
+	defer shell.Close()
+
+	bridge(client, shell)
+	return nil
+}
+
+// bridge copies between the client and the box shell until either side closes.
+func bridge(a, b io.ReadWriteCloser) {
+	done := make(chan struct{}, 2)
+	go func() { _, _ = io.Copy(a, b); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(b, a); done <- struct{}{} }()
+	<-done
+}
+
+// --- SSH handshake glue (build-verified; exercised end-to-end, not in unit tests) ---
+
+type ptyReq struct {
+	Term          string
+	Cols, Rows    uint32
+	Width, Height uint32
+	Modes         string
+}
+
+type execReq struct{ Command string }
+
+func (s *Server) handleConn(ctx context.Context, nc net.Conn) {
+	defer nc.Close()
+	var principal string
+	cfg := &ssh.ServerConfig{
+		PublicKeyCallback: func(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			p, err := s.authority.Authenticate(key)
+			if err != nil {
+				return nil, err
+			}
+			principal = p
+			return &ssh.Permissions{}, nil
+		},
+	}
+	cfg.AddHostKey(s.hostKey)
+
+	conn, chans, reqs, err := ssh.NewServerConn(nc, cfg)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	username := conn.User()
+	go ssh.DiscardRequests(reqs)
+
+	for nch := range chans {
+		if nch.ChannelType() != "session" {
+			_ = nch.Reject(ssh.UnknownChannelType, "only session channels are supported")
+			continue
+		}
+		ch, chReqs, err := nch.Accept()
+		if err != nil {
+			continue
+		}
+		go s.handleSession(ctx, principal, username, ch, chReqs)
+	}
+}
+
+func (s *Server) handleSession(ctx context.Context, principal, username string, ch ssh.Channel, reqs <-chan *ssh.Request) {
+	defer ch.Close()
+	hdr := agentproto.ShellHeader{}
+	for req := range reqs {
+		switch req.Type {
+		case "pty-req":
+			var p ptyReq
+			if ssh.Unmarshal(req.Payload, &p) == nil {
+				hdr.Cols, hdr.Rows = uint16(p.Cols), uint16(p.Rows)
+			}
+			_ = req.Reply(true, nil)
+		case "window-change":
+			_ = req.Reply(true, nil) // resize is best-effort; the shell is already attached
+		case "shell", "exec":
+			if req.Type == "exec" {
+				var e execReq
+				_ = ssh.Unmarshal(req.Payload, &e)
+				hdr.Cmd = e.Command
+			}
+			_ = req.Reply(true, nil)
+			err := s.serveSession(ctx, principal, username, hdr, ch)
+			sendExit(ch, err)
+			return
+		default:
+			_ = req.Reply(false, nil)
+		}
+	}
+}
+
+// sendExit sends an exit-status so the client sees a clean close (0 on success).
+func sendExit(ch ssh.Channel, err error) {
+	code := uint32(0)
+	if err != nil {
+		code = 1
+		_, _ = io.WriteString(ch, "hopbox: "+err.Error()+"\r\n")
+	}
+	payload := make([]byte, 4)
+	binary.BigEndian.PutUint32(payload, code)
+	_, _ = ch.SendRequest("exit-status", false, payload)
+}

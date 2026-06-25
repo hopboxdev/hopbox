@@ -61,7 +61,45 @@ scp ./file mybox:/home/dev/
 rsync -a ./src/ mybox:/home/dev/src/
 ```
 
+## Ephemeral front door
+
+The flow above reaches a workspace you already created. hopboxd can also run a
+**front door**: a plain SSH listener where the **username is a workspace spec**
+and the **client key is the identity** — no signup, no pre-created workspace.
+Enable it with [`--ssh-addr`](/reference/hopboxd#ssh-front-door).
+
+```sh
+ssh proj@host                 # spawn/attach workspace "proj" (default image)
+ssh proj:python@host          # python image
+ssh proj:go:cpu+5m@host       # go image, stay alive 5m after you disconnect
+ssh proj~docker:python@host   # pin the docker backend
+ssh proj+@host                # force a fresh box
+```
+
+### Username grammar
+
+```
+workspace[~backend][:image[:flavor[+duration]]]
+```
+
+| Segment | Meaning |
+| --- | --- |
+| `workspace` | Workspace name (created on first connect). Append `+` to force a fresh box. |
+| `~backend` | Compute backend (`docker`, `kubernetes`, …). Omit = auto: the sole backend, or the configured default. |
+| `:image` | Box image. Omit = `--ssh-default-image` (`alpine`). |
+| `:flavor` | Hardware flavor (reserved; not yet applied). |
+| `+duration` | Stay-alive grace after disconnect (`5m`, `1h`). Omit = reap immediately. |
+
+### Lifetime
+
+Front-door boxes are **ephemeral**: the workspace is attached for the life of
+your SSH session and reaped when you disconnect (after the `+duration` grace, if
+any). A reconnect within the grace window cancels the reap. This is the
+temporary-box model — for a persistent workspace, create one via the
+[`hopbox` CLI](/reference/cli) instead.
+
 ## Reference
 
 - [`hopbox` CLI](/reference/cli) — `login`, `ssh`, `ssh-config`, `proxy`.
 - [Auth & multi-user](/guide/auth) — certificates, the CA, and multi-user.
+- [`hopboxd` config](/reference/hopboxd) — `--ssh-addr` and the front door flags.

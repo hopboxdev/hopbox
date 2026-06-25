@@ -10,9 +10,12 @@ CREATE TABLE IF NOT EXISTS workspaces (
     home_mount      TEXT NOT NULL DEFAULT '',
     bootstrap_token TEXT NOT NULL DEFAULT '',
     agent_connected INTEGER NOT NULL DEFAULT 0,
+    attached        INTEGER NOT NULL DEFAULT 0,
     message         TEXT NOT NULL DEFAULT '',
     ingress_spec    TEXT NOT NULL DEFAULT '[]',
     endpoints       TEXT NOT NULL DEFAULT '[]',
+    backend         TEXT NOT NULL DEFAULT '',
+    lifetime        TEXT NOT NULL DEFAULT '{}',
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL,
     UNIQUE(tenant_id, name)

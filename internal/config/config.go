@@ -43,6 +43,13 @@ type Config struct {
 	GatewayAddr string
 	GatewayZone string
 	TunnelAddr  string
+
+	EventsKind string // reconcile wake-up bus: inproc|nats
+	NATSURL    string // NATS server URL when --events=nats
+
+	SSHAddr         string // krillbox-style SSH front-door listen (username=spec, key=identity); empty disables
+	SSHHostKeyPath  string // front-door SSH host key (auto-created on first run)
+	SSHDefaultImage string // image for front-door boxes when the username names none
 }
 
 func Parse(args []string) (Config, error) {
@@ -81,6 +88,11 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.GatewayAddr, "gateway-addr", ":8088", "service gateway (hopbox-gw) HTTP listen address; empty disables")
 	fs.StringVar(&c.GatewayZone, "gateway-zone", "gw.example.com", "wildcard DNS zone for the subdomain ingress provider")
 	fs.StringVar(&c.TunnelAddr, "tunnel-addr", ":7701", "gateway tunnel listen address for standalone hopbox-gw; empty disables")
+	fs.StringVar(&c.EventsKind, "events", "inproc", "reconcile wake-up bus: inproc|nats (nats fans wake-ups across nodes)")
+	fs.StringVar(&c.NATSURL, "nats-url", "nats://127.0.0.1:4222", "NATS server URL when --events=nats")
+	fs.StringVar(&c.SSHAddr, "ssh-addr", "", "krillbox-style SSH front-door listen address (username=workspace spec, key=identity); empty disables")
+	fs.StringVar(&c.SSHHostKeyPath, "ssh-host-key", "./hopbox-ssh-front-key", "front-door SSH host key path (auto-created)")
+	fs.StringVar(&c.SSHDefaultImage, "ssh-default-image", "alpine", "image for front-door boxes when the username names none")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}

@@ -41,14 +41,22 @@ type Workspace struct {
 	Name     string
 	// spec (desired)
 	ImageRef string
+	Backend  string        // compute backend (e.g. docker|k8s); "" = auto, resolved via ResolveBackend
 	MemMB    int64         // 0 = provider default
 	Ingress  []IngressPort // desired exposed endpoints
+	// lifetime (desired): an ephemeral workspace is reaped when its owner detaches.
+	// Persistent (the default) leaves all fields zero and is never reaped.
+	Ephemeral bool          // true = reap on disconnect (krillbox-style temporary box)
+	Grace     time.Duration // stay-alive after the agent detaches; 0 = reap immediately
+	MaxTTL    time.Duration // hard cap from CreatedAt regardless of connection; 0 = none
+	Deadline  *time.Time    // reap-after instant, stamped on detach; nil while attached
 	// status (observed, written by the reconciler / agenthub)
 	Phase          Phase
 	InstanceRef    string     // provider-opaque (docker container id)
 	HomeMount      string     // host path of the persistent home
 	BootstrapToken string     // one-time, workspace-scoped agent token
-	AgentConnected bool       // set by agenthub when the agent dials in
+	AgentConnected bool       // set by agenthub when the agent dials in (box-alive signal)
+	Attached       bool       // an owner SSH front-door session is held open (reap signal for ephemeral boxes)
 	Endpoints      []Endpoint // resolved endpoints (one per Ingress, set when Running)
 	Message        string     // last status / failure detail
 	CreatedAt      time.Time

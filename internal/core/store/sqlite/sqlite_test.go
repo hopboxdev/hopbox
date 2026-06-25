@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/hopboxdev/hopbox/internal/core/store"
 	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
@@ -35,6 +36,38 @@ func TestCreateGetRoundTrip(t *testing.T) {
 	}
 	if got.Name != "proj" || got.ImageRef != "ubuntu:24.04" || got.Phase != workspace.PhasePending {
 		t.Fatalf("roundtrip mismatch: %+v", got)
+	}
+}
+
+func TestBackendAndLifetimeRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	w.Backend = "docker"
+	w.Ephemeral = true
+	w.Grace = 5 * time.Minute
+	w.MaxTTL = time.Hour
+	if err := s.CreateWorkspace(ctx, w); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// reconciler stamps a deadline on detach
+	d := w.CreatedAt.Add(5 * time.Minute)
+	w.Deadline = &d
+	if err := s.UpdateWorkspace(ctx, w); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, err := s.GetWorkspace(ctx, "default", w.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Backend != "docker" {
+		t.Fatalf("backend=%q want docker", got.Backend)
+	}
+	if !got.Ephemeral || got.Grace != 5*time.Minute || got.MaxTTL != time.Hour {
+		t.Fatalf("lifetime round-trip: ephemeral=%v grace=%v maxttl=%v", got.Ephemeral, got.Grace, got.MaxTTL)
+	}
+	if got.Deadline == nil || !got.Deadline.Equal(d) {
+		t.Fatalf("deadline round-trip: got %v want %v", got.Deadline, d)
 	}
 }
 

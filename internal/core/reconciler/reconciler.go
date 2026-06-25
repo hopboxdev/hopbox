@@ -24,7 +24,11 @@ type Config struct {
 	TrustedUserCA  string           // SSH CA public key (authorized_keys line) every workspace trusts
 	AuthorizedKeys string           // fallback static authorized_keys injected into every workspace (no-login mode)
 	Interval       time.Duration
+	Now            func() time.Time // clock seam; nil = time.Now (overridden in tests)
 }
+
+// reconcileReq is a single-workspace wake-up pushed onto the event path.
+type reconcileReq struct{ id, tenantID string }
 
 type Reconciler struct {
 	store   store.Store
@@ -32,13 +36,33 @@ type Reconciler struct {
 	storage ports.Storage
 	ingress ports.Ingress // optional; nil disables endpoint reconciliation
 	cfg     Config
+	now     func() time.Time
+	events  chan reconcileReq // event path; the ticker is the safety-net backstop
 }
 
 func New(s store.Store, c ports.Compute, st ports.Storage, ig ports.Ingress, cfg Config) *Reconciler {
 	if cfg.Interval == 0 {
 		cfg.Interval = time.Second
 	}
-	return &Reconciler{store: s, compute: c, storage: st, ingress: ig, cfg: cfg}
+	now := cfg.Now
+	if now == nil {
+		now = time.Now
+	}
+	return &Reconciler{
+		store: s, compute: c, storage: st, ingress: ig, cfg: cfg, now: now,
+		events: make(chan reconcileReq, 1024),
+	}
+}
+
+// Trigger asks the reconciler to converge one workspace now, instead of waiting
+// for the next poll tick. It never blocks: if the event buffer is full the wake
+// is dropped, because the periodic sweep will still reconcile it. This is the
+// event-driven half of the hybrid loop — point it at agent connect/disconnect.
+func (r *Reconciler) Trigger(id, tenantID string) {
+	select {
+	case r.events <- reconcileReq{id: id, tenantID: tenantID}:
+	default: // buffer full; ticker is the backstop
+	}
 }
 
 func newToken() string {
@@ -47,7 +71,10 @@ func newToken() string {
 	return hex.EncodeToString(b)
 }
 
-// Run scans all workspaces on an interval until ctx is cancelled.
+// Run drives the hybrid reconcile loop until ctx is cancelled: an event path
+// (Trigger) reconciles a single workspace the instant its state changes, while
+// the interval ticker sweeps every workspace as a safety net — it catches missed
+// events, drifted instances and elapsed ephemeral deadlines (the reap GC).
 func (r *Reconciler) Run(ctx context.Context) {
 	t := time.NewTicker(r.cfg.Interval)
 	defer t.Stop()
@@ -55,6 +82,10 @@ func (r *Reconciler) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case req := <-r.events:
+			if err := r.ReconcileOne(ctx, req.id, req.tenantID); err != nil {
+				log.Printf("reconciler: workspace %s (event): %v", req.id, err)
+			}
 		case <-t.C:
 			all, err := r.store.ListAll(ctx)
 			if err != nil {
@@ -85,6 +116,14 @@ func (r *Reconciler) ReconcileOne(ctx context.Context, id, tenantID string) erro
 		}
 		return r.checkComputeAlive(ctx, w)
 	case workspace.PhaseRunning:
+		// Ephemeral lifetime wins over self-heal: a detached temporary box is
+		// reaped (or counting down its grace), never re-provisioned.
+		if w.Ephemeral {
+			done, err := r.reconcileLifetime(ctx, w)
+			if done || err != nil {
+				return err
+			}
+		}
 		if !w.AgentConnected {
 			return r.healIfInstanceDead(ctx, w)
 		}
@@ -147,6 +186,36 @@ func (r *Reconciler) provision(ctx context.Context, w *workspace.Workspace) erro
 	w.Phase = workspace.PhaseProvisioning
 	w.Message = "provisioned, awaiting agent"
 	return r.store.UpdateWorkspace(ctx, w)
+}
+
+// reconcileLifetime applies an ephemeral workspace's lifetime policy for this
+// tick. It returns done=true when no further Running reconciliation should run:
+// the box was reaped (driven to Destroying) or is detached and counting down its
+// grace (and must NOT be self-healed). It returns done=false only when the box
+// is attached and healthy, so endpoint reconciliation can proceed.
+func (r *Reconciler) reconcileLifetime(ctx context.Context, w *workspace.Workspace) (bool, error) {
+	act := w.EvalLifetime(r.now())
+	if act.Reap {
+		return true, r.setPhase(ctx, w, workspace.PhaseDestroying, "ephemeral: lifetime expired")
+	}
+	if act.SetDeadline != nil {
+		w.Deadline = act.SetDeadline
+		if err := r.store.UpdateWorkspace(ctx, w); err != nil {
+			return true, err
+		}
+	}
+	if act.ClearDeadline {
+		w.Deadline = nil
+		if err := r.store.UpdateWorkspace(ctx, w); err != nil {
+			return true, err
+		}
+	}
+	// Detached within grace: wait it out. A detached ephemeral box is not
+	// self-healed — its owner is gone and it is counting down to reap.
+	if !w.Attached {
+		return true, nil
+	}
+	return false, nil
 }
 
 // healIfInstanceDead handles a Running workspace reporting no agent. The agent
