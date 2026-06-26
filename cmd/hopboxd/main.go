@@ -20,6 +20,8 @@ import (
 	"github.com/hopboxdev/hopbox/internal/agenthub"
 	"github.com/hopboxdev/hopbox/internal/api"
 	"github.com/hopboxdev/hopbox/internal/config"
+	"github.com/hopboxdev/hopbox/internal/core/box"
+	"github.com/hopboxdev/hopbox/internal/core/boxstore"
 	"github.com/hopboxdev/hopbox/internal/core/ports"
 	"github.com/hopboxdev/hopbox/internal/core/reconciler"
 	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
@@ -212,14 +214,16 @@ func run(cfg config.Config) error {
 		if err != nil {
 			return fmt.Errorf("ssh front-door host key: %w", err)
 		}
-		mgr := sshfront.New(st, bus.Publish, sshfront.Config{
-			Tenant:           cfg.Tenant,
-			DefaultImage:     cfg.SSHDefaultImage,
-			Backends:         []string{cfg.ComputeKind},
-			DefaultMemMB:     cfg.SSHDefaultMemMB,
-			DefaultCPUMillis: int64(cfg.SSHDefaultCPUs * 1000),
+		engine := box.NewEngine(boxstore.New(st), bus.Publish, box.EngineConfig{
+			Tenant:       cfg.Tenant,
+			DefaultImage: cfg.SSHDefaultImage,
+			Backends:     []string{cfg.ComputeKind},
+			DefaultFlavor: box.Flavor{
+				MemMB:     cfg.SSHDefaultMemMB,
+				CPUMillis: int64(cfg.SSHDefaultCPUs * 1000),
+			},
 		})
-		front := sshfront.NewServer(mgr, hub, hostKey, nil) // AnyKey: key is identity
+		front := sshfront.NewServer(engine, hub, hostKey, nil) // AnyKey: key is identity
 		frontLn, err := net.Listen("tcp", cfg.SSHAddr)
 		if err != nil {
 			return err

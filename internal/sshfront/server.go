@@ -11,6 +11,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/hopboxdev/hopbox/internal/agentproto"
+	"github.com/hopboxdev/hopbox/internal/core/box"
 )
 
 // Hub is the slice of the agent hub the front door bridges sessions through.
@@ -34,9 +35,9 @@ func (AnyKey) Authenticate(key ssh.PublicKey) (string, error) {
 }
 
 // Server is the SSH front door. It terminates client SSH, maps username->spec
-// and key->identity, ensures the workspace, and bridges the session into the box.
+// and key->identity, ensures the box via the engine, and bridges the session in.
 type Server struct {
-	mgr          *Manager
+	engine       *box.Engine
 	hub          Hub
 	hostKey      ssh.Signer
 	authority    Authority
@@ -45,12 +46,12 @@ type Server struct {
 }
 
 // NewServer builds a front-door SSH server. authority defaults to AnyKey.
-func NewServer(mgr *Manager, hub Hub, hostKey ssh.Signer, authority Authority) *Server {
+func NewServer(engine *box.Engine, hub Hub, hostKey ssh.Signer, authority Authority) *Server {
 	if authority == nil {
 		authority = AnyKey{}
 	}
 	return &Server{
-		mgr: mgr, hub: hub, hostKey: hostKey, authority: authority,
+		engine: engine, hub: hub, hostKey: hostKey, authority: authority,
 		readyTimeout: 60 * time.Second,
 		pollInterval: 200 * time.Millisecond,
 	}
@@ -101,16 +102,16 @@ func (s *Server) waitReady(ctx context.Context, workspaceID string) error {
 // wait for it to be ready, bridge the client byte stream to a shell in the box,
 // and detach on exit so the reconciler can reap an ephemeral box.
 func (s *Server) serveSession(ctx context.Context, principal, username string, hdr agentproto.ShellHeader, client io.ReadWriteCloser) error {
-	w, release, err := s.mgr.Attach(ctx, principal, username)
+	b, release, err := s.engine.Attach(ctx, principal, username)
 	if err != nil {
 		return err
 	}
 	defer release()
 
-	if err := s.waitReady(ctx, w.ID); err != nil {
+	if err := s.waitReady(ctx, b.ID); err != nil {
 		return err
 	}
-	shell, err := s.hub.OpenShell(ctx, w.ID, hdr)
+	shell, err := s.hub.OpenShell(ctx, b.ID, hdr)
 	if err != nil {
 		return fmt.Errorf("open shell: %w", err)
 	}
