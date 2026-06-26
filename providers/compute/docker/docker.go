@@ -15,6 +15,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -37,18 +38,62 @@ const (
 )
 
 type Provider struct {
-	cli *client.Client
+	cli     *client.Client
+	network string // dedicated bridge for workspace containers; "" = default bridge
 }
 
 var _ ports.Compute = (*Provider)(nil)
 
-func New(_ string) (*Provider, error) {
+// Option configures the provider.
+type Option func(*Provider)
+
+// WithNetwork puts every workspace container on a dedicated bridge network
+// (created on first use). Docker isolates separate bridges from one another, so
+// boxes can no longer reach the host's other containers; an egress firewall on
+// the network's subnet (see deploy/workspace-firewall.sh) restricts the rest.
+func WithNetwork(name string) Option { return func(p *Provider) { p.network = name } }
+
+func New(_ string, opts ...Option) (*Provider, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("docker: new client: %w", err)
 	}
-	return &Provider{cli: cli}, nil
+	p := &Provider{cli: cli}
+	for _, o := range opts {
+		o(p)
+	}
+	return p, nil
 }
+
+// workspaceSubnet is the fixed subnet of the dedicated workspace network. It is
+// fixed (not docker-assigned) so the egress firewall can target it
+// deterministically. Keep it in sync with deploy/workspace-firewall.sh.
+const workspaceSubnet = "172.31.0.0/24"
+
+// ensureNetwork creates the dedicated workspace bridge if it does not exist, with
+// a fixed subnet so firewall rules can target it. Idempotent.
+func (p *Provider) ensureNetwork(ctx context.Context) error {
+	if _, err := p.cli.NetworkInspect(ctx, p.network, network.InspectOptions{}); err == nil {
+		return nil
+	} else if !client.IsErrNotFound(err) {
+		return fmt.Errorf("docker: inspect network %q: %w", p.network, err)
+	}
+	_, err := p.cli.NetworkCreate(ctx, p.network, network.CreateOptions{
+		Driver: "bridge",
+		IPAM:   &network.IPAM{Config: []network.IPAMConfig{{Subnet: workspaceSubnet}}},
+		// Disable inter-container comms so one anonymous box can't reach another
+		// on the same bridge.
+		Options: map[string]string{"com.docker.network.bridge.enable_icc": "false"},
+		Labels:  map[string]string{labelWorkspace: "network"},
+	})
+	if err != nil && !errdefsConflict(err) {
+		return fmt.Errorf("docker: create network %q: %w", p.network, err)
+	}
+	return nil
+}
+
+// errdefsConflict reports a 409 (network already exists) from a concurrent create.
+func errdefsConflict(err error) bool { return strings.Contains(err.Error(), "already exists") }
 
 func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (ports.Instance, error) {
 	target := r.Agent.TargetPath
@@ -87,6 +132,15 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 	}
 	if r.MemMB > 0 {
 		host.Resources = container.Resources{Memory: r.MemMB * 1024 * 1024}
+	}
+	// Put the box on the dedicated workspace bridge, isolating it from the host's
+	// other containers (docker isolates separate bridges). host.docker.internal
+	// still resolves to the host gateway here, so the agent reaches the hub.
+	if p.network != "" {
+		if err := p.ensureNetwork(ctx); err != nil {
+			return ports.Instance{}, err
+		}
+		host.NetworkMode = container.NetworkMode(p.network)
 	}
 
 	name := "hopbox-" + r.WorkspaceID
