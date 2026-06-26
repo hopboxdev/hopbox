@@ -14,7 +14,11 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"os"
+
 	"github.com/hopboxdev/hopbox/internal/agenthub"
+	"github.com/hopboxdev/hopbox/internal/core/box"
+	"github.com/hopboxdev/hopbox/internal/core/boxstore"
 	"github.com/hopboxdev/hopbox/internal/core/ports"
 	"github.com/hopboxdev/hopbox/internal/core/reconciler"
 	"github.com/hopboxdev/hopbox/internal/core/store"
@@ -23,7 +27,6 @@ import (
 	"github.com/hopboxdev/hopbox/internal/sshfront"
 	dockerprov "github.com/hopboxdev/hopbox/providers/compute/docker"
 	"github.com/hopboxdev/hopbox/providers/storage/localfs"
-	"os"
 )
 
 // TestEndToEndSSHFrontDoor exercises the krillbox-style front door for real: a
@@ -99,12 +102,12 @@ func TestEndToEndSSHFrontDoor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr := sshfront.New(st, bus.Publish, sshfront.Config{
+	engine := box.NewEngine(boxstore.New(st), bus.Publish, box.EngineConfig{
 		Tenant:       "default",
 		DefaultImage: "ubuntu:24.04",
 		Backends:     []string{"docker"},
 	})
-	front := sshfront.NewServer(mgr, hub, hostKey, nil)
+	front := sshfront.NewServer(engine, hub, hostKey, nil)
 	frontLn, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
