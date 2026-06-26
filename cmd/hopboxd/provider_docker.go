@@ -9,5 +9,5 @@ import (
 )
 
 func newCompute(cfg config.Config) (ports.Compute, error) {
-	return dockerprov.New(cfg.AgentAdvertise)
+	return dockerprov.New(cfg.AgentAdvertise, dockerprov.WithNetwork(cfg.ComputeNetwork))
 }

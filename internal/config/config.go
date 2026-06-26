@@ -31,6 +31,7 @@ type Config struct {
 	ComputeKind      string
 	ComputeTransport string
 	ComputeRemote    string
+	ComputeNetwork   string // docker: dedicated bridge for workspace boxes (isolates them); empty = default bridge
 	StorageKind      string
 	StorageTransport string
 	StorageRemote    string
@@ -77,6 +78,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.AgentBinaryPath, "agent-binary-path", "/hopbox-agent", "agent binary path inside the agent image")
 	fs.StringVar(&c.AgentTargetPath, "agent-target-path", "/hopbox/hopbox-agent", "where to place+run the agent in the workspace")
 	fs.StringVar(&c.ComputeKind, "compute", "docker", "compute provider: docker|kubernetes")
+	fs.StringVar(&c.ComputeNetwork, "compute-network", "", "docker: put workspace boxes on this dedicated bridge to isolate them from the host's other containers; empty = default bridge")
 	fs.StringVar(&c.ComputeTransport, "compute-transport", "inproc", "compute transport: inproc|remote")
 	fs.StringVar(&c.ComputeRemote, "compute-remote", "", "remote compute provider address (when --compute-transport=remote)")
 	fs.StringVar(&c.StorageKind, "storage", "localfs", "storage provider: localfs|k8spvc")
