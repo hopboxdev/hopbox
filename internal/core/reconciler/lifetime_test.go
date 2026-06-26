@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hopboxdev/hopbox/internal/core/box"
 	"github.com/hopboxdev/hopbox/internal/core/reconciler"
 	"github.com/hopboxdev/hopbox/internal/core/workspace"
 )
@@ -20,7 +21,7 @@ func TestEphemeralDisconnectReaps(t *testing.T) {
 	r := reconciler.New(st, comp, &fakeStorage{}, nil, reconciler.Config{Now: func() time.Time { return rt0 }})
 
 	w := workspace.New("default", "alice", "proj", "img")
-	w.Phase = workspace.PhaseRunning
+	w.Phase = box.PhaseRunning
 	w.InstanceRef = "c-eph"
 	w.Ephemeral = true // grace 0: reap on disconnect
 	w.Attached = false
@@ -30,7 +31,7 @@ func TestEphemeralDisconnectReaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := st.GetWorkspace(ctx, "default", w.ID)
-	if got.Phase != workspace.PhaseDestroying {
+	if got.Phase != box.PhaseDestroying {
 		t.Fatalf("phase=%s want Destroying", got.Phase)
 	}
 	// must NOT self-heal an ephemeral box like a persistent one.
@@ -47,7 +48,7 @@ func TestEphemeralGraceStampsThenReaps(t *testing.T) {
 	r := reconciler.New(st, comp, &fakeStorage{}, nil, reconciler.Config{Now: clockAt(&now)})
 
 	w := workspace.New("default", "alice", "proj", "img")
-	w.Phase = workspace.PhaseRunning
+	w.Phase = box.PhaseRunning
 	w.InstanceRef = "c-eph"
 	w.Ephemeral = true
 	w.Grace = 5 * time.Minute
@@ -59,7 +60,7 @@ func TestEphemeralGraceStampsThenReaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := st.GetWorkspace(ctx, "default", w.ID)
-	if got.Phase != workspace.PhaseRunning {
+	if got.Phase != box.PhaseRunning {
 		t.Fatalf("phase=%s want Running (within grace)", got.Phase)
 	}
 	if got.Deadline == nil || !got.Deadline.Equal(rt0.Add(5*time.Minute)) {
@@ -72,7 +73,7 @@ func TestEphemeralGraceStampsThenReaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ = st.GetWorkspace(ctx, "default", w.ID)
-	if got.Phase != workspace.PhaseDestroying {
+	if got.Phase != box.PhaseDestroying {
 		t.Fatalf("phase=%s want Destroying (past deadline)", got.Phase)
 	}
 }
@@ -83,7 +84,7 @@ func TestEphemeralReconnectClearsDeadline(t *testing.T) {
 	r := reconciler.New(st, &fakeCompute{}, &fakeStorage{}, nil, reconciler.Config{Now: func() time.Time { return rt0 }})
 
 	w := workspace.New("default", "alice", "proj", "img")
-	w.Phase = workspace.PhaseRunning
+	w.Phase = box.PhaseRunning
 	w.InstanceRef = "c-eph"
 	w.Ephemeral = true
 	w.Grace = 5 * time.Minute
@@ -97,7 +98,7 @@ func TestEphemeralReconnectClearsDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := st.GetWorkspace(ctx, "default", w.ID)
-	if got.Phase != workspace.PhaseRunning {
+	if got.Phase != box.PhaseRunning {
 		t.Fatalf("phase=%s want Running", got.Phase)
 	}
 	if got.Deadline != nil {

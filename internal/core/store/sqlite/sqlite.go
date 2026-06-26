@@ -12,6 +12,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/hopboxdev/hopbox/internal/core/box"
 	"github.com/hopboxdev/hopbox/internal/core/store"
 	"github.com/hopboxdev/hopbox/internal/core/workspace"
 )
@@ -121,7 +122,7 @@ func scan(row interface{ Scan(...any) error }) (*workspace.Workspace, error) {
 		&ingressJSON, &endpointsJSON, &w.Backend, &lifetimeJSONStr, &created, &updated); err != nil {
 		return nil, err
 	}
-	w.Phase = workspace.Phase(phase)
+	w.Phase = box.Phase(phase)
 	w.AgentConnected = connected != 0
 	w.Attached = attached != 0
 	if err := json.Unmarshal([]byte(ingressJSON), &w.Ingress); err != nil {

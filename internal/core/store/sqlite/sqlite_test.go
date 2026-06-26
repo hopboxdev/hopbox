@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hopboxdev/hopbox/internal/core/box"
 	"github.com/hopboxdev/hopbox/internal/core/store"
 	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
 	"github.com/hopboxdev/hopbox/internal/core/workspace"
@@ -34,7 +35,7 @@ func TestCreateGetRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if got.Name != "proj" || got.ImageRef != "ubuntu:24.04" || got.Phase != workspace.PhasePending {
+	if got.Name != "proj" || got.ImageRef != "ubuntu:24.04" || got.Phase != box.PhasePending {
 		t.Fatalf("roundtrip mismatch: %+v", got)
 	}
 }
@@ -121,14 +122,14 @@ func TestUpdateAndList(t *testing.T) {
 	if err := s.CreateWorkspace(ctx, w); err != nil {
 		t.Fatal(err)
 	}
-	w.Phase = workspace.PhaseRunning
+	w.Phase = box.PhaseRunning
 	w.AgentConnected = true
 	w.InstanceRef = "c-1"
 	if err := s.UpdateWorkspace(ctx, w); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	got, _ := s.GetWorkspace(ctx, "default", w.ID)
-	if got.Phase != workspace.PhaseRunning || !got.AgentConnected || got.InstanceRef != "c-1" {
+	if got.Phase != box.PhaseRunning || !got.AgentConnected || got.InstanceRef != "c-1" {
 		t.Fatalf("update not persisted: %+v", got)
 	}
 	all, err := s.ListAll(ctx)
