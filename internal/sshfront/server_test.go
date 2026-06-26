@@ -9,30 +9,33 @@ import (
 	"time"
 
 	"github.com/hopboxdev/hopbox/internal/agentproto"
-	"github.com/hopboxdev/hopbox/internal/core/store"
-	"github.com/hopboxdev/hopbox/internal/core/workspace"
+	"github.com/hopboxdev/hopbox/internal/core/box"
 )
 
-// reuse a minimal in-memory store (white-box: same package as Manager).
-type memStore struct {
-	byName map[string]*workspace.Workspace
-}
+// memStore is a minimal in-memory box.Store for the front-door server tests.
+type memStore struct{ byKey map[string]*box.Box }
 
-func newMemStore() *memStore { return &memStore{byName: map[string]*workspace.Workspace{}} }
-func (s *memStore) GetByName(_ context.Context, t, n string) (*workspace.Workspace, error) {
-	if w, ok := s.byName[t+"/"+n]; ok {
-		return w, nil
+func newMemStore() *memStore { return &memStore{byKey: map[string]*box.Box{}} }
+func (s *memStore) put(b *box.Box) {
+	s.byKey["n/"+b.TenantID+"/"+b.Name] = b
+	s.byKey["i/"+b.TenantID+"/"+b.ID] = b
+}
+func (s *memStore) Get(_ context.Context, t, id string) (*box.Box, error) {
+	if b, ok := s.byKey["i/"+t+"/"+id]; ok {
+		return b, nil
 	}
-	return nil, store.ErrNotFound
+	return nil, box.ErrNotFound
 }
-func (s *memStore) CreateWorkspace(_ context.Context, w *workspace.Workspace) error {
-	s.byName[w.TenantID+"/"+w.Name] = w
-	return nil
+func (s *memStore) GetByName(_ context.Context, t, n string) (*box.Box, error) {
+	if b, ok := s.byKey["n/"+t+"/"+n]; ok {
+		return b, nil
+	}
+	return nil, box.ErrNotFound
 }
-func (s *memStore) UpdateWorkspace(_ context.Context, w *workspace.Workspace) error {
-	s.byName[w.TenantID+"/"+w.Name] = w
-	return nil
-}
+func (s *memStore) List(context.Context, string) ([]*box.Box, error) { return nil, nil }
+func (s *memStore) Create(_ context.Context, b *box.Box) error       { s.put(b); return nil }
+func (s *memStore) Update(_ context.Context, b *box.Box) error       { s.put(b); return nil }
+func (s *memStore) Delete(context.Context, string, string) error     { return nil }
 
 type fakeHub struct {
 	connectAfter int
@@ -54,10 +57,10 @@ func (eofShell) Read([]byte) (int, error)    { return 0, io.EOF }
 func (eofShell) Write(p []byte) (int, error) { return len(p), nil }
 func (eofShell) Close() error                { return nil }
 
-func newServer(st Store, hub Hub) *Server {
-	m := New(st, nil, Config{Tenant: "default", DefaultImage: "alpine", Backends: []string{"docker"}})
+func newServer(st box.Store, hub Hub) *Server {
+	e := box.NewEngine(st, nil, box.EngineConfig{Tenant: "default", DefaultImage: "alpine", Backends: []string{"docker"}})
 	return &Server{
-		mgr:          m,
+		engine:       e,
 		hub:          hub,
 		readyTimeout: time.Second,
 		pollInterval: time.Millisecond,
@@ -82,7 +85,7 @@ func TestServeSessionBridgesAndDetaches(t *testing.T) {
 	}
 	got, _ := st.GetByName(ctx, "default", "proj")
 	if got == nil || got.Attached {
-		t.Fatal("session end must detach the workspace (release)")
+		t.Fatal("session end must detach the box (release)")
 	}
 }
 
