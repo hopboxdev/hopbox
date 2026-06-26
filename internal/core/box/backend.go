@@ -1,4 +1,4 @@
-package workspace
+package box
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ import (
 // ErrNoBackends means no compute backend is configured at all.
 var ErrNoBackends = errors.New("no compute backends configured")
 
-// ResolveBackend picks the compute backend for a workspace.
+// ResolveBackend picks the compute backend for a box.
 //
 // It is the "auto" seam: a user never has to name a backend. An empty request
 // means auto — deducible when there is exactly one backend, otherwise the

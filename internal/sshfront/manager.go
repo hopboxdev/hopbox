@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/hopboxdev/hopbox/internal/core/box"
 	"github.com/hopboxdev/hopbox/internal/core/store"
 	"github.com/hopboxdev/hopbox/internal/core/workspace"
 )
@@ -49,7 +50,7 @@ func New(s Store, trigger func(workspaceID, tenant string), cfg Config) *Manager
 // on session end. The returned workspace is owned by principal; attaching to
 // another principal's workspace is refused.
 func (m *Manager) Attach(ctx context.Context, principal, username string) (*workspace.Workspace, func(), error) {
-	spec, err := workspace.ParseSpec(username)
+	spec, err := box.ParseSpec(username)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -58,14 +59,14 @@ func (m *Manager) Attach(ctx context.Context, principal, username string) (*work
 	}
 	tenant := m.cfg.Tenant
 
-	w, err := m.store.GetByName(ctx, tenant, spec.Workspace)
+	w, err := m.store.GetByName(ctx, tenant, spec.Name)
 	switch {
 	case err == nil:
 		if w.Owner != principal {
-			return nil, nil, fmt.Errorf("workspace %q belongs to another user", spec.Workspace)
+			return nil, nil, fmt.Errorf("workspace %q belongs to another user", spec.Name)
 		}
 	case errors.Is(err, store.ErrNotFound):
-		w, err = spec.BuildWorkspace(tenant, principal, m.cfg.DefaultImage, m.cfg.Backends, m.cfg.DefBackend)
+		w, err = workspace.BuildFromSpec(spec, tenant, principal, m.cfg.DefaultImage, m.cfg.Backends, m.cfg.DefBackend)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -75,7 +76,7 @@ func (m *Manager) Attach(ctx context.Context, principal, username string) (*work
 			return nil, nil, fmt.Errorf("create workspace: %w", err)
 		}
 		m.trigger(w.ID, tenant)
-		return w, m.releaser(w.ID, tenant, spec.Workspace), nil
+		return w, m.releaser(w.ID, tenant, spec.Name), nil
 	default:
 		return nil, nil, err
 	}
@@ -86,7 +87,7 @@ func (m *Manager) Attach(ctx context.Context, principal, username string) (*work
 		return nil, nil, fmt.Errorf("attach workspace: %w", err)
 	}
 	m.trigger(w.ID, tenant)
-	return w, m.releaser(w.ID, tenant, spec.Workspace), nil
+	return w, m.releaser(w.ID, tenant, spec.Name), nil
 }
 
 // releaser returns the session-end hook: it clears Attached and wakes the
