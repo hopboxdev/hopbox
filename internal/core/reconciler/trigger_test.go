@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hopboxdev/hopbox/internal/core/box"
 	"github.com/hopboxdev/hopbox/internal/core/reconciler"
 	"github.com/hopboxdev/hopbox/internal/core/workspace"
 )
@@ -27,7 +28,7 @@ func TestTriggerReconcilesBeforeTick(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		got, _ := st.GetWorkspace(ctx, "default", w.ID)
-		if got.Phase == workspace.PhaseProvisioning {
+		if got.Phase == box.PhaseProvisioning {
 			return // event path reconciled it well before the 1h tick
 		}
 		time.Sleep(5 * time.Millisecond)

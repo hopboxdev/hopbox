@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hopboxdev/hopbox/internal/core/box"
 	"github.com/hopboxdev/hopbox/internal/core/ports"
 	"github.com/hopboxdev/hopbox/internal/core/reconciler"
 	"github.com/hopboxdev/hopbox/internal/core/store"
@@ -81,7 +82,7 @@ func TestPendingProvisions(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 	got, _ := st.GetWorkspace(ctx, "default", w.ID)
-	if got.Phase != workspace.PhaseProvisioning {
+	if got.Phase != box.PhaseProvisioning {
 		t.Fatalf("phase=%s want Provisioning", got.Phase)
 	}
 	if comp.provisioned != 1 || strg.ensured != 1 {
@@ -140,7 +141,7 @@ func TestProvisioningBecomesRunningWhenAgentConnects(t *testing.T) {
 	r := reconciler.New(st, &fakeCompute{}, &fakeStorage{}, nil, reconciler.Config{})
 
 	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
-	w.Phase = workspace.PhaseProvisioning
+	w.Phase = box.PhaseProvisioning
 	w.InstanceRef = "c-x"
 	w.AgentConnected = true // agenthub flipped this
 	_ = st.CreateWorkspace(ctx, w)
@@ -149,7 +150,7 @@ func TestProvisioningBecomesRunningWhenAgentConnects(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := st.GetWorkspace(ctx, "default", w.ID)
-	if got.Phase != workspace.PhaseRunning {
+	if got.Phase != box.PhaseRunning {
 		t.Fatalf("phase=%s want Running", got.Phase)
 	}
 }
@@ -161,7 +162,7 @@ func TestRunningWithDeadAgentReprovisions(t *testing.T) {
 	r := reconciler.New(st, comp, &fakeStorage{}, nil, reconciler.Config{})
 
 	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
-	w.Phase = workspace.PhaseRunning
+	w.Phase = box.PhaseRunning
 	w.InstanceRef = "c-dead"
 	w.AgentConnected = false // agent dropped
 	_ = st.CreateWorkspace(ctx, w)
@@ -170,7 +171,7 @@ func TestRunningWithDeadAgentReprovisions(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := st.GetWorkspace(ctx, "default", w.ID)
-	if got.Phase != workspace.PhaseProvisioning {
+	if got.Phase != box.PhaseProvisioning {
 		t.Fatalf("phase=%s want Provisioning (self-heal)", got.Phase)
 	}
 	if comp.provisioned != 1 {
@@ -185,7 +186,7 @@ func TestRunningWithBlippedAgentDoesNotReprovision(t *testing.T) {
 	r := reconciler.New(st, comp, &fakeStorage{}, nil, reconciler.Config{})
 
 	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
-	w.Phase = workspace.PhaseRunning
+	w.Phase = box.PhaseRunning
 	w.InstanceRef = "c-live"
 	w.AgentConnected = false // transient blip: hub momentarily reported disconnected
 	_ = st.CreateWorkspace(ctx, w)
@@ -194,7 +195,7 @@ func TestRunningWithBlippedAgentDoesNotReprovision(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := st.GetWorkspace(ctx, "default", w.ID)
-	if got.Phase != workspace.PhaseRunning {
+	if got.Phase != box.PhaseRunning {
 		t.Fatalf("phase=%s want Running (no destructive re-provision on blip)", got.Phase)
 	}
 	if comp.provisioned != 0 {
@@ -212,7 +213,7 @@ func TestRunningExposesIngressIdempotently(t *testing.T) {
 	r := reconciler.New(st, &fakeCompute{}, &fakeStorage{}, ig, reconciler.Config{})
 
 	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
-	w.Phase = workspace.PhaseRunning
+	w.Phase = box.PhaseRunning
 	w.InstanceRef = "c-x"
 	w.AgentConnected = true
 	w.Ingress = []workspace.IngressPort{{Name: "app", Port: 3000}}
@@ -241,7 +242,7 @@ func TestDestroyingUnexposesEndpoints(t *testing.T) {
 	r := reconciler.New(st, &fakeCompute{}, &fakeStorage{}, ig, reconciler.Config{})
 
 	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
-	w.Phase = workspace.PhaseDestroying
+	w.Phase = box.PhaseDestroying
 	w.InstanceRef = "c-1"
 	w.Endpoints = []workspace.Endpoint{{Name: "app", Ref: "app-x.gw", URL: "https://app-x.gw", Port: 3000}}
 	_ = st.CreateWorkspace(ctx, w)
@@ -261,7 +262,7 @@ func TestDestroyingRemoves(t *testing.T) {
 	r := reconciler.New(st, comp, &fakeStorage{}, nil, reconciler.Config{})
 
 	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
-	w.Phase = workspace.PhaseDestroying
+	w.Phase = box.PhaseDestroying
 	w.InstanceRef = "c-1"
 	_ = st.CreateWorkspace(ctx, w)
 

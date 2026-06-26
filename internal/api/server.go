@@ -15,6 +15,7 @@ import (
 
 	hopboxv1 "github.com/hopboxdev/hopbox/gen/hopbox/v1"
 	"github.com/hopboxdev/hopbox/internal/agentproto"
+	"github.com/hopboxdev/hopbox/internal/core/box"
 	"github.com/hopboxdev/hopbox/internal/core/ports"
 	"github.com/hopboxdev/hopbox/internal/core/store"
 	"github.com/hopboxdev/hopbox/internal/core/workspace"
@@ -166,7 +167,7 @@ func (s *Server) DeleteWorkspace(ctx context.Context, r *hopboxv1.DeleteWorkspac
 		return nil, err
 	}
 	// declarative delete: flag Destroying; the reconciler tears down + removes.
-	w.Phase = workspace.PhaseDestroying
+	w.Phase = box.PhaseDestroying
 	if err := s.store.UpdateWorkspace(ctx, w); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "workspace %q not found", r.NameOrId)

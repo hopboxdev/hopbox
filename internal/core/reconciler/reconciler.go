@@ -13,6 +13,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/hopboxdev/hopbox/internal/core/box"
 	"github.com/hopboxdev/hopbox/internal/core/ports"
 	"github.com/hopboxdev/hopbox/internal/core/store"
 	"github.com/hopboxdev/hopbox/internal/core/workspace"
@@ -108,14 +109,14 @@ func (r *Reconciler) ReconcileOne(ctx context.Context, id, tenantID string) erro
 		return err
 	}
 	switch w.Phase {
-	case workspace.PhasePending:
+	case box.PhasePending:
 		return r.provision(ctx, w)
-	case workspace.PhaseProvisioning:
+	case box.PhaseProvisioning:
 		if w.AgentConnected {
-			return r.setPhase(ctx, w, workspace.PhaseRunning, "agent connected")
+			return r.setPhase(ctx, w, box.PhaseRunning, "agent connected")
 		}
 		return r.checkComputeAlive(ctx, w)
-	case workspace.PhaseRunning:
+	case box.PhaseRunning:
 		// Ephemeral lifetime wins over self-heal: a detached temporary box is
 		// reaped (or counting down its grace), never re-provisioned.
 		if w.Ephemeral {
@@ -128,7 +129,7 @@ func (r *Reconciler) ReconcileOne(ctx context.Context, id, tenantID string) erro
 			return r.healIfInstanceDead(ctx, w)
 		}
 		return r.reconcileIngress(ctx, w)
-	case workspace.PhaseDestroying:
+	case box.PhaseDestroying:
 		return r.destroy(ctx, w)
 	default:
 		// Failed and Stopped are terminal in M1: no auto-retry/backoff loop yet
@@ -180,10 +181,10 @@ func (r *Reconciler) provision(ctx context.Context, w *workspace.Workspace) erro
 	w.HomeMount = mount.Source
 	w.InstanceRef = inst.Ref
 	w.AgentConnected = false
-	if !workspace.CanTransition(w.Phase, workspace.PhaseProvisioning) {
+	if !box.CanTransition(w.Phase, box.PhaseProvisioning) {
 		return r.fail(ctx, w, fmt.Errorf("illegal transition %s->Provisioning", w.Phase))
 	}
-	w.Phase = workspace.PhaseProvisioning
+	w.Phase = box.PhaseProvisioning
 	w.Message = "provisioned, awaiting agent"
 	return r.store.UpdateWorkspace(ctx, w)
 }
@@ -196,7 +197,7 @@ func (r *Reconciler) provision(ctx context.Context, w *workspace.Workspace) erro
 func (r *Reconciler) reconcileLifetime(ctx context.Context, w *workspace.Workspace) (bool, error) {
 	act := w.EvalLifetime(r.now())
 	if act.Reap {
-		return true, r.setPhase(ctx, w, workspace.PhaseDestroying, "ephemeral: lifetime expired")
+		return true, r.setPhase(ctx, w, box.PhaseDestroying, "ephemeral: lifetime expired")
 	}
 	if act.SetDeadline != nil {
 		w.Deadline = act.SetDeadline
@@ -299,8 +300,8 @@ func (r *Reconciler) destroy(ctx context.Context, w *workspace.Workspace) error 
 	return r.store.DeleteWorkspace(ctx, w.TenantID, w.ID)
 }
 
-func (r *Reconciler) setPhase(ctx context.Context, w *workspace.Workspace, p workspace.Phase, msg string) error {
-	if !workspace.CanTransition(w.Phase, p) {
+func (r *Reconciler) setPhase(ctx context.Context, w *workspace.Workspace, p box.Phase, msg string) error {
+	if !box.CanTransition(w.Phase, p) {
 		return fmt.Errorf("illegal transition %s->%s", w.Phase, p)
 	}
 	w.Phase = p
@@ -309,7 +310,7 @@ func (r *Reconciler) setPhase(ctx context.Context, w *workspace.Workspace, p wor
 }
 
 func (r *Reconciler) fail(ctx context.Context, w *workspace.Workspace, cause error) error {
-	w.Phase = workspace.PhaseFailed
+	w.Phase = box.PhaseFailed
 	w.Message = cause.Error()
 	_ = r.store.UpdateWorkspace(ctx, w)
 	return cause
