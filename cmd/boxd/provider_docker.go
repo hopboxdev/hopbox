@@ -8,5 +8,7 @@ import (
 )
 
 func newCompute(advertise string) (ports.Compute, error) {
-	return dockerprov.New(advertise)
+	// Boxes are anonymous, so isolate them by default: a dedicated bridge + the
+	// daemon's egress fence. Secure by default, no flags, no scripts.
+	return dockerprov.New(advertise, dockerprov.WithNetwork("boxd-net"))
 }
