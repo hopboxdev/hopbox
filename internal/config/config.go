@@ -48,10 +48,11 @@ type Config struct {
 	EventsKind string // reconcile wake-up bus: inproc|nats
 	NATSURL    string // NATS server URL when --events=nats
 
-	SSHAddr         string // krillbox-style SSH front-door listen (username=spec, key=identity); empty disables
-	SSHHostKeyPath  string // front-door SSH host key (auto-created on first run)
-	SSHDefaultImage string // image for front-door boxes when the username names none
-	SSHDefaultMemMB int64  // memory cap (MB) for front-door boxes; 0 = unlimited
+	SSHAddr         string  // krillbox-style SSH front-door listen (username=spec, key=identity); empty disables
+	SSHHostKeyPath  string  // front-door SSH host key (auto-created on first run)
+	SSHDefaultImage string  // image for front-door boxes when the username names none
+	SSHDefaultMemMB int64   // memory cap (MB) for front-door boxes; 0 = unlimited
+	SSHDefaultCPUs  float64 // CPU cap (vCPU) for front-door boxes; 0 = unlimited
 }
 
 func Parse(args []string) (Config, error) {
@@ -97,6 +98,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.SSHHostKeyPath, "ssh-host-key", "./hopbox-ssh-front-key", "front-door SSH host key path (auto-created)")
 	fs.StringVar(&c.SSHDefaultImage, "ssh-default-image", "alpine", "image for front-door boxes when the username names none")
 	fs.Int64Var(&c.SSHDefaultMemMB, "ssh-default-mem-mb", 2048, "memory cap (MB) for front-door boxes (anonymous; capped to limit abuse); 0 = unlimited")
+	fs.Float64Var(&c.SSHDefaultCPUs, "ssh-default-cpus", 2, "CPU cap (vCPU) for front-door boxes (anonymous; capped to limit abuse); 0 = unlimited")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}

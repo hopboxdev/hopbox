@@ -69,19 +69,38 @@ func TestAttachCreatesEphemeralWorkspace(t *testing.T) {
 	}
 }
 
-func TestAttachAppliesMemCap(t *testing.T) {
+func TestAttachAppliesFlavorCap(t *testing.T) {
 	ctx := context.Background()
 	st := newFakeStore()
 	m := sshfront.New(st, nil, sshfront.Config{
-		Tenant: "default", DefaultImage: "alpine", Backends: []string{"docker"}, DefaultMemMB: 2048,
+		Tenant: "default", DefaultImage: "alpine", Backends: []string{"docker"},
+		DefaultMemMB: 2048, DefaultCPUMillis: 2000,
 	})
 	w, release, err := m.Attach(ctx, "alice", "proj")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	if w.MemMB != 2048 {
-		t.Fatalf("front-door box must inherit the memory cap: MemMB=%d want 2048", w.MemMB)
+	if w.MemMB != 2048 || w.CPUMillis != 2000 {
+		t.Fatalf("front-door box must inherit the default caps: mem=%d cpu=%d want 2048/2000", w.MemMB, w.CPUMillis)
+	}
+}
+
+func TestAttachNamedFlavorOverridesDefault(t *testing.T) {
+	ctx := context.Background()
+	st := newFakeStore()
+	m := sshfront.New(st, nil, sshfront.Config{
+		Tenant: "default", DefaultImage: "alpine", Backends: []string{"docker"},
+		DefaultMemMB: 1024, DefaultCPUMillis: 1000,
+	})
+	// spec names the "large" built-in flavor -> overrides the configured defaults.
+	w, release, err := m.Attach(ctx, "alice", "proj:alpine:large")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if w.MemMB != 4096 || w.CPUMillis != 4000 {
+		t.Fatalf("named flavor must override defaults: mem=%d cpu=%d want 4096/4000", w.MemMB, w.CPUMillis)
 	}
 }
 

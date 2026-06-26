@@ -40,6 +40,7 @@ func Open(path string) (*Store, error) {
 		"ALTER TABLE workspaces ADD COLUMN backend TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE workspaces ADD COLUMN lifetime TEXT NOT NULL DEFAULT '{}'",
 		"ALTER TABLE workspaces ADD COLUMN attached INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE workspaces ADD COLUMN cpu_millis INTEGER NOT NULL DEFAULT 0",
 	} {
 		if _, err := db.Exec(col); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("migrate: %w", err)
@@ -98,17 +99,17 @@ func b2i(b bool) int {
 func (s *Store) CreateWorkspace(ctx context.Context, w *workspace.Workspace) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO workspaces
-		(id,tenant_id,owner,name,image_ref,mem_mb,phase,instance_ref,home_mount,
+		(id,tenant_id,owner,name,image_ref,mem_mb,cpu_millis,phase,instance_ref,home_mount,
 		 bootstrap_token,agent_connected,attached,message,ingress_spec,endpoints,backend,lifetime,created_at,updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		w.ID, w.TenantID, w.Owner, w.Name, w.ImageRef, w.MemMB, string(w.Phase),
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		w.ID, w.TenantID, w.Owner, w.Name, w.ImageRef, w.MemMB, w.CPUMillis, string(w.Phase),
 		w.InstanceRef, w.HomeMount, w.BootstrapToken, b2i(w.AgentConnected), b2i(w.Attached), w.Message,
 		marshalJSON(w.Ingress), marshalJSON(w.Endpoints), w.Backend, marshalLifetime(w),
 		w.CreatedAt.Format(ts), w.UpdatedAt.Format(ts))
 	return err
 }
 
-const cols = `id,tenant_id,owner,name,image_ref,mem_mb,phase,instance_ref,home_mount,
+const cols = `id,tenant_id,owner,name,image_ref,mem_mb,cpu_millis,phase,instance_ref,home_mount,
 	bootstrap_token,agent_connected,attached,message,ingress_spec,endpoints,backend,lifetime,created_at,updated_at`
 
 func scan(row interface{ Scan(...any) error }) (*workspace.Workspace, error) {
@@ -117,7 +118,7 @@ func scan(row interface{ Scan(...any) error }) (*workspace.Workspace, error) {
 	var connected, attached int
 	var ingressJSON, endpointsJSON, lifetimeJSONStr string
 	var created, updated string
-	if err := row.Scan(&w.ID, &w.TenantID, &w.Owner, &w.Name, &w.ImageRef, &w.MemMB,
+	if err := row.Scan(&w.ID, &w.TenantID, &w.Owner, &w.Name, &w.ImageRef, &w.MemMB, &w.CPUMillis,
 		&phase, &w.InstanceRef, &w.HomeMount, &w.BootstrapToken, &connected, &attached, &w.Message,
 		&ingressJSON, &endpointsJSON, &w.Backend, &lifetimeJSONStr, &created, &updated); err != nil {
 		return nil, err
@@ -198,11 +199,11 @@ func (s *Store) UpdateWorkspace(ctx context.Context, w *workspace.Workspace) err
 	w.UpdatedAt = time.Now().UTC()
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE workspaces SET
-		  image_ref=?, mem_mb=?, phase=?, instance_ref=?, home_mount=?,
+		  image_ref=?, mem_mb=?, cpu_millis=?, phase=?, instance_ref=?, home_mount=?,
 		  bootstrap_token=?, agent_connected=?, attached=?, message=?, ingress_spec=?, endpoints=?,
 		  backend=?, lifetime=?, updated_at=?
 		WHERE tenant_id=? AND id=?`,
-		w.ImageRef, w.MemMB, string(w.Phase), w.InstanceRef, w.HomeMount,
+		w.ImageRef, w.MemMB, w.CPUMillis, string(w.Phase), w.InstanceRef, w.HomeMount,
 		w.BootstrapToken, b2i(w.AgentConnected), b2i(w.Attached), w.Message,
 		marshalJSON(w.Ingress), marshalJSON(w.Endpoints), w.Backend, marshalLifetime(w),
 		w.UpdatedAt.Format(ts), w.TenantID, w.ID)

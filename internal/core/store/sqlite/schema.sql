@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     name            TEXT NOT NULL,
     image_ref       TEXT NOT NULL,
     mem_mb          INTEGER NOT NULL DEFAULT 0,
+    cpu_millis      INTEGER NOT NULL DEFAULT 0,
     phase           TEXT NOT NULL,
     instance_ref    TEXT NOT NULL DEFAULT '',
     home_mount      TEXT NOT NULL DEFAULT '',
