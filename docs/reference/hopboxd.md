@@ -18,7 +18,7 @@ roadmap). Run `hopboxd --help` for the authoritative list.
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--compute` | `docker` | Compute provider: `docker` \| `kubernetes`. |
-| `--compute-network` | _(empty)_ | Docker: put workspace boxes on this dedicated bridge (created on first use) to isolate them from the host's other containers. Pair with [`deploy/workspace-firewall.sh`](https://github.com/hopboxdev/hopbox/blob/main/deploy/workspace-firewall.sh) to fence egress. Recommended for the anonymous front door. |
+| `--compute-network` | _(empty)_ | Docker: put workspace boxes on this dedicated bridge (created on first use) to isolate them from the host's other containers. The daemon also programs the egress firewall on the box subnet itself — boxes reach the agent hub and the internet, but not the host's other services, the LAN, or the tailnet. Idempotent and re-applied each provision, so it survives reboots. No script to run. Recommended for the anonymous front door. |
 | `--storage` | `localfs` | Storage provider: `localfs` \| `k8spvc`. |
 | `--agent-bin` | `./bin/hopbox-agent-linux-<arch>` | Host path of the agent binary side-loaded into workspaces. |
 
@@ -74,11 +74,12 @@ With the default `AnyKey` authority, **any** client key spawns a box that runs a
 host. Defence in depth:
 
 - Restrict reachability of `--ssh-addr` to a trusted network.
-- Keep the memory cap (`--ssh-default-mem-mb`) so a box can't exhaust the host.
-- Isolate the network: run with [`--compute-network hopbox-net`](#compute-storage)
-  and apply [`deploy/workspace-firewall.sh`](https://github.com/hopboxdev/hopbox/blob/main/deploy/workspace-firewall.sh)
-  so a box reaches the agent hub and the internet, but not the host's other
-  services, your LAN, or the tailnet.
+- Keep the resource caps (`--ssh-default-mem-mb`, `--ssh-default-cpus`) so one box
+  can't exhaust the host.
+- Isolate the network: run with [`--compute-network hopbox-net`](#compute-storage).
+  The daemon then fences the box subnet itself (no script) — a box reaches the
+  agent hub and the internet, but not the host's other services, your LAN, or the
+  tailnet.
 :::
 
 ## Reconcile wake-ups (events bus)

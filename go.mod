@@ -3,6 +3,7 @@ module github.com/hopboxdev/hopbox
 go 1.25.0
 
 require (
+	github.com/coreos/go-iptables v0.8.0
 	github.com/coreos/go-oidc/v3 v3.19.0
 	github.com/creack/pty v1.1.24
 	github.com/docker/docker v28.5.2+incompatible

@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"runtime"
 	"strings"
 
@@ -38,8 +39,9 @@ const (
 )
 
 type Provider struct {
-	cli     *client.Client
-	network string // dedicated bridge for workspace containers; "" = default bridge
+	cli       *client.Client
+	network   string // dedicated bridge for workspace containers; "" = default bridge
+	agentPort string // the agent hub port boxes are allowed to reach (from advertise)
 }
 
 var _ ports.Compute = (*Provider)(nil)
@@ -49,16 +51,19 @@ type Option func(*Provider)
 
 // WithNetwork puts every workspace container on a dedicated bridge network
 // (created on first use). Docker isolates separate bridges from one another, so
-// boxes can no longer reach the host's other containers; an egress firewall on
-// the network's subnet (see deploy/workspace-firewall.sh) restricts the rest.
+// boxes can no longer reach the host's other containers; the daemon also programs
+// an egress firewall on the network's subnet (ensureFence) — no external script.
 func WithNetwork(name string) Option { return func(p *Provider) { p.network = name } }
 
-func New(_ string, opts ...Option) (*Provider, error) {
+func New(advertise string, opts ...Option) (*Provider, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("docker: new client: %w", err)
 	}
-	p := &Provider{cli: cli}
+	p := &Provider{cli: cli, agentPort: "7777"}
+	if _, port, err := net.SplitHostPort(advertise); err == nil && port != "" {
+		p.agentPort = port
+	}
 	for _, o := range opts {
 		o(p)
 	}
@@ -66,29 +71,31 @@ func New(_ string, opts ...Option) (*Provider, error) {
 }
 
 // workspaceSubnet is the fixed subnet of the dedicated workspace network. It is
-// fixed (not docker-assigned) so the egress firewall can target it
-// deterministically. Keep it in sync with deploy/workspace-firewall.sh.
+// fixed (not docker-assigned) so the egress firewall can target it deterministically.
 const workspaceSubnet = "172.31.0.0/24"
 
-// ensureNetwork creates the dedicated workspace bridge if it does not exist, with
-// a fixed subnet so firewall rules can target it. Idempotent.
+// ensureNetwork creates the dedicated workspace bridge (fixed subnet, no inter-
+// container comms) if absent, and programs the egress firewall on it. Idempotent
+// and re-run on every provision, so the fence self-heals and survives reboots /
+// docker restarts — the daemon owns it, there is no script to run.
 func (p *Provider) ensureNetwork(ctx context.Context) error {
-	if _, err := p.cli.NetworkInspect(ctx, p.network, network.InspectOptions{}); err == nil {
-		return nil
-	} else if !client.IsErrNotFound(err) {
+	_, err := p.cli.NetworkInspect(ctx, p.network, network.InspectOptions{})
+	if client.IsErrNotFound(err) {
+		_, cerr := p.cli.NetworkCreate(ctx, p.network, network.CreateOptions{
+			Driver: "bridge",
+			IPAM:   &network.IPAM{Config: []network.IPAMConfig{{Subnet: workspaceSubnet}}},
+			// Disable inter-container comms so one anonymous box can't reach another
+			// on the same bridge.
+			Options: map[string]string{"com.docker.network.bridge.enable_icc": "false"},
+			Labels:  map[string]string{labelWorkspace: "network"},
+		})
+		if cerr != nil && !errdefsConflict(cerr) {
+			return fmt.Errorf("docker: create network %q: %w", p.network, cerr)
+		}
+	} else if err != nil {
 		return fmt.Errorf("docker: inspect network %q: %w", p.network, err)
 	}
-	_, err := p.cli.NetworkCreate(ctx, p.network, network.CreateOptions{
-		Driver: "bridge",
-		IPAM:   &network.IPAM{Config: []network.IPAMConfig{{Subnet: workspaceSubnet}}},
-		// Disable inter-container comms so one anonymous box can't reach another
-		// on the same bridge.
-		Options: map[string]string{"com.docker.network.bridge.enable_icc": "false"},
-		Labels:  map[string]string{labelWorkspace: "network"},
-	})
-	if err != nil && !errdefsConflict(err) {
-		return fmt.Errorf("docker: create network %q: %w", p.network, err)
-	}
+	p.ensureFence(workspaceSubnet, p.agentPort) // best-effort host egress firewall
 	return nil
 }
 
