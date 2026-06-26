@@ -25,9 +25,10 @@ type Box struct {
 	Owner    string // opaque principal (key fingerprint, login id, …) from the Authenticator
 	Name     string
 	// spec (desired)
-	ImageRef string
-	Backend  string // compute backend (docker|kubernetes|…); "" = auto, resolved via ResolveBackend
-	MemMB    int64  // 0 = provider default
+	ImageRef  string
+	Backend   string // compute backend (docker|kubernetes|…); "" = auto, resolved via ResolveBackend
+	MemMB     int64  // memory cap (MiB); 0 = provider default
+	CPUMillis int64  // CPU cap in milli-cores (1000 = 1 vCPU); 0 = unlimited
 	// lifetime (desired): an ephemeral box is reaped when its owner detaches.
 	// Persistent (the default) leaves these zero and is never reaped.
 	Ephemeral bool          // true = reap on disconnect (temporary box)

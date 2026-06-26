@@ -24,11 +24,12 @@ type Store interface {
 
 // Config holds the front door's workspace-creation defaults.
 type Config struct {
-	Tenant       string   // single-tenant id the front door creates under
-	DefaultImage string   // image used when the username names none
-	Backends     []string // compute backends actually configured (for ResolveBackend)
-	DefBackend   string   // default backend when more than one is configured
-	DefaultMemMB int64    // memory cap (MB) applied to every front-door box; 0 = unlimited
+	Tenant           string   // single-tenant id the front door creates under
+	DefaultImage     string   // image used when the username names none
+	Backends         []string // compute backends actually configured (for ResolveBackend)
+	DefBackend       string   // default backend when more than one is configured
+	DefaultMemMB     int64    // memory cap (MB) applied to every front-door box; 0 = unlimited
+	DefaultCPUMillis int64    // CPU cap (milli-cores) applied to every front-door box; 0 = unlimited
 }
 
 // Manager owns the attach/detach lifecycle for SSH front-door sessions.
@@ -70,7 +71,14 @@ func (m *Manager) Attach(ctx context.Context, principal, username string) (*work
 		if err != nil {
 			return nil, nil, err
 		}
-		w.MemMB = m.cfg.DefaultMemMB // cap anonymous front-door boxes so they can't exhaust the host
+		// Cap anonymous front-door boxes (cpu + mem) so one can't exhaust the host.
+		// A recognized named flavor in the spec (`name:img:medium`) overrides the
+		// configured default; an unknown flavor name falls back to it.
+		fl := box.Flavor{CPUMillis: m.cfg.DefaultCPUMillis, MemMB: m.cfg.DefaultMemMB}
+		if named, ok := box.ResolveFlavor(spec.Flavor); ok {
+			fl = named
+		}
+		w.Apply(fl)
 		w.Attached = true
 		if err := m.store.CreateWorkspace(ctx, w); err != nil {
 			return nil, nil, fmt.Errorf("create workspace: %w", err)

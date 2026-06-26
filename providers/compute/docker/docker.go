@@ -130,8 +130,14 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 		Mounts:     mounts,
 		ExtraHosts: []string{"host.docker.internal:host-gateway"},
 	}
-	if r.MemMB > 0 {
-		host.Resources = container.Resources{Memory: r.MemMB * 1024 * 1024}
+	if r.MemMB > 0 || r.CPUMillis > 0 {
+		host.Resources = container.Resources{}
+		if r.MemMB > 0 {
+			host.Resources.Memory = r.MemMB * 1024 * 1024
+		}
+		if r.CPUMillis > 0 {
+			host.Resources.NanoCPUs = r.CPUMillis * 1_000_000 // milli-cores -> nano-cores
+		}
 	}
 	// Put the box on the dedicated workspace bridge, isolating it from the host's
 	// other containers (docker isolates separate bridges). host.docker.internal

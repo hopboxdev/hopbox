@@ -213,10 +213,11 @@ func run(cfg config.Config) error {
 			return fmt.Errorf("ssh front-door host key: %w", err)
 		}
 		mgr := sshfront.New(st, bus.Publish, sshfront.Config{
-			Tenant:       cfg.Tenant,
-			DefaultImage: cfg.SSHDefaultImage,
-			Backends:     []string{cfg.ComputeKind},
-			DefaultMemMB: cfg.SSHDefaultMemMB,
+			Tenant:           cfg.Tenant,
+			DefaultImage:     cfg.SSHDefaultImage,
+			Backends:         []string{cfg.ComputeKind},
+			DefaultMemMB:     cfg.SSHDefaultMemMB,
+			DefaultCPUMillis: int64(cfg.SSHDefaultCPUs * 1000),
 		})
 		front := sshfront.NewServer(mgr, hub, hostKey, nil) // AnyKey: key is identity
 		frontLn, err := net.Listen("tcp", cfg.SSHAddr)

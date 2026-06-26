@@ -66,6 +66,7 @@ pre-created workspace. Boxes spawned this way are ephemeral. See
 | `--ssh-host-key` | `./hopbox-ssh-front-key` | Front-door host key path (auto-created on first run). |
 | `--ssh-default-image` | `alpine` | Image for front-door boxes when the username names none. |
 | `--ssh-default-mem-mb` | `2048` | Memory cap (MB) for front-door boxes — they are anonymous, so this bounds how much a single box can consume. `0` = unlimited. |
+| `--ssh-default-cpus` | `2` | CPU cap (vCPU) for front-door boxes. `0` = unlimited. A recognized named flavor in the spec (`box:img:medium`) overrides both caps. |
 
 ::: warning Harden the anonymous front door
 With the default `AnyKey` authority, **any** client key spawns a box that runs as

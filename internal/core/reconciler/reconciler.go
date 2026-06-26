@@ -171,6 +171,7 @@ func (r *Reconciler) provision(ctx context.Context, w *workspace.Workspace) erro
 		WorkspaceID: w.ID,
 		ImageRef:    w.ImageRef,
 		MemMB:       w.MemMB,
+		CPUMillis:   w.CPUMillis,
 		Mounts:      []ports.Mount{mount},
 		Agent:       r.cfg.Agent,
 		Env:         env,

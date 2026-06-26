@@ -47,6 +47,7 @@ type ProvisionRequest struct {
 	WorkspaceID string
 	ImageRef    string
 	MemMB       int64
+	CPUMillis   int64 // CPU cap in milli-cores (1000 = 1 vCPU); 0 = unlimited
 	Mounts      []Mount
 	Env         map[string]string // includes HOPBOX_AGENT_TOKEN, HOPBOX_CONTROL_ADDR
 	Agent       AgentImage        // how to side-load the agent (replaces AgentPath)
