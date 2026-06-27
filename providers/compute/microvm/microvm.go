@@ -44,15 +44,17 @@ type vm struct {
 
 var _ ports.Compute = (*Provider)(nil)
 
-// New builds the provider. It requires /dev/kvm and sets up the VM bridge.
-func New(fcBin, kernel, rootfs, runDir string) (*Provider, error) {
+// New builds the provider. It requires /dev/kvm and sets up the VM bridge +
+// egress fence. allowHostPorts are the host ports a box may reach (agent hub +
+// metadata); everything else on the host is blocked.
+func New(fcBin, kernel, rootfs, runDir string, allowHostPorts []string) (*Provider, error) {
 	if _, err := os.Stat("/dev/kvm"); err != nil {
 		return nil, fmt.Errorf("microvm: /dev/kvm unavailable (need KVM / nested virt): %w", err)
 	}
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return nil, err
 	}
-	net, err := newVMNet()
+	net, err := newVMNet(allowHostPorts)
 	if err != nil {
 		return nil, err
 	}
