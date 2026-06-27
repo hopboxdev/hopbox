@@ -23,7 +23,7 @@ func TestMeIdentifiesBoxBySourceIP(t *testing.T) {
 			return b, nil
 		}
 		return nil, box.ErrNotFound
-	}, nil)
+	}, nil, box.DefaultIdle)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -68,6 +68,7 @@ func mutateServer(b *box.Box) *Server {
 			fn(b)
 			return nil
 		},
+		box.DefaultIdle,
 	)
 }
 
@@ -116,7 +117,7 @@ func TestOwnerCommands(t *testing.T) {
 
 func TestTime(t *testing.T) {
 	fixed := time.Unix(1782554568, 351837502).UTC()
-	srv := New(nil, nil)
+	srv := New(nil, nil, box.DefaultIdle)
 	srv.now = func() time.Time { return fixed }
 	req, _ := http.NewRequest("GET", "/v1/me/time", nil)
 	rec := httptest.NewRecorder()

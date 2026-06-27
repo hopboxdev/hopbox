@@ -116,7 +116,7 @@ func run(c cfg) error {
 		return store.Update(ctx, b)
 	}
 	go func() {
-		mux := boxmeta.New(store.GetByIP, mutate).Handler()
+		mux := boxmeta.New(store.GetByIP, mutate, box.IdleConfig{Timeout: c.idleTimeout, LoadThreshold: box.DefaultIdle.LoadThreshold}).Handler()
 		mln, err := net.Listen("tcp", c.metaAddr)
 		if err != nil {
 			log.Printf("boxd: metadata API listen %s: %v", c.metaAddr, err)
