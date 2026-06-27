@@ -29,12 +29,17 @@ type Mutate func(ctx context.Context, ip string, fn func(*box.Box)) error
 type Server struct {
 	resolve Resolver
 	mutate  Mutate
+	idleCfg box.IdleConfig // the daemon's idle policy (for the /v1/me view + heartbeats)
 	now     func() time.Time
 }
 
-// New builds the metadata server. mutate may be nil (writes are then no-ops).
-func New(resolve Resolver, mutate Mutate) *Server {
-	return &Server{resolve: resolve, mutate: mutate, now: time.Now}
+// New builds the metadata server. mutate may be nil (writes are then no-ops); a
+// zero idle falls back to box.DefaultIdle.
+func New(resolve Resolver, mutate Mutate, idle box.IdleConfig) *Server {
+	if idle == (box.IdleConfig{}) {
+		idle = box.DefaultIdle
+	}
+	return &Server{resolve: resolve, mutate: mutate, idleCfg: idle, now: time.Now}
 }
 
 // Handler returns the metadata routes (Go 1.22 method patterns).
@@ -87,7 +92,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.now()
-	idle := b.EffectiveIdle(box.DefaultIdle)
+	idle := b.EffectiveIdle(s.idleCfg)
 	writeJSON(w, meta{
 		Name: b.Name, Owner: b.Owner, Image: b.ImageRef, IP: b.IP, Phase: string(b.Phase),
 		Ephemeral: b.Ephemeral, MemMB: b.MemMB, CPUMillis: b.CPUMillis,
@@ -141,7 +146,7 @@ func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	now := s.now()
 	apply(s, w, r, func(b *box.Box, req body) {
-		b.RecordHeartbeat(req.Load, now, box.DefaultIdle)
+		b.RecordHeartbeat(req.Load, now, s.idleCfg)
 	})
 }
 
