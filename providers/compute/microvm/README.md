@@ -12,15 +12,17 @@ the **kernel cmdline**: the kernel hands unrecognized `KEY=value` tokens to
 init's environment, which the agent inherits. No DHCP, config-drive, or API
 socket needed. Networking is the kernel `ip=` param (static eth0) on a host tap.
 
-Building the golden rootfs (F6 will productize this; the F1.3 seed):
+Building the golden rootfs — `build/microvm/build-rootfs.sh` (or `make
+microvm-rootfs`). It cross-compiles `hopbox-agent` + `box-guest`, fetches a
+pinned base ext4 + kernel, injects the binaries and `assets/hopbox-init`, and
+emits `$OUT_DIR/{vmlinux, agent.ext4}`. Run on Linux as root (it loop-mounts the
+image); supply prebuilt linux binaries via `$AGENT_BIN`/`$GUEST_BIN` when `go`
+isn't on the build host.
 
 ```sh
-cp base.ext4 agent.ext4
-truncate -s +96M agent.ext4 && e2fsck -fy agent.ext4; resize2fs agent.ext4
-mnt=$(mktemp -d); mount -o loop agent.ext4 "$mnt"
-install -m0755 hopbox-agent        "$mnt/usr/local/bin/hopbox-agent"
-install -m0755 assets/hopbox-init  "$mnt/sbin/hopbox-init"
-umount "$mnt"
+sudo build/microvm/build-rootfs.sh                 # cross-compile + build
+sudo AGENT_BIN=./agent GUEST_BIN=./box-guest \
+     build/microvm/build-rootfs.sh                 # from prebuilt binaries
 ```
 
 ## Running boxd on microVMs
