@@ -27,7 +27,23 @@ func newVMNet(allowHostPorts []string) (*vmNet, error) {
 		return nil, err
 	}
 	n.ensureFence(allowHostPorts) // best-effort egress fence on the VM subnet
+	n.reserveExistingTaps()       // survive a restart: don't reuse orphaned VMs' IPs
 	return n, nil
+}
+
+// reserveExistingTaps marks the octets of any fctap devices already on the host
+// as used, so a freshly-started boxd doesn't hand a live (orphaned) VM's IP/tap
+// to a new box.
+func (n *vmNet) reserveExistingTaps() {
+	out, err := exec.Command("ip", "-br", "link", "show").Output()
+	if err != nil {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for _, o := range tapOctets(string(out)) {
+		n.used[o] = true
+	}
 }
 
 // ensureBridge creates the bridge + gateway IP + egress NAT, idempotently.

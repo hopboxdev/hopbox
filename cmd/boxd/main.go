@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -112,6 +113,9 @@ func run(c cfg) error {
 	compute, err := newCompute(c, advertise, metaPort) // build-tagged backend (docker/microvm); stub otherwise
 	if err != nil {
 		return err
+	}
+	if cl, ok := compute.(io.Closer); ok {
+		defer cl.Close() // release shared backend resources (e.g. the microVM origin loop)
 	}
 
 	// agent hub: resolve the agent's bootstrap token to its box, and report
