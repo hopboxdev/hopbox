@@ -32,7 +32,7 @@ INIT_ASSET="${INIT_ASSET:-$REPO_ROOT/providers/compute/microvm/assets/hopbox-ini
 mkdir -p "$OUT_DIR" "$CACHE_DIR"
 
 echo "==> binaries"
-WORK="$(mktemp -d)"; trap 'umount "$WORK/mnt" 2>/dev/null; rm -rf "$WORK"' EXIT
+WORK="$(mktemp -d)"; trap 'umount "$WORK/mnt" 2>/dev/null || true; rm -rf "$WORK"' EXIT
 if [ -n "${AGENT_BIN:-}" ] && [ -n "${GUEST_BIN:-}" ]; then
   cp "$AGENT_BIN" "$WORK/hopbox-agent"; cp "$GUEST_BIN" "$WORK/box-guest"
 elif command -v go >/dev/null; then
