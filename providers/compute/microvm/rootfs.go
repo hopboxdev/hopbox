@@ -31,7 +31,7 @@ type rootfsPool struct {
 
 func newRootfsPool(base string) *rootfsPool {
 	p := &rootfsPool{base: base}
-	loop, err := losetup(base, true)
+	loop, err := originLoop(base)
 	if err != nil {
 		log.Printf("microvm: CoW unavailable (%v); falling back to full rootfs copies", err)
 		return p
@@ -89,6 +89,18 @@ func (p *rootfsPool) close() {
 }
 
 // --- host helpers ---
+
+// originLoop returns a read-only loop over base, reusing one that already exists
+// (so a boxd restart doesn't accumulate a loop per start) or creating a new one.
+func originLoop(base string) (string, error) {
+	if out, err := exec.Command("losetup", "-j", base).Output(); err == nil {
+		line := strings.SplitN(strings.TrimSpace(string(out)), "\n", 2)[0]
+		if loop := strings.SplitN(line, ":", 2)[0]; strings.HasPrefix(loop, "/dev/loop") {
+			return loop, nil
+		}
+	}
+	return losetup(base, true)
+}
 
 func losetup(file string, readonly bool) (string, error) {
 	args := []string{"--find", "--show"}

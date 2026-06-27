@@ -37,3 +37,22 @@ func TestTapNameAndOctet(t *testing.T) {
 		t.Fatalf("ipForOctet(2) = %q", ipForOctet(2))
 	}
 }
+
+func TestTapOctets(t *testing.T) {
+	out := `lo               UNKNOWN        00:00:00:00:00:00 <LOOPBACK,UP>
+eth0             UP             aa:bb:cc:dd:ee:ff <BROADCAST,MULTICAST,UP>
+hopbox-vmnet     UP             d2:11:.. <BROADCAST,MULTICAST,UP>
+fctap2@if9       UP             e6:.. <BROADCAST,MULTICAST,UP>
+fctap17          UP             e6:.. <BROADCAST,MULTICAST,UP>
+docker0          DOWN           02:.. <NO-CARRIER,BROADCAST,MULTICAST,UP>`
+	got := tapOctets(out)
+	want := map[int]bool{2: true, 17: true}
+	if len(got) != 2 {
+		t.Fatalf("tapOctets = %v, want octets 2 and 17", got)
+	}
+	for _, o := range got {
+		if !want[o] {
+			t.Fatalf("unexpected octet %d in %v", o, got)
+		}
+	}
+}

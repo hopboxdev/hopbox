@@ -124,6 +124,13 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 	return ports.Instance{Ref: r.WorkspaceID, Phase: ports.InstanceRunning, IP: ip}, nil
 }
 
+// Close releases shared host resources (the read-only origin loop). Best-effort:
+// if VMs still hold snapshots over it, the detach fails harmlessly.
+func (p *Provider) Close() error {
+	p.pool.close()
+	return nil
+}
+
 func (p *Provider) Status(_ context.Context, ref string) (ports.Instance, error) {
 	p.mu.Lock()
 	v := p.vms[ref]

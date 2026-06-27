@@ -3,6 +3,8 @@ package microvm
 import (
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 )
 
 // VM network layout. Each box is a tap on a host bridge; the bridge gateway is
@@ -50,4 +52,25 @@ func ipBootArg(ip, gateway, netmask string) string {
 // are capped at 15 chars; "fctap" + octet (<= 8) is safe and 1:1 with the IP.
 func tapNameForIP(ip string) string {
 	return fmt.Sprintf("fctap%d", lastOctet(ip))
+}
+
+// tapOctets parses `ip -br link show` output for the octets of existing fctap<N>
+// devices. On a boxd restart these belong to orphaned VMs, so their IPs must not
+// be re-handed-out. Pure (the host call lives in the provider).
+func tapOctets(ipLinkOutput string) []int {
+	var octets []int
+	for _, line := range strings.Split(ipLinkOutput, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		name := strings.SplitN(fields[0], "@", 2)[0] // strip a "fctap2@if7" suffix
+		if !strings.HasPrefix(name, "fctap") {
+			continue
+		}
+		if o, err := strconv.Atoi(strings.TrimPrefix(name, "fctap")); err == nil {
+			octets = append(octets, o)
+		}
+	}
+	return octets
 }
