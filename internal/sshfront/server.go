@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -42,26 +41,30 @@ type Server struct {
 	hub          Hub
 	hostKey      ssh.Signer
 	authority    Authority
-	images       func() []string // optional: catalog for the connect banner
+	images       func() []string // optional: catalog for the `images` meta-command
 	readyTimeout time.Duration
 	pollInterval time.Duration
 }
 
-// WithImages makes the front door advertise the available images in its SSH
-// connect banner, so users can discover what to put after `name:`.
+// WithImages lets users discover the catalog: `ssh images@host` lists the
+// available image names (and spawns no box).
 func (s *Server) WithImages(list func() []string) *Server { s.images = list; return s }
 
-// banner lists the available images (shown to the client before the session).
-func (s *Server) banner() string {
+// writeImages prints the catalog to the client. Returns false if image listing
+// isn't available (so the caller falls back to spawning a box of that name).
+func (s *Server) writeImages(w io.Writer) bool {
 	if s.images == nil {
-		return ""
+		return false
 	}
 	imgs := s.images()
 	if len(imgs) == 0 {
-		return ""
+		return false
 	}
-	return fmt.Sprintf("\n  hopbox — compute boxes over SSH\n  images: %s\n  pick one:  ssh <name>:<image>@host   (omit :image for the default)\n\n",
-		strings.Join(imgs, ", "))
+	fmt.Fprint(w, "available images (use  ssh <name>:<image>@host):\r\n")
+	for _, img := range imgs {
+		fmt.Fprintf(w, "  %s\r\n", img)
+	}
+	return true
 }
 
 // NewServer builds a front-door SSH server. authority defaults to AnyKey.
@@ -121,6 +124,12 @@ func (s *Server) waitReady(ctx context.Context, workspaceID string) error {
 // wait for it to be ready, bridge the client byte stream to a shell in the box,
 // and detach on exit so the reconciler can reap an ephemeral box.
 func (s *Server) serveSession(ctx context.Context, principal, username string, hdr agentproto.ShellHeader, client io.ReadWriteCloser) error {
+	// `ssh images@host` (or `image`) is a meta-command: list the catalog, no box.
+	if spec, err := box.ParseSpec(username); err == nil && (spec.Name == "images" || spec.Name == "image") {
+		if s.writeImages(client) {
+			return nil
+		}
+	}
 	b, release, err := s.engine.Attach(ctx, principal, username)
 	if err != nil {
 		return err
@@ -181,7 +190,6 @@ func (s *Server) handleConn(ctx context.Context, nc net.Conn) {
 			principal = p
 			return &ssh.Permissions{}, nil
 		},
-		BannerCallback: func(ssh.ConnMetadata) string { return s.banner() },
 	}
 	cfg.AddHostKey(s.hostKey)
 

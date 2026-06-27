@@ -11,7 +11,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT_DIR="${OUT_DIR:-/opt/hopbox-microvm}"
-IMAGE="${IMAGE:-debian-default}"
+IMAGE="${IMAGE:-debian-12}"
 SUITE="${SUITE:-bookworm}"
 SIZE_MB="${SIZE_MB:-1024}"
 MIRROR="${MIRROR:-http://deb.debian.org/debian}"
