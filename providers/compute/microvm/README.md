@@ -20,7 +20,7 @@ image); supply prebuilt linux binaries via `$AGENT_BIN`/`$GUEST_BIN` when `go`
 isn't on the build host.
 
 ```sh
-sudo build/microvm/build-rootfs.sh                 # cross-compile + build
+sudo IMAGE=ubuntu-22.04 build/microvm/build-rootfs.sh   # build one catalog image
 sudo AGENT_BIN=./agent GUEST_BIN=./box-guest \
      build/microvm/build-rootfs.sh                 # from prebuilt binaries
 ```
@@ -30,7 +30,7 @@ sudo AGENT_BIN=./agent GUEST_BIN=./box-guest \
 ```sh
 sudo boxd --compute microvm \
   --fc-kernel /opt/hopbox-microvm/vmlinux \
-  --fc-rootfs /opt/hopbox-microvm/agent.ext4 \
+  --fc-images-dir /opt/hopbox-microvm/images --default-image ubuntu-22.04 \
   --fc-rundir /var/lib/hopbox/microvm
 # then: ssh box@<host>  ->  a Firecracker microVM
 ```

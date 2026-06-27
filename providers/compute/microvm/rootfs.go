@@ -17,42 +17,53 @@ import (
 // writes during the box's life. Sparse, so it costs only what's actually written.
 const cowHeadroom = 8 << 30 // 8 GiB
 
-// rootfsPool hands each VM a copy-on-write clone of the golden rootfs via a
-// device-mapper snapshot over a single shared read-only origin loop — instant,
-// versus copying the whole image. If loop/dm setup is unavailable it falls back
-// to a full file copy, so the provider still works (just slower).
+// rootfsPool hands each VM a copy-on-write clone of a base image via a
+// device-mapper snapshot over a shared read-only origin loop — instant, versus
+// copying the whole image. It keeps one origin per base image (the catalog), so
+// multiple images coexist. If loop/dm is unavailable it falls back to a copy.
 type rootfsPool struct {
-	base       string
-	originLoop string // read-only loop over base (shared origin); "" => CoW unavailable
-	sectors    int64  // origin size in 512-byte sectors
-	mu         sync.Mutex
-	n          int // monotonic suffix for unique dm device names
+	mu      sync.Mutex
+	origins map[string]*origin // base image path -> shared read-only origin
+	n       int                // monotonic suffix for unique dm device names
 }
 
-func newRootfsPool(base string) *rootfsPool {
-	p := &rootfsPool{base: base}
+type origin struct {
+	loop    string // read-only loop over the base image
+	sectors int64  // size in 512-byte sectors
+}
+
+func newRootfsPool() *rootfsPool { return &rootfsPool{origins: map[string]*origin{}} }
+
+// originFor lazily creates (or reuses) the read-only origin loop for a base image.
+func (p *rootfsPool) originFor(base string) (*origin, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if o, ok := p.origins[base]; ok {
+		return o, nil
+	}
 	loop, err := originLoop(base)
 	if err != nil {
-		log.Printf("microvm: CoW unavailable (%v); falling back to full rootfs copies", err)
-		return p
+		return nil, err
 	}
 	sz, err := blockSectors(loop)
 	if err != nil {
 		_ = losetupDetach(loop)
-		log.Printf("microvm: CoW unavailable (%v); falling back to full rootfs copies", err)
-		return p
+		return nil, err
 	}
-	p.originLoop, p.sectors = loop, sz
-	return p
+	o := &origin{loop: loop, sectors: sz}
+	p.origins[base] = o
+	return o, nil
 }
 
-// clone returns a per-VM rootfs path (a dm snapshot device, or a copied file)
+// clone returns a per-VM rootfs path (a dm snapshot of base, or a copied file)
 // plus a teardown to release it.
-func (p *rootfsPool) clone(id, dir string) (path string, teardown func(), err error) {
-	if p.originLoop == "" { // fallback: full copy
+func (p *rootfsPool) clone(id, dir, base string) (path string, teardown func(), err error) {
+	o, err := p.originFor(base)
+	if err != nil { // fallback: full copy
+		log.Printf("microvm: CoW unavailable for %s (%v); copying", base, err)
 		f := filepath.Join(dir, "rootfs.ext4")
-		if err := copyFile(p.base, f); err != nil {
-			return "", nil, err
+		if cerr := copyFile(base, f); cerr != nil {
+			return "", nil, cerr
 		}
 		return f, func() {}, nil
 	}
@@ -69,7 +80,7 @@ func (p *rootfsPool) clone(id, dir string) (path string, teardown func(), err er
 	name := fmt.Sprintf("hopbox-%s-%d", dmSafe(id), p.n)
 	p.mu.Unlock()
 	// snapshot: origin (ro, shared) + cow store, persistent, 8-sector chunks.
-	table := fmt.Sprintf("0 %d snapshot %s %s P 8", p.sectors, p.originLoop, cowLoop)
+	table := fmt.Sprintf("0 %d snapshot %s %s P 8", o.sectors, o.loop, cowLoop)
 	if err := run("dmsetup", "create", name, "--table", table); err != nil {
 		_ = losetupDetach(cowLoop)
 		return "", nil, fmt.Errorf("microvm: dm snapshot: %w", err)
@@ -83,8 +94,10 @@ func (p *rootfsPool) clone(id, dir string) (path string, teardown func(), err er
 }
 
 func (p *rootfsPool) close() {
-	if p.originLoop != "" {
-		_ = losetupDetach(p.originLoop)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, o := range p.origins {
+		_ = losetupDetach(o.loop)
 	}
 }
 
