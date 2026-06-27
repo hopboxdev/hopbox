@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
@@ -38,6 +39,7 @@ type vm struct {
 	dir      string
 	ip       string      // allocated guest IP
 	tap      string      // host tap device
+	sock     string      // firecracker API socket (for snapshot/suspend, F4)
 	teardown func()      // release the CoW rootfs clone
 	done     atomic.Bool // set when the firecracker process exits
 }
@@ -101,21 +103,32 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 		Init:     vmInit, // launch hopbox-agent (F1.3)
 		Env:      r.Env,  // HOPBOX_* -> kernel cmdline -> init env -> agent
 	})
-	if err := writeJSON(filepath.Join(dir, "config.json"), cfg); err != nil {
-		return fail(err)
-	}
+	_ = writeJSON(filepath.Join(dir, "config.json"), cfg) // debug aid; boot goes via the API
 	logf, err := os.Create(filepath.Join(dir, "serial.log"))
 	if err != nil {
 		return fail(err)
 	}
-	cmd := exec.Command(p.fcBin, "--no-api", "--config-file", filepath.Join(dir, "config.json"))
+	// F4.1: boot over the API socket (rather than --no-api --config-file), so the
+	// same VM can later be snapshotted/suspended (F4).
+	sock := filepath.Join(dir, "fc.sock")
+	cmd := exec.Command(p.fcBin, "--api-sock", sock)
 	cmd.Stdin = nil // firecracker attaches the VM serial to stdin; don't feed it ours
 	cmd.Stdout, cmd.Stderr = logf, logf
 	if err := cmd.Start(); err != nil {
 		logf.Close()
 		return fail(fmt.Errorf("microvm: start firecracker: %w", err))
 	}
-	v := &vm{cmd: cmd, dir: dir, ip: ip, tap: tap, teardown: teardown}
+	if err := waitForSocket(sock, 3*time.Second); err != nil {
+		_ = cmd.Process.Kill()
+		logf.Close()
+		return fail(err)
+	}
+	if err := newFCClient(sock).boot(cfg); err != nil {
+		_ = cmd.Process.Kill()
+		logf.Close()
+		return fail(fmt.Errorf("microvm: boot: %w", err))
+	}
+	v := &vm{cmd: cmd, dir: dir, ip: ip, tap: tap, sock: sock, teardown: teardown}
 	p.mu.Lock()
 	p.vms[r.WorkspaceID] = v
 	p.mu.Unlock()
