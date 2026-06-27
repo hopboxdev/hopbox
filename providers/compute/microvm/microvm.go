@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -311,4 +313,20 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return out.Sync()
+}
+
+// Images lists the catalog: <name> for each <imagesDir>/<name>.ext4.
+func (p *Provider) Images() []string {
+	entries, err := os.ReadDir(p.imagesDir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range entries {
+		if n, ok := strings.CutSuffix(e.Name(), ".ext4"); ok && !e.IsDir() {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+	return names
 }

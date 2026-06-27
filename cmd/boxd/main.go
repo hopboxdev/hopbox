@@ -179,6 +179,9 @@ func run(c cfg) error {
 		return err
 	}
 	front := sshfront.NewServer(engine, hub, hostKey, nil) // AnyKey: the client key is the identity
+	if il, ok := compute.(ports.ImageLister); ok {
+		front = front.WithImages(il.Images) // advertise the catalog in the connect banner
+	}
 	frontLn, err := net.Listen("tcp", c.sshAddr)
 	if err != nil {
 		return err

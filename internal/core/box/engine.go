@@ -78,12 +78,10 @@ func (e *Engine) Attach(ctx context.Context, owner, username string) (*Box, func
 		return nil, nil, fmt.Errorf("username %q does not spawn a box", username)
 	}
 
-	b, err := e.store.GetByName(ctx, e.cfg.Tenant, spec.Name)
+	// Box names are per-owner: your "myproject" is distinct from another user's.
+	b, err := e.byOwnerName(ctx, owner, spec.Name)
 	switch {
-	case err == nil:
-		if b.Owner != owner {
-			return nil, nil, fmt.Errorf("box %q belongs to another user", spec.Name)
-		}
+	case err == nil: // own box -> reattach below
 	case errors.Is(err, ErrNotFound):
 		b, err = e.build(owner, spec)
 		if err != nil {
@@ -94,7 +92,7 @@ func (e *Engine) Attach(ctx context.Context, owner, username string) (*Box, func
 			return nil, nil, fmt.Errorf("create box: %w", err)
 		}
 		e.wake(b.ID, e.cfg.Tenant)
-		return b, e.releaser(b.ID, spec.Name), nil
+		return b, e.releaser(b.ID), nil
 	default:
 		return nil, nil, err
 	}
@@ -105,16 +103,31 @@ func (e *Engine) Attach(ctx context.Context, owner, username string) (*Box, func
 		return nil, nil, fmt.Errorf("attach box: %w", err)
 	}
 	e.wake(b.ID, e.cfg.Tenant)
-	return b, e.releaser(b.ID, spec.Name), nil
+	return b, e.releaser(b.ID), nil
+}
+
+// byOwnerName finds an owner's box by name (the box namespace is per-owner).
+func (e *Engine) byOwnerName(ctx context.Context, owner, name string) (*Box, error) {
+	all, err := e.store.List(ctx, e.cfg.Tenant)
+	if err != nil {
+		return nil, err
+	}
+	for _, b := range all {
+		if b.Owner == owner && b.Name == name {
+			return b, nil
+		}
+	}
+	return nil, ErrNotFound
 }
 
 // releaser returns the session-end hook: clear Attached and wake the reconciler
-// so an ephemeral box is reaped promptly. Best-effort.
-func (e *Engine) releaser(id, name string) func() {
+// so an ephemeral box is reaped promptly. Best-effort. Keyed by id (names are
+// per-owner, so a name lookup would be ambiguous).
+func (e *Engine) releaser(id string) func() {
 	return func() {
-		b, err := e.store.GetByName(context.Background(), e.cfg.Tenant, name)
-		if err != nil || b.ID != id {
-			return // already gone / replaced
+		b, err := e.store.Get(context.Background(), e.cfg.Tenant, id)
+		if err != nil {
+			return // already gone
 		}
 		b.Attached = false
 		b.LastActive = time.Now() // start the idle clock from detach (drives auto-suspend)

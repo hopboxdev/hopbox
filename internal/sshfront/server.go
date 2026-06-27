@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -41,8 +42,26 @@ type Server struct {
 	hub          Hub
 	hostKey      ssh.Signer
 	authority    Authority
+	images       func() []string // optional: catalog for the connect banner
 	readyTimeout time.Duration
 	pollInterval time.Duration
+}
+
+// WithImages makes the front door advertise the available images in its SSH
+// connect banner, so users can discover what to put after `name:`.
+func (s *Server) WithImages(list func() []string) *Server { s.images = list; return s }
+
+// banner lists the available images (shown to the client before the session).
+func (s *Server) banner() string {
+	if s.images == nil {
+		return ""
+	}
+	imgs := s.images()
+	if len(imgs) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("\n  hopbox — compute boxes over SSH\n  images: %s\n  pick one:  ssh <name>:<image>@host   (omit :image for the default)\n\n",
+		strings.Join(imgs, ", "))
 }
 
 // NewServer builds a front-door SSH server. authority defaults to AnyKey.
@@ -162,6 +181,7 @@ func (s *Server) handleConn(ctx context.Context, nc net.Conn) {
 			principal = p
 			return &ssh.Permissions{}, nil
 		},
+		BannerCallback: func(ssh.ConnMetadata) string { return s.banner() },
 	}
 	cfg.AddHostKey(s.hostKey)
 

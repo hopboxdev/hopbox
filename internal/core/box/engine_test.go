@@ -90,7 +90,7 @@ func TestEngineAttachNamedFlavorOverrides(t *testing.T) {
 	}
 }
 
-func TestEngineAttachReusesAndRejectsForeignOwner(t *testing.T) {
+func TestEngineAttachReusesPerOwnerName(t *testing.T) {
 	ctx := context.Background()
 	e, _ := newEngine(newFakeStore())
 	b1, rel1, err := e.Attach(ctx, "alice", "proj")
@@ -98,6 +98,7 @@ func TestEngineAttachReusesAndRejectsForeignOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	rel1()
+	// Same owner + name -> reuse the same box.
 	b2, rel2, err := e.Attach(ctx, "alice", "proj")
 	if err != nil {
 		t.Fatal(err)
@@ -106,8 +107,14 @@ func TestEngineAttachReusesAndRejectsForeignOwner(t *testing.T) {
 	if b1.ID != b2.ID || !b2.Attached {
 		t.Fatalf("reconnect must reuse + re-attach: %s/%s attached=%v", b1.ID, b2.ID, b2.Attached)
 	}
-	if _, _, err := e.Attach(ctx, "bob", "proj"); err == nil {
-		t.Fatal("attaching to another owner's box must error")
+	// Names are per-owner: another user's "proj" is a *different* box, not an error.
+	b3, rel3, err := e.Attach(ctx, "bob", "proj")
+	if err != nil {
+		t.Fatalf("a different owner's same-named box should be created, not rejected: %v", err)
+	}
+	defer rel3()
+	if b3.ID == b1.ID || b3.Owner != "bob" {
+		t.Fatalf("bob's proj must be a distinct box: id=%s owner=%s", b3.ID, b3.Owner)
 	}
 }
 

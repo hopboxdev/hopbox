@@ -96,6 +96,13 @@ type Suspender interface {
 	Resume(ctx context.Context, ref string) error
 }
 
+// ImageLister is an optional Compute capability: report the images a box spec
+// may name (the microVM catalog). The front door surfaces it so users can
+// discover what to put after the colon in `name:image`.
+type ImageLister interface {
+	Images() []string
+}
+
 type Storage interface {
 	EnsureHome(ctx context.Context, r HomeRequest) (Mount, error)
 	Delete(ctx context.Context, homeRef string) error
