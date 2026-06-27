@@ -8,8 +8,10 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,12 +30,48 @@ func main() {
 		log.Fatal("hopbox-agent: HOPBOX_CONTROL_ADDR and HOPBOX_AGENT_TOKEN are required")
 	}
 	loadSSHConfig() // host key + authorized keys for the embedded SSH server
+	if meta := os.Getenv("BOX_META"); meta != "" {
+		go heartbeatLoop(meta) // F3: report load to the metadata API for idle detection
+	}
 	for {
 		if err := connectAndServe(addr, agentproto.Handshake{WorkspaceID: wsID, Token: token}); err != nil {
 			log.Printf("hopbox-agent: connection ended: %v; retrying in 2s", err)
 		}
 		time.Sleep(2 * time.Second) // reconnect with simple backoff
 	}
+}
+
+// heartbeatLoop reports the box's 1-minute load average to the metadata API
+// every 15s, so the control plane can detect idleness (F3). Identity is the
+// source IP; no credential is sent.
+func heartbeatLoop(base string) {
+	client := &http.Client{Timeout: 5 * time.Second}
+	for {
+		time.Sleep(15 * time.Second)
+		body := fmt.Sprintf(`{"load":%g}`, loadAvg1())
+		req, err := http.NewRequest(http.MethodPost, base+"/v1/me/heartbeat", strings.NewReader(body))
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if resp, err := client.Do(req); err == nil {
+			_ = resp.Body.Close()
+		}
+	}
+}
+
+// loadAvg1 reads the 1-minute load average from /proc/loadavg (0 if unavailable).
+func loadAvg1() float64 {
+	b, err := os.ReadFile("/proc/loadavg")
+	if err != nil {
+		return 0
+	}
+	fields := strings.Fields(string(b))
+	if len(fields) == 0 {
+		return 0
+	}
+	v, _ := strconv.ParseFloat(fields[0], 64)
+	return v
 }
 
 func connectAndServe(addr string, hs agentproto.Handshake) error {

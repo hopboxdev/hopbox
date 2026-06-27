@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func TestMeIdentifiesBoxBySourceIP(t *testing.T) {
 			return b, nil
 		}
 		return nil, box.ErrNotFound
-	})
+	}, nil)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -56,9 +57,36 @@ func TestMeIdentifiesBoxBySourceIP(t *testing.T) {
 	}
 }
 
+func TestHeartbeatRecordsLoad(t *testing.T) {
+	b := box.New("default", "alice", "proj", "alpine")
+	b.IP = "10.0.0.5"
+	var got Heartbeat
+	srv := New(
+		func(_ context.Context, _ string) (*box.Box, error) { return b, nil },
+		func(_ context.Context, ip string, hb Heartbeat) error {
+			if ip != "10.0.0.5" {
+				t.Fatalf("recorder got ip %q", ip)
+			}
+			got = hb
+			b.RecordHeartbeat(hb.Load, time.Now(), box.DefaultIdle)
+			return nil
+		},
+	)
+	req, _ := http.NewRequest("POST", "/v1/me/heartbeat", strings.NewReader(`{"load":1.5}`))
+	req.RemoteAddr = "10.0.0.5:40000"
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != 204 {
+		t.Fatalf("heartbeat status=%d", rec.Code)
+	}
+	if got.Load != 1.5 || b.Load != 1.5 {
+		t.Fatalf("load not recorded: got=%v box=%v", got.Load, b.Load)
+	}
+}
+
 func TestTime(t *testing.T) {
 	fixed := time.Unix(1782554568, 351837502).UTC()
-	srv := New(nil)
+	srv := New(nil, nil)
 	srv.now = func() time.Time { return fixed }
 	req, _ := http.NewRequest("GET", "/v1/me/time", nil)
 	rec := httptest.NewRecorder()

@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS boxes (
   agent_connected INTEGER NOT NULL DEFAULT 0,
   attached        INTEGER NOT NULL DEFAULT 0,
   message         TEXT NOT NULL DEFAULT '',
+  load            REAL NOT NULL DEFAULT 0,
+  last_active     TEXT NOT NULL DEFAULT '',
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
   UNIQUE(tenant_id, name)
@@ -73,16 +75,17 @@ func b2i(b bool) int {
 }
 
 const cols = `id,tenant_id,owner,name,image_ref,backend,mem_mb,cpu_millis,ephemeral,grace_ns,
-	max_ttl_ns,deadline,phase,instance_ref,ip,bootstrap_token,agent_connected,attached,message,created_at,updated_at`
+	max_ttl_ns,deadline,phase,instance_ref,ip,bootstrap_token,agent_connected,attached,message,load,last_active,created_at,updated_at`
 
 func scan(row interface{ Scan(...any) error }) (*box.Box, error) {
 	var b box.Box
-	var backend, deadline, phase, created, updated string
+	var backend, deadline, phase, lastActive, created, updated string
+	var load float64
 	var memMB, cpu, graceNS, maxTTLNS int64
 	var ephemeral, connected, attached int
 	if err := row.Scan(&b.ID, &b.TenantID, &b.Owner, &b.Name, &b.ImageRef, &backend, &memMB, &cpu,
 		&ephemeral, &graceNS, &maxTTLNS, &deadline, &phase, &b.InstanceRef, &b.IP, &b.BootstrapToken,
-		&connected, &attached, &b.Message, &created, &updated); err != nil {
+		&connected, &attached, &b.Message, &load, &lastActive, &created, &updated); err != nil {
 		return nil, err
 	}
 	b.Backend, b.MemMB, b.CPUMillis = backend, memMB, cpu
@@ -91,6 +94,14 @@ func scan(row interface{ Scan(...any) error }) (*box.Box, error) {
 	b.Phase = box.Phase(phase)
 	b.AgentConnected = connected != 0
 	b.Attached = attached != 0
+	b.Load = load
+	if lastActive != "" {
+		la, err := time.Parse(ts, lastActive)
+		if err != nil {
+			return nil, fmt.Errorf("parse last_active %q: %w", lastActive, err)
+		}
+		b.LastActive = la
+	}
 	if deadline != "" {
 		d, err := time.Parse(ts, deadline)
 		if err != nil {
@@ -160,13 +171,20 @@ func deadlineStr(b *box.Box) string {
 	return b.Deadline.Format(ts)
 }
 
+func lastActiveStr(b *box.Box) string {
+	if b.LastActive.IsZero() {
+		return ""
+	}
+	return b.LastActive.Format(ts)
+}
+
 func (s *Store) Create(ctx context.Context, b *box.Box) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO boxes (`+cols+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		b.ID, b.TenantID, b.Owner, b.Name, b.ImageRef, b.Backend, b.MemMB, b.CPUMillis,
 		b2i(b.Ephemeral), int64(b.Grace), int64(b.MaxTTL), deadlineStr(b), string(b.Phase),
-		b.InstanceRef, b.IP, b.BootstrapToken, b2i(b.AgentConnected), b2i(b.Attached), b.Message,
+		b.InstanceRef, b.IP, b.BootstrapToken, b2i(b.AgentConnected), b2i(b.Attached), b.Message, b.Load, lastActiveStr(b),
 		b.CreatedAt.Format(ts), b.UpdatedAt.Format(ts))
 	return err
 }
@@ -177,11 +195,11 @@ func (s *Store) Update(ctx context.Context, b *box.Box) error {
 		UPDATE boxes SET
 		  image_ref=?, backend=?, mem_mb=?, cpu_millis=?, ephemeral=?, grace_ns=?, max_ttl_ns=?,
 		  deadline=?, phase=?, instance_ref=?, ip=?, bootstrap_token=?, agent_connected=?, attached=?,
-		  message=?, updated_at=?
+		  message=?, load=?, last_active=?, updated_at=?
 		WHERE id=?`,
 		b.ImageRef, b.Backend, b.MemMB, b.CPUMillis, b2i(b.Ephemeral), int64(b.Grace), int64(b.MaxTTL),
 		deadlineStr(b), string(b.Phase), b.InstanceRef, b.IP, b.BootstrapToken, b2i(b.AgentConnected),
-		b2i(b.Attached), b.Message, b.UpdatedAt.Format(ts), b.ID)
+		b2i(b.Attached), b.Message, b.Load, lastActiveStr(b), b.UpdatedAt.Format(ts), b.ID)
 	return err
 }
 

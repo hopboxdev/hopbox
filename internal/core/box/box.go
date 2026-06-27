@@ -43,8 +43,11 @@ type Box struct {
 	AgentConnected bool   // set by agenthub when the agent dials in (box-alive signal)
 	Attached       bool   // an owner SSH front-door session is held open (reap signal)
 	Message        string // last status / failure detail
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// activity (observed, written by the metadata heartbeat) — drives idle/suspend.
+	Load       float64   // last reported load average
+	LastActive time.Time // last time the box was busy (attached or load over threshold)
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 func newID() string {
