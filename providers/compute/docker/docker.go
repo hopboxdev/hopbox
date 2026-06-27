@@ -42,6 +42,7 @@ type Provider struct {
 	cli       *client.Client
 	network   string // dedicated bridge for workspace containers; "" = default bridge
 	agentPort string // the agent hub port boxes are allowed to reach (from advertise)
+	metaPort  string // the metadata API port boxes are allowed to reach; "" = none
 }
 
 var _ ports.Compute = (*Provider)(nil)
@@ -54,6 +55,10 @@ type Option func(*Provider)
 // boxes can no longer reach the host's other containers; the daemon also programs
 // an egress firewall on the network's subnet (ensureFence) — no external script.
 func WithNetwork(name string) Option { return func(p *Provider) { p.network = name } }
+
+// WithMetaPort also allows boxes to reach the metadata API on this host port
+// (alongside the agent hub) through the egress fence.
+func WithMetaPort(port string) Option { return func(p *Provider) { p.metaPort = port } }
 
 func New(advertise string, opts ...Option) (*Provider, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -95,7 +100,11 @@ func (p *Provider) ensureNetwork(ctx context.Context) error {
 	} else if err != nil {
 		return fmt.Errorf("docker: inspect network %q: %w", p.network, err)
 	}
-	p.ensureFence(workspaceSubnet, p.agentPort) // best-effort host egress firewall
+	allow := []string{p.agentPort}
+	if p.metaPort != "" {
+		allow = append(allow, p.metaPort)
+	}
+	p.ensureFence(workspaceSubnet, allow) // best-effort host egress firewall
 	return nil
 }
 
@@ -120,6 +129,12 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 		defer cleanup()
 	}
 	mounts := []mount.Mount{agentMount}
+	if r.GuestBin != "" {
+		// Side-load box-guest (the in-box metadata client) read-only on PATH.
+		mounts = append(mounts, mount.Mount{
+			Type: mount.TypeBind, Source: r.GuestBin, Target: "/usr/local/bin/box-guest", ReadOnly: true,
+		})
+	}
 	for _, m := range r.Mounts {
 		mounts = append(mounts, mount.Mount{
 			Type: mount.TypeBind, Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly,

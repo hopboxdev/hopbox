@@ -7,8 +7,11 @@ import (
 	dockerprov "github.com/hopboxdev/hopbox/providers/compute/docker"
 )
 
-func newCompute(advertise string) (ports.Compute, error) {
+func newCompute(advertise, metaPort string) (ports.Compute, error) {
 	// Boxes are anonymous, so isolate them by default: a dedicated bridge + the
-	// daemon's egress fence. Secure by default, no flags, no scripts.
-	return dockerprov.New(advertise, dockerprov.WithNetwork("boxd-net"))
+	// daemon's egress fence (which allows the agent + metadata ports). Secure by
+	// default, no flags, no scripts.
+	return dockerprov.New(advertise,
+		dockerprov.WithNetwork("boxd-net"),
+		dockerprov.WithMetaPort(metaPort))
 }

@@ -9,6 +9,6 @@ import (
 )
 
 // Without -tags docker there is no compute backend; boxd needs one to run.
-func newCompute(string) (ports.Compute, error) {
+func newCompute(string, string) (ports.Compute, error) {
 	return nil, fmt.Errorf("boxd built without a compute provider; rebuild with -tags docker")
 }

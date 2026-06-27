@@ -17,15 +17,17 @@ const (
 )
 
 // fenceRules returns the egress policy for a workspace box, by chain. Boxes may
-// reach the agent hub (the host on agentPort) and the public internet, but not
-// the host's other services, the LAN, the tailnet, or link-local/metadata. This
-// is a pure function so the policy is unit-testable without root.
-func fenceRules(agentPort string) (in, fwd [][]string) {
+// reach the allowed host ports (agent hub, metadata API) and the public internet,
+// but not the host's other services, the LAN, the tailnet, or link-local/metadata.
+// This is a pure function so the policy is unit-testable without root.
+func fenceRules(allowHostPorts []string) (in, fwd [][]string) {
 	in = [][]string{
 		{"-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "RETURN"},
-		{"-p", "tcp", "--dport", agentPort, "-j", "RETURN"}, // the agent hub on the host
-		{"-j", "DROP"}, // no other host service
 	}
+	for _, p := range allowHostPorts { // the control-plane ports on the host
+		in = append(in, []string{"-p", "tcp", "--dport", p, "-j", "RETURN"})
+	}
+	in = append(in, []string{"-j", "DROP"}) // no other host service
 	fwd = [][]string{
 		{"-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "RETURN"},
 		{"-d", "169.254.0.0/16", "-j", "DROP"}, // link-local / cloud metadata
@@ -43,13 +45,13 @@ func fenceRules(agentPort string) (in, fwd [][]string) {
 // startup/provision it survives reboots and docker restarts. Failures (no
 // iptables, not root, non-Linux dev host) are logged, not fatal: isolation is
 // best-effort hardening, not a reason to fail a box.
-func (p *Provider) ensureFence(subnet, agentPort string) {
+func (p *Provider) ensureFence(subnet string, allowHostPorts []string) {
 	ipt, err := iptables.New()
 	if err != nil {
 		log.Printf("docker: workspace firewall unavailable (%v); boxes are NOT egress-fenced", err)
 		return
 	}
-	in, fwd := fenceRules(agentPort)
+	in, fwd := fenceRules(allowHostPorts)
 	if err := p.applyFence(ipt, "INPUT", fenceInChain, subnet, in); err != nil {
 		log.Printf("docker: workspace firewall (INPUT): %v", err)
 	}

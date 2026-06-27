@@ -48,7 +48,8 @@ type ProvisionRequest struct {
 	WorkspaceID string
 	ImageRef    string
 	MemMB       int64
-	CPUMillis   int64 // CPU cap in milli-cores (1000 = 1 vCPU); 0 = unlimited
+	CPUMillis   int64  // CPU cap in milli-cores (1000 = 1 vCPU); 0 = unlimited
+	GuestBin    string // host path of the box-guest binary to side-load (read-only); "" = none
 	Mounts      []Mount
 	Env         map[string]string // includes HOPBOX_AGENT_TOKEN, HOPBOX_CONTROL_ADDR
 	Agent       AgentImage        // how to side-load the agent (replaces AgentPath)
