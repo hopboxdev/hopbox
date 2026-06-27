@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS boxes (
   idle_timeout_ns  INTEGER NOT NULL DEFAULT 0,
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
-  UNIQUE(tenant_id, name)
+  UNIQUE(tenant_id, owner, name)
 );
 CREATE INDEX IF NOT EXISTS idx_box_token ON boxes(bootstrap_token);
 CREATE INDEX IF NOT EXISTS idx_box_ip ON boxes(ip);`
