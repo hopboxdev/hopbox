@@ -80,3 +80,88 @@ func TestReconcileReapsEphemeralOnDisconnect(t *testing.T) {
 		t.Fatal("reaped box must be deleted from the store")
 	}
 }
+
+type fakeSuspender struct {
+	*fakeCompute
+	suspended, resumed int
+}
+
+func (f *fakeSuspender) Suspend(context.Context, string) error { f.suspended++; return nil }
+func (f *fakeSuspender) Resume(context.Context, string) error  { f.resumed++; return nil }
+
+func idleRunningBox(now time.Time) *Box {
+	b := New("default", "alice", "proj", "alpine")
+	b.Phase = PhaseRunning
+	b.InstanceRef = "c-1"
+	b.AutoSuspend = true
+	b.AgentConnected = true
+	b.Attached = false
+	b.Load = 0.0
+	b.LastActive = now.Add(-10 * time.Minute) // idle for 10m
+	return b
+}
+
+func TestReconcileAutoSuspendsThenResumes(t *testing.T) {
+	ctx := context.Background()
+	st := newFakeStore()
+	comp := &fakeSuspender{fakeCompute: &fakeCompute{}}
+	now := time.Now()
+	r := NewReconciler(st, comp, ReconcileConfig{
+		AgentAddr: "host:7777",
+		Idle:      IdleConfig{Timeout: 5 * time.Minute, LoadThreshold: 0.2},
+		Now:       func() time.Time { return now },
+	})
+	b := idleRunningBox(now)
+	_ = st.Create(ctx, b)
+
+	// idle persistent AutoSuspend box -> Suspended (not reaped).
+	if err := r.ReconcileOne(ctx, "default", b.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.Get(ctx, "default", b.ID)
+	if got.Phase != PhaseSuspended || comp.suspended != 1 || got.AgentConnected {
+		t.Fatalf("want suspended: phase=%s n=%d agent=%v", got.Phase, comp.suspended, got.AgentConnected)
+	}
+
+	// suspend != dead: a suspended box must not be re-provisioned.
+	if err := r.ReconcileOne(ctx, "default", b.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = st.Get(ctx, "default", b.ID)
+	if got.Phase != PhaseSuspended || comp.provisioned != 0 {
+		t.Fatalf("suspended box must stay put: phase=%s prov=%d", got.Phase, comp.provisioned)
+	}
+
+	// attach -> resume.
+	got.Attached = true
+	_ = st.Update(ctx, got)
+	if err := r.ReconcileOne(ctx, "default", b.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = st.Get(ctx, "default", b.ID)
+	if got.Phase != PhaseRunning || comp.resumed != 1 {
+		t.Fatalf("attach should resume: phase=%s resumed=%d", got.Phase, comp.resumed)
+	}
+}
+
+func TestReconcileKeepAlivePinPreventsSuspend(t *testing.T) {
+	ctx := context.Background()
+	st := newFakeStore()
+	comp := &fakeSuspender{fakeCompute: &fakeCompute{}}
+	now := time.Now()
+	r := NewReconciler(st, comp, ReconcileConfig{
+		Idle: IdleConfig{Timeout: 5 * time.Minute, LoadThreshold: 0.2},
+		Now:  func() time.Time { return now },
+	})
+	b := idleRunningBox(now)
+	b.KeepAliveUntil = now.Add(time.Hour) // pinned alive
+	_ = st.Create(ctx, b)
+
+	if err := r.ReconcileOne(ctx, "default", b.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.Get(ctx, "default", b.ID)
+	if got.Phase != PhaseRunning || comp.suspended != 0 {
+		t.Fatalf("keep-alive must prevent suspend: phase=%s n=%d", got.Phase, comp.suspended)
+	}
+}

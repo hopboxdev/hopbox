@@ -17,6 +17,7 @@ type ReconcileConfig struct {
 	Agent     ports.AgentImage // how to side-load the agent binary
 	MetaURL   string           // box metadata API URL injected as $BOX_META; "" = none
 	GuestBin  string           // host path of box-guest to side-load into each box; "" = none
+	Idle      IdleConfig       // when a persistent AutoSuspend box is considered idle
 	Interval  time.Duration    // backstop sweep period (default 1s)
 	Now       func() time.Time // clock seam; nil = time.Now
 }
@@ -38,6 +39,9 @@ type reconcileReq struct{ tenant, id string }
 func NewReconciler(s Store, c ports.Compute, cfg ReconcileConfig) *Reconciler {
 	if cfg.Interval == 0 {
 		cfg.Interval = time.Second
+	}
+	if cfg.Idle == (IdleConfig{}) {
+		cfg.Idle = DefaultIdle
 	}
 	now := cfg.Now
 	if now == nil {
@@ -108,8 +112,19 @@ func (r *Reconciler) ReconcileOne(ctx context.Context, tenant, id string) error 
 				return err
 			}
 		}
+		// A persistent, idle box suspends to disk (vs an ephemeral box's reap).
+		if r.shouldSuspend(b) {
+			return r.suspend(ctx, b)
+		}
 		if !b.AgentConnected {
 			return r.healIfDead(ctx, b)
+		}
+		return nil
+	case PhaseSuspended:
+		// Resume when an owner attaches; otherwise stay snapshotted (a suspended
+		// box's agent disconnect is expected, not a death to heal).
+		if b.Attached {
+			return r.resume(ctx, b)
 		}
 		return nil
 	case PhaseDestroying:
@@ -117,6 +132,42 @@ func (r *Reconciler) ReconcileOne(ctx context.Context, tenant, id string) error 
 	default:
 		return nil // Failed/Stopped terminal
 	}
+}
+
+// shouldSuspend reports whether a running box should auto-suspend now.
+func (r *Reconciler) shouldSuspend(b *Box) bool {
+	if b.Ephemeral || !b.AutoSuspend || !b.AgentConnected {
+		return false
+	}
+	if _, ok := r.compute.(ports.Suspender); !ok {
+		return false
+	}
+	now := r.now()
+	return now.After(b.KeepAliveUntil) && b.IsIdle(now, r.cfg.Idle)
+}
+
+func (r *Reconciler) suspend(ctx context.Context, b *Box) error {
+	susp := r.compute.(ports.Suspender) // guarded by shouldSuspend
+	if err := susp.Suspend(ctx, b.InstanceRef); err != nil {
+		return fmt.Errorf("suspend %s: %w", b.InstanceRef, err)
+	}
+	b.AgentConnected = false
+	log.Printf("boxreconcile: %s (%s) auto-suspended (idle)", b.ID, b.Name)
+	return r.setPhase(ctx, b, PhaseSuspended, "auto-suspended (idle)")
+}
+
+func (r *Reconciler) resume(ctx context.Context, b *Box) error {
+	susp, ok := r.compute.(ports.Suspender)
+	if !ok {
+		return r.provision(ctx, b) // can't resume; rebuild from spec
+	}
+	if err := susp.Resume(ctx, b.InstanceRef); err != nil {
+		return fmt.Errorf("resume %s: %w", b.InstanceRef, err)
+	}
+	log.Printf("boxreconcile: %s (%s) resumed (attached)", b.ID, b.Name)
+	// The box is running again; the agent reconnects shortly. AgentConnected
+	// flips true when it does (PhaseRunning + !AgentConnected just polls Status).
+	return r.setPhase(ctx, b, PhaseRunning, "resumed (attached)")
 }
 
 func (r *Reconciler) provision(ctx context.Context, b *Box) error {
@@ -215,6 +266,9 @@ func (r *Reconciler) destroy(ctx context.Context, b *Box) error {
 func (r *Reconciler) setPhase(ctx context.Context, b *Box, p Phase, msg string) error {
 	if !CanTransition(b.Phase, p) {
 		return fmt.Errorf("illegal transition %s->%s", b.Phase, p)
+	}
+	if p == PhaseRunning && b.LastActive.IsZero() {
+		b.LastActive = r.now() // start the idle clock so a box that never heartbeats can still suspend
 	}
 	b.Phase = p
 	b.Message = msg

@@ -41,6 +41,8 @@ func main() {
 	fcKernel := flag.String("fc-kernel", "/opt/hopbox-microvm/vmlinux", "vmlinux kernel (microvm)")
 	fcRootfs := flag.String("fc-rootfs", "/opt/hopbox-microvm/agent.ext4", "golden agent rootfs (microvm)")
 	fcRunDir := flag.String("fc-rundir", "/var/lib/hopbox/microvm", "per-VM working dir (microvm)")
+	autoSuspend := flag.Bool("auto-suspend", false, "persistent boxes that auto-suspend when idle, waking on reconnect (vs ephemeral reap)")
+	idleTimeout := flag.Duration("idle-timeout", 15*time.Minute, "suspend a box after this long idle (with --auto-suspend)")
 	flag.Parse()
 
 	if err := run(cfg{
@@ -48,6 +50,7 @@ func main() {
 		hostKeyPath: *hostKeyPath, image: *image, cpus: *cpus, memMB: *memMB, db: *db,
 		metaAddr: *metaAddr, guestBin: *guestBin, compute: *compute,
 		fcBin: *fcBin, fcKernel: *fcKernel, fcRootfs: *fcRootfs, fcRunDir: *fcRunDir,
+		autoSuspend: *autoSuspend, idleTimeout: *idleTimeout,
 	}); err != nil {
 		log.Fatal(err)
 	}
@@ -58,6 +61,8 @@ type cfg struct {
 	compute, fcBin, fcKernel, fcRootfs, fcRunDir                                          string
 	cpus                                                                                  float64
 	memMB                                                                                 int64
+	autoSuspend                                                                           bool
+	idleTimeout                                                                           time.Duration
 }
 
 // gatewayHost is the address the in-box agent + box-guest reach the host at,
@@ -134,6 +139,7 @@ func run(c cfg) error {
 		Agent:     ports.AgentImage{HostBinaryPath: c.agentBin, TargetPath: "/hopbox/hopbox-agent"},
 		MetaURL:   metaURL,
 		GuestBin:  c.guestBin,
+		Idle:      box.IdleConfig{Timeout: c.idleTimeout, LoadThreshold: box.DefaultIdle.LoadThreshold},
 	})
 	hub := agenthub.New().
 		WithResolver(func(ctx context.Context, token string) (string, error) {
@@ -163,6 +169,7 @@ func run(c cfg) error {
 		DefaultImage:  c.image,
 		Backends:      []string{"docker"},
 		DefaultFlavor: box.Flavor{MemMB: c.memMB, CPUMillis: int64(c.cpus * 1000)},
+		AutoSuspend:   c.autoSuspend,
 	})
 
 	hostKey, err := sshca.LoadOrCreateCA(c.hostKeyPath)
