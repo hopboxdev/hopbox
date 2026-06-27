@@ -76,7 +76,7 @@ HOPBOX_FC_ROOTFS=/opt/hopbox-microvm/agent.ext4
 HOPBOX_FC_RUNDIR=$LIBDIR/microvm
 # persistent boxes that auto-suspend when idle (vs ephemeral reap):
 HOPBOX_AUTO_SUSPEND=
-HOPBOX_IDLE_TIMEOUT=15m
+HOPBOX_IDLE_TIMEOUT=5m
 EOF
   log "wrote default config $ENVFILE"
 else

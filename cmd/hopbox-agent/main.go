@@ -289,10 +289,14 @@ func buildCommand(spec string) *exec.Cmd {
 	return c
 }
 
-// workspaceHome is the persistent home mount (/home/dev) when present, else "/".
+// workspaceHome is where a session opens: the dev-env persistent home
+// (/home/dev) if mounted, else the box's own home (/root) — a clean working
+// directory rather than the filesystem root. Falls back to "/".
 func workspaceHome() string {
-	if fi, err := os.Stat("/home/dev"); err == nil && fi.IsDir() {
-		return "/home/dev"
+	for _, d := range []string{"/home/dev", "/root"} {
+		if fi, err := os.Stat(d); err == nil && fi.IsDir() {
+			return d
+		}
 	}
 	return "/"
 }

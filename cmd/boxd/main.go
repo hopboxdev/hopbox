@@ -42,7 +42,7 @@ func main() {
 	fcRootfs := flag.String("fc-rootfs", "/opt/hopbox-microvm/agent.ext4", "golden agent rootfs (microvm)")
 	fcRunDir := flag.String("fc-rundir", "/var/lib/hopbox/microvm", "per-VM working dir (microvm)")
 	autoSuspend := flag.Bool("auto-suspend", false, "persistent boxes that auto-suspend when idle, waking on reconnect (vs ephemeral reap)")
-	idleTimeout := flag.Duration("idle-timeout", 15*time.Minute, "suspend a box after this long idle (with --auto-suspend)")
+	idleTimeout := flag.Duration("idle-timeout", 5*time.Minute, "suspend a box after this long idle (with --auto-suspend)")
 	flag.Parse()
 
 	if err := run(cfg{
