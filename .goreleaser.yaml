@@ -46,6 +46,28 @@ builds:
     ldflags: ["-s", "-w"]
     mod_timestamp: "{{ .CommitTimestamp }}"
 
+  # Box daemon — the standalone compute-box product (`ssh box@host`). Both compute
+  # backends are compiled in; `--compute docker|microvm` selects at runtime.
+  - id: boxd
+    main: ./cmd/boxd
+    binary: boxd
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-tags=docker,firecracker"]
+    ldflags: ["-s", "-w"]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+  # In-box metadata client (info / keep-alive / auto-suspend / idle / mcp).
+  - id: box-guest
+    main: ./cmd/box-guest
+    binary: box-guest
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags: ["-s", "-w"]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
 archives:
   # CLI archive — just `hopbox`, per os/arch. Unversioned name so install-cli.sh
   # and `/latest/download/` fetch it without resolving the version first.
@@ -58,6 +80,13 @@ archives:
   - id: server
     ids: [hopboxd, hopbox-gw, hopbox-agent]
     name_template: "hopbox-server_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+
+  # Box product bundle — boxd + the in-box agent + box-guest. install-boxd.sh
+  # fetches this. (microVM also needs a golden rootfs; see build/microvm.)
+  - id: box
+    ids: [boxd, hopbox-agent, box-guest]
+    name_template: "hopbox-box_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
 
 checksum:
