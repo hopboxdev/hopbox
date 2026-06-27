@@ -35,6 +35,9 @@ type Box struct {
 	Grace     time.Duration // stay-alive after the agent detaches; 0 = reap immediately
 	MaxTTL    time.Duration // hard cap from CreatedAt regardless of connection; 0 = none
 	Deadline  *time.Time    // reap-after instant, stamped on detach; nil while attached
+	// suspend (persistent boxes only): snapshot to disk when idle, wake on attach.
+	AutoSuspend    bool      // true = suspend when idle (vs reap); persistent boxes
+	KeepAliveUntil time.Time // pin: do not suspend before this instant (box-guest keep-alive)
 	// status (observed, written by the reconciler / agenthub)
 	Phase          Phase
 	InstanceRef    string // provider-opaque (e.g. docker container id)

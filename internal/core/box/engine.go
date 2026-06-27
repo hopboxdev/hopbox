@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // EngineConfig holds the box-spawn defaults the Engine applies.
@@ -13,6 +14,7 @@ type EngineConfig struct {
 	Backends      []string // compute backends actually configured (for ResolveBackend)
 	DefBackend    string   // default backend when more than one is configured
 	DefaultFlavor Flavor   // resource caps applied to a box unless its spec names a known flavor
+	AutoSuspend   bool     // true = boxes are persistent and auto-suspend when idle (vs ephemeral reap)
 }
 
 // Engine is the box product's core service: spawn / attach / inspect / destroy a
@@ -49,7 +51,12 @@ func (e *Engine) build(owner string, spec Spec) (*Box, error) {
 	}
 	b := New(e.cfg.Tenant, owner, spec.Name, image)
 	b.Backend = backend
-	b.Ephemeral = true
+	// Persistent + auto-suspend (krillbox model) or ephemeral reap-on-disconnect.
+	if e.cfg.AutoSuspend {
+		b.AutoSuspend = true
+	} else {
+		b.Ephemeral = true
+	}
 	b.Grace = spec.Grace
 	fl := e.cfg.DefaultFlavor
 	if named, ok := ResolveFlavor(spec.Flavor); ok {
@@ -110,6 +117,7 @@ func (e *Engine) releaser(id, name string) func() {
 			return // already gone / replaced
 		}
 		b.Attached = false
+		b.LastActive = time.Now() // start the idle clock from detach (drives auto-suspend)
 		if err := e.store.Update(context.Background(), b); err != nil {
 			return
 		}
