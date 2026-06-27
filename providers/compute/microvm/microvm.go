@@ -26,6 +26,7 @@ type Provider struct {
 	kernel string // vmlinux
 	rootfs string // golden base rootfs (read; copied per VM)
 	runDir string // per-VM working dirs live here
+	net    *vmNet // host bridge + tap + IP allocation
 
 	mu  sync.Mutex
 	vms map[string]*vm
@@ -34,12 +35,14 @@ type Provider struct {
 type vm struct {
 	cmd  *exec.Cmd
 	dir  string
+	ip   string      // allocated guest IP
+	tap  string      // host tap device
 	done atomic.Bool // set when the firecracker process exits
 }
 
 var _ ports.Compute = (*Provider)(nil)
 
-// New builds the provider. It requires /dev/kvm.
+// New builds the provider. It requires /dev/kvm and sets up the VM bridge.
 func New(fcBin, kernel, rootfs, runDir string) (*Provider, error) {
 	if _, err := os.Stat("/dev/kvm"); err != nil {
 		return nil, fmt.Errorf("microvm: /dev/kvm unavailable (need KVM / nested virt): %w", err)
@@ -47,7 +50,11 @@ func New(fcBin, kernel, rootfs, runDir string) (*Provider, error) {
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return nil, err
 	}
-	return &Provider{fcBin: fcBin, kernel: kernel, rootfs: rootfs, runDir: runDir, vms: map[string]*vm{}}, nil
+	net, err := newVMNet()
+	if err != nil {
+		return nil, err
+	}
+	return &Provider{fcBin: fcBin, kernel: kernel, rootfs: rootfs, runDir: runDir, net: net, vms: map[string]*vm{}}, nil
 }
 
 func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports.Instance, error) {
@@ -60,15 +67,31 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 	if err := copyFile(p.rootfs, rootfs); err != nil {
 		return ports.Instance{}, fmt.Errorf("microvm: stage rootfs: %w", err)
 	}
+	// F1.2: give the VM a tap on the bridge + a static IP (kernel ip=).
+	ip, err := p.net.allocIP()
+	if err != nil {
+		return ports.Instance{}, err
+	}
+	tap := tapNameForIP(ip)
+	if err := p.net.createTap(tap); err != nil {
+		p.net.freeIP(ip)
+		return ports.Instance{}, err
+	}
 	cfg := buildConfig(VMSpec{
 		KernelPath: p.kernel, RootfsPath: rootfs,
 		VcpuCount: vcpusFromMillis(r.CPUMillis), MemMB: r.MemMB,
+		TapDev: tap, GuestMAC: macFromIP(ip),
+		BootArgs: DefaultBootArgs + " " + ipBootArg(ip, vmGateway, vmNetmask),
 	})
 	if err := writeJSON(filepath.Join(dir, "config.json"), cfg); err != nil {
+		p.net.deleteTap(tap)
+		p.net.freeIP(ip)
 		return ports.Instance{}, err
 	}
 	logf, err := os.Create(filepath.Join(dir, "serial.log"))
 	if err != nil {
+		p.net.deleteTap(tap)
+		p.net.freeIP(ip)
 		return ports.Instance{}, err
 	}
 	cmd := exec.Command(p.fcBin, "--no-api", "--config-file", filepath.Join(dir, "config.json"))
@@ -76,15 +99,17 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 	cmd.Stdout, cmd.Stderr = logf, logf
 	if err := cmd.Start(); err != nil {
 		logf.Close()
+		p.net.deleteTap(tap)
+		p.net.freeIP(ip)
 		return ports.Instance{}, fmt.Errorf("microvm: start firecracker: %w", err)
 	}
-	v := &vm{cmd: cmd, dir: dir}
+	v := &vm{cmd: cmd, dir: dir, ip: ip, tap: tap}
 	p.mu.Lock()
 	p.vms[r.WorkspaceID] = v
 	p.mu.Unlock()
 	go func() { _ = cmd.Wait(); v.done.Store(true); logf.Close() }()
 
-	return ports.Instance{Ref: r.WorkspaceID, Phase: ports.InstanceRunning}, nil
+	return ports.Instance{Ref: r.WorkspaceID, Phase: ports.InstanceRunning, IP: ip}, nil
 }
 
 func (p *Provider) Status(_ context.Context, ref string) (ports.Instance, error) {
@@ -106,6 +131,8 @@ func (p *Provider) Destroy(_ context.Context, ref string) error {
 	delete(p.vms, ref)
 	p.mu.Unlock()
 	if v != nil {
+		p.net.deleteTap(v.tap)
+		p.net.freeIP(v.ip)
 		return os.RemoveAll(v.dir)
 	}
 	return nil
