@@ -15,6 +15,8 @@ import (
 type ReconcileConfig struct {
 	AgentAddr string           // address the in-box agent dials back (HOPBOX_CONTROL_ADDR)
 	Agent     ports.AgentImage // how to side-load the agent binary
+	MetaURL   string           // box metadata API URL injected as $BOX_META; "" = none
+	GuestBin  string           // host path of box-guest to side-load into each box; "" = none
 	Interval  time.Duration    // backstop sweep period (default 1s)
 	Now       func() time.Time // clock seam; nil = time.Now
 }
@@ -127,11 +129,15 @@ func (r *Reconciler) provision(ctx context.Context, b *Box) error {
 		"HOPBOX_WORKSPACE_ID": b.ID,
 		"HOPBOX_PRINCIPAL":    b.Owner,
 	}
+	if r.cfg.MetaURL != "" {
+		env["BOX_META"] = r.cfg.MetaURL // where box-guest reaches the metadata API
+	}
 	inst, err := r.compute.Provision(ctx, ports.ProvisionRequest{
 		WorkspaceID: b.ID,
 		ImageRef:    b.ImageRef,
 		MemMB:       b.MemMB,
 		CPUMillis:   b.CPUMillis,
+		GuestBin:    r.cfg.GuestBin,
 		Agent:       r.cfg.Agent,
 		Env:         env,
 	})

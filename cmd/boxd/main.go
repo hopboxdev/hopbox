@@ -9,11 +9,13 @@ import (
 	"flag"
 	"log"
 	"net"
+	"net/http"
 	"os/signal"
 	"syscall"
 
 	"github.com/hopboxdev/hopbox/internal/agenthub"
 	"github.com/hopboxdev/hopbox/internal/core/box"
+	"github.com/hopboxdev/hopbox/internal/core/boxmeta"
 	"github.com/hopboxdev/hopbox/internal/core/boxsqlite"
 	"github.com/hopboxdev/hopbox/internal/core/ports"
 	"github.com/hopboxdev/hopbox/internal/sshca"
@@ -30,20 +32,23 @@ func main() {
 	cpus := flag.Float64("default-cpus", 2, "CPU cap (vCPU) per box; 0 = unlimited")
 	memMB := flag.Int64("default-mem-mb", 2048, "memory cap (MB) per box; 0 = unlimited")
 	db := flag.String("db", "./boxd.db", "box database path")
+	metaAddr := flag.String("meta-addr", ":8090", "metadata API listen address (boxes reach it by source IP)")
+	guestBin := flag.String("guest-bin", "", "host path of the linux box-guest binary to side-load into boxes")
 	flag.Parse()
 
 	if err := run(cfg{
 		sshAddr: *sshAddr, agentListen: *agentListen, advertise: *advertise, agentBin: *agentBin,
 		hostKeyPath: *hostKeyPath, image: *image, cpus: *cpus, memMB: *memMB, db: *db,
+		metaAddr: *metaAddr, guestBin: *guestBin,
 	}); err != nil {
 		log.Fatal(err)
 	}
 }
 
 type cfg struct {
-	sshAddr, agentListen, advertise, agentBin, hostKeyPath, image, db string
-	cpus                                                              float64
-	memMB                                                             int64
+	sshAddr, agentListen, advertise, agentBin, hostKeyPath, image, db, metaAddr, guestBin string
+	cpus                                                                                  float64
+	memMB                                                                                 int64
 }
 
 func run(c cfg) error {
@@ -56,7 +61,24 @@ func run(c cfg) error {
 	}
 	defer store.Close()
 
-	compute, err := newCompute(c.advertise) // build-tagged: docker (or a stub without -tags docker)
+	// Metadata API: a box reaches it by source IP (no credential in the box). The
+	// box-guest client in each box reads $BOX_META = http://host.docker.internal:PORT.
+	metaPort := c.metaAddr
+	if _, p, err := net.SplitHostPort(c.metaAddr); err == nil && p != "" {
+		metaPort = p
+	}
+	go func() {
+		mux := boxmeta.New(store.GetByIP).Handler()
+		mln, err := net.Listen("tcp", c.metaAddr)
+		if err != nil {
+			log.Printf("boxd: metadata API listen %s: %v", c.metaAddr, err)
+			return
+		}
+		log.Printf("boxd: metadata API on %s", c.metaAddr)
+		_ = (&http.Server{Handler: mux}).Serve(mln)
+	}()
+
+	compute, err := newCompute(c.advertise, metaPort) // build-tagged: docker (or a stub without -tags docker)
 	if err != nil {
 		return err
 	}
@@ -66,6 +88,8 @@ func run(c cfg) error {
 	rec := box.NewReconciler(store, compute, box.ReconcileConfig{
 		AgentAddr: c.advertise,
 		Agent:     ports.AgentImage{HostBinaryPath: c.agentBin, TargetPath: "/hopbox/hopbox-agent"},
+		MetaURL:   "http://host.docker.internal:" + metaPort,
+		GuestBin:  c.guestBin,
 	})
 	hub := agenthub.New().
 		WithResolver(func(ctx context.Context, token string) (string, error) {

@@ -11,12 +11,14 @@ import (
 // the agent hub port and the internet are reachable; the host's other services
 // and private/tailnet ranges are denied.
 func TestFenceRulesPolicy(t *testing.T) {
-	in, fwd := fenceRules("7777")
+	in, fwd := fenceRules([]string{"7777", "8090"})
 
-	// INPUT (box -> host): only the agent port is allowed, everything else dropped.
+	// INPUT (box -> host): each allowed port returns; everything else drops.
 	joinedIn := join(in)
-	if !contains(in, []string{"-p", "tcp", "--dport", "7777", "-j", "RETURN"}) {
-		t.Fatalf("INPUT must allow the agent hub port: %v", joinedIn)
+	for _, port := range []string{"7777", "8090"} {
+		if !contains(in, []string{"-p", "tcp", "--dport", port, "-j", "RETURN"}) {
+			t.Fatalf("INPUT must allow host port %s: %v", port, joinedIn)
+		}
 	}
 	if last := in[len(in)-1]; last[len(last)-1] != "DROP" {
 		t.Fatalf("INPUT must end in DROP (no other host service): %v", last)
