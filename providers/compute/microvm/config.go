@@ -5,11 +5,18 @@
 // mapping is unit-testable without KVM.
 package microvm
 
+import "sort"
+
 const defaultMemMB = 256
 
 // DefaultBootArgs boots to the rootfs init over the serial console. Networking
 // and env are appended by the provider (F1.2/F1.3).
 const DefaultBootArgs = "console=ttyS0 reboot=k panic=-1 pci=off"
+
+// vmInit is the in-VM launcher (baked into the golden rootfs): it mounts the
+// essentials and execs hopbox-agent, which inherits the HOPBOX_* env the kernel
+// placed from the cmdline.
+const vmInit = "/sbin/hopbox-init"
 
 // VMSpec is the resolved input to one microVM: image paths, resources, and (once
 // F1.2 lands) its tap device. It is what fcConfig is built from.
@@ -21,6 +28,8 @@ type VMSpec struct {
 	BootArgs   string // "" = DefaultBootArgs
 	TapDev     string // host tap device name; "" = no network (F1.1)
 	GuestMAC   string
+	Init       string            // init= path (the in-VM launcher); "" = rootfs default
+	Env        map[string]string // injected via kernel cmdline key=value -> init's environment
 }
 
 // fcConfig mirrors Firecracker's `--config-file` JSON.
@@ -60,6 +69,15 @@ func buildConfig(s VMSpec) fcConfig {
 	if args == "" {
 		args = DefaultBootArgs
 	}
+	if s.Init != "" {
+		args += " init=" + s.Init
+	}
+	// The kernel hands unrecognized key=value cmdline tokens to init's environment,
+	// so this is how the agent gets HOPBOX_* without a DHCP/config-drive. Sorted
+	// for a deterministic cmdline. (Values must be space-free — the agent's are.)
+	for _, k := range sortedKeys(s.Env) {
+		args += " " + k + "=" + s.Env[k]
+	}
 	mem := s.MemMB
 	if mem <= 0 {
 		mem = defaultMemMB
@@ -77,6 +95,15 @@ func buildConfig(s VMSpec) fcConfig {
 		cfg.NetworkIfaces = []fcNetIface{{IfaceID: "eth0", HostDevName: s.TapDev, GuestMAC: s.GuestMAC}}
 	}
 	return cfg
+}
+
+func sortedKeys(m map[string]string) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
 }
 
 // vcpusFromMillis maps a CPU milli-core cap to a whole vCPU count (Firecracker

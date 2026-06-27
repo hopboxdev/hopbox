@@ -82,6 +82,8 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 		VcpuCount: vcpusFromMillis(r.CPUMillis), MemMB: r.MemMB,
 		TapDev: tap, GuestMAC: macFromIP(ip),
 		BootArgs: DefaultBootArgs + " " + ipBootArg(ip, vmGateway, vmNetmask),
+		Init:     vmInit, // launch hopbox-agent (F1.3)
+		Env:      r.Env,  // HOPBOX_* -> kernel cmdline -> init env -> agent
 	})
 	if err := writeJSON(filepath.Join(dir, "config.json"), cfg); err != nil {
 		p.net.deleteTap(tap)

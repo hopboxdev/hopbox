@@ -34,6 +34,20 @@ func TestBuildConfigDefaultsAndShape(t *testing.T) {
 	}
 }
 
+func TestBuildConfigInitAndEnvCmdline(t *testing.T) {
+	cfg := buildConfig(VMSpec{
+		KernelPath: "/k", RootfsPath: "/r",
+		Init: "/sbin/hopbox-init",
+		Env:  map[string]string{"HOPBOX_CONTROL_ADDR": "10.0.0.1:7777", "HOPBOX_AGENT_TOKEN": "tok"},
+	})
+	args := cfg.BootSource.BootArgs
+	// init= present, and env appended as cmdline key=value (sorted -> deterministic).
+	want := DefaultBootArgs + " init=/sbin/hopbox-init HOPBOX_AGENT_TOKEN=tok HOPBOX_CONTROL_ADDR=10.0.0.1:7777"
+	if args != want {
+		t.Fatalf("boot args =\n  %q\nwant\n  %q", args, want)
+	}
+}
+
 func TestBuildConfigResourcesAndNet(t *testing.T) {
 	cfg := buildConfig(VMSpec{
 		KernelPath: "/k", RootfsPath: "/r", MemMB: 2048, VcpuCount: vcpusFromMillis(2000),
