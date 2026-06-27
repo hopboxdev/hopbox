@@ -88,6 +88,11 @@ func str(a map[string]any, k string) string {
 }
 
 func runMCP(b string) {
+	// Run on a terminal? Then a human typed `box-guest mcp` and is staring at a
+	// blank prompt — it's a JSON-RPC server, not interactive. Say so.
+	if fi, err := os.Stdin.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+		fmt.Fprintln(os.Stderr, "box-guest mcp: MCP server on stdio — waiting for JSON-RPC. Spawn me from an MCP client; Ctrl-C to exit.")
+	}
 	ts := tools(b)
 	byName := map[string]tool{}
 	for _, t := range ts {
