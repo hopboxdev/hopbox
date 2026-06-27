@@ -44,3 +44,9 @@ lint:
 
 run-hopboxd: build
 	$(BIN)/hopboxd --db ./hopbox.db --agent-bin ./$(BIN)/hopbox-agent-linux-amd64
+
+# Build the golden microVM agent rootfs (F6). Run on Linux as root.
+# Override OUT_DIR / AGENT_BIN / GUEST_BIN as needed (see the script header).
+microvm-rootfs:
+	sudo build/microvm/build-rootfs.sh
+.PHONY: microvm-rootfs
