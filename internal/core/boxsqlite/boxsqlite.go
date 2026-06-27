@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS boxes (
   deadline        TEXT NOT NULL DEFAULT '',
   phase           TEXT NOT NULL,
   instance_ref    TEXT NOT NULL DEFAULT '',
+  ip              TEXT NOT NULL DEFAULT '',
   bootstrap_token TEXT NOT NULL DEFAULT '',
   agent_connected INTEGER NOT NULL DEFAULT 0,
   attached        INTEGER NOT NULL DEFAULT 0,
@@ -39,7 +40,8 @@ CREATE TABLE IF NOT EXISTS boxes (
   updated_at      TEXT NOT NULL,
   UNIQUE(tenant_id, name)
 );
-CREATE INDEX IF NOT EXISTS idx_box_token ON boxes(bootstrap_token);`
+CREATE INDEX IF NOT EXISTS idx_box_token ON boxes(bootstrap_token);
+CREATE INDEX IF NOT EXISTS idx_box_ip ON boxes(ip);`
 
 // Store is a sqlite-backed box.Store.
 type Store struct{ db *sql.DB }
@@ -71,7 +73,7 @@ func b2i(b bool) int {
 }
 
 const cols = `id,tenant_id,owner,name,image_ref,backend,mem_mb,cpu_millis,ephemeral,grace_ns,
-	max_ttl_ns,deadline,phase,instance_ref,bootstrap_token,agent_connected,attached,message,created_at,updated_at`
+	max_ttl_ns,deadline,phase,instance_ref,ip,bootstrap_token,agent_connected,attached,message,created_at,updated_at`
 
 func scan(row interface{ Scan(...any) error }) (*box.Box, error) {
 	var b box.Box
@@ -79,7 +81,7 @@ func scan(row interface{ Scan(...any) error }) (*box.Box, error) {
 	var memMB, cpu, graceNS, maxTTLNS int64
 	var ephemeral, connected, attached int
 	if err := row.Scan(&b.ID, &b.TenantID, &b.Owner, &b.Name, &b.ImageRef, &backend, &memMB, &cpu,
-		&ephemeral, &graceNS, &maxTTLNS, &deadline, &phase, &b.InstanceRef, &b.BootstrapToken,
+		&ephemeral, &graceNS, &maxTTLNS, &deadline, &phase, &b.InstanceRef, &b.IP, &b.BootstrapToken,
 		&connected, &attached, &b.Message, &created, &updated); err != nil {
 		return nil, err
 	}
@@ -161,10 +163,10 @@ func deadlineStr(b *box.Box) string {
 func (s *Store) Create(ctx context.Context, b *box.Box) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO boxes (`+cols+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		b.ID, b.TenantID, b.Owner, b.Name, b.ImageRef, b.Backend, b.MemMB, b.CPUMillis,
 		b2i(b.Ephemeral), int64(b.Grace), int64(b.MaxTTL), deadlineStr(b), string(b.Phase),
-		b.InstanceRef, b.BootstrapToken, b2i(b.AgentConnected), b2i(b.Attached), b.Message,
+		b.InstanceRef, b.IP, b.BootstrapToken, b2i(b.AgentConnected), b2i(b.Attached), b.Message,
 		b.CreatedAt.Format(ts), b.UpdatedAt.Format(ts))
 	return err
 }
@@ -174,11 +176,11 @@ func (s *Store) Update(ctx context.Context, b *box.Box) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE boxes SET
 		  image_ref=?, backend=?, mem_mb=?, cpu_millis=?, ephemeral=?, grace_ns=?, max_ttl_ns=?,
-		  deadline=?, phase=?, instance_ref=?, bootstrap_token=?, agent_connected=?, attached=?,
+		  deadline=?, phase=?, instance_ref=?, ip=?, bootstrap_token=?, agent_connected=?, attached=?,
 		  message=?, updated_at=?
 		WHERE id=?`,
 		b.ImageRef, b.Backend, b.MemMB, b.CPUMillis, b2i(b.Ephemeral), int64(b.Grace), int64(b.MaxTTL),
-		deadlineStr(b), string(b.Phase), b.InstanceRef, b.BootstrapToken, b2i(b.AgentConnected),
+		deadlineStr(b), string(b.Phase), b.InstanceRef, b.IP, b.BootstrapToken, b2i(b.AgentConnected),
 		b2i(b.Attached), b.Message, b.UpdatedAt.Format(ts), b.ID)
 	return err
 }
@@ -186,4 +188,13 @@ func (s *Store) Update(ctx context.Context, b *box.Box) error {
 func (s *Store) Delete(ctx context.Context, _ /*tenant*/, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM boxes WHERE id=?`, id)
 	return err
+}
+
+// GetByIP resolves a box by its network IP — backs the metadata API's
+// identify-by-source-IP. Not part of box.Store.
+func (s *Store) GetByIP(ctx context.Context, ip string) (*box.Box, error) {
+	if ip == "" {
+		return nil, box.ErrNotFound
+	}
+	return s.one(ctx, "ip=?", ip)
 }

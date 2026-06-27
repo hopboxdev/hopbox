@@ -139,6 +139,7 @@ func (r *Reconciler) provision(ctx context.Context, b *Box) error {
 		return r.fail(ctx, b, fmt.Errorf("compute: %w", err))
 	}
 	b.InstanceRef = inst.Ref
+	b.IP = inst.IP
 	b.AgentConnected = false
 	b.Phase = PhaseProvisioning
 	b.Message = "provisioned, awaiting agent"

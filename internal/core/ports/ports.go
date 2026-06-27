@@ -27,6 +27,7 @@ type Mount struct {
 type Instance struct {
 	Ref   string
 	Phase InstancePhase
+	IP    string // box IP on its network (for metadata-by-source-IP identity); "" if unknown
 }
 
 // AgentImage describes how a Compute provider obtains and runs the hopbox-agent
