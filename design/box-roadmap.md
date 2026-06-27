@@ -27,8 +27,16 @@ toward parity with the reference "compute-boxes-over-SSH" product we studied
 `boxd` (standalone, persistent `boxsqlite`, docker provider, network self-fence);
 ephemeral + persistent boxes; cpu/mem flavors; `ports.Compute` seam.
 
-Gaps vs the reference: microVMs, metadata-identity, idle/suspend/wake, image
-cloning, in-guest tool, MCP, rootfs flavors.
+**Shipped:** ✅ **F2** metadata-identity + `box-guest` · ✅ **F1** the Firecracker
+microVM provider, end to end — `ssh box@host` lands in an isolated, egress-fenced,
+CoW-cloned microVM (see [f1-firecracker.md](f1-firecracker.md)).
+
+**Next:** **F3/F4** the idle→suspend→wake lifecycle (see
+[f3-f4-lifecycle.md](f3-f4-lifecycle.md)). Then F6 golden-image pipeline, F7
+MCP-in-guest.
+
+Remaining gaps vs the reference: idle/suspend/wake, image cloning pipeline, MCP,
+rootfs flavors.
 
 ---
 
