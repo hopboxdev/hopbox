@@ -4,6 +4,11 @@
 mount -t proc proc /proc 2>/dev/null
 mount -t sysfs sysfs /sys 2>/dev/null
 mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mkdir -p /dev/pts /dev/shm /run
+mount -t devpts -o mode=0620,gid=5,ptmxmode=0666 devpts /dev/pts 2>/dev/null
+mount -t tmpfs tmpfs /dev/shm 2>/dev/null
 mount -t tmpfs tmpfs /run 2>/dev/null
+# pty allocation (the agent's shells) needs /dev/ptmx -> the devpts multiplexer.
+[ -e /dev/ptmx ] || ln -s pts/ptmx /dev/ptmx
 hostname box 2>/dev/null
 exec /usr/local/bin/hopbox-agent

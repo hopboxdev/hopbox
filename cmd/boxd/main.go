@@ -25,21 +25,27 @@ import (
 func main() {
 	sshAddr := flag.String("ssh-addr", ":2222", "front-door SSH listen (username=box spec, key=identity)")
 	agentListen := flag.String("agent-listen", ":7777", "agent reverse-dial listen address")
-	advertise := flag.String("advertise", "host.docker.internal:7777", "address the in-box agent dials back")
-	agentBin := flag.String("agent-bin", "", "host path of the linux hopbox-agent binary to side-load")
+	advertise := flag.String("advertise", "", "address the in-box agent dials back (default: derived from the --compute gateway + agent port)")
+	agentBin := flag.String("agent-bin", "", "host path of the linux hopbox-agent binary to side-load (docker)")
 	hostKeyPath := flag.String("host-key", "./boxd-ssh-host-key", "front-door SSH host key (auto-created)")
-	image := flag.String("default-image", "alpine", "image when the spec names none")
+	image := flag.String("default-image", "alpine", "image when the spec names none (docker)")
 	cpus := flag.Float64("default-cpus", 2, "CPU cap (vCPU) per box; 0 = unlimited")
 	memMB := flag.Int64("default-mem-mb", 2048, "memory cap (MB) per box; 0 = unlimited")
 	db := flag.String("db", "./boxd.db", "box database path")
 	metaAddr := flag.String("meta-addr", ":8090", "metadata API listen address (boxes reach it by source IP)")
-	guestBin := flag.String("guest-bin", "", "host path of the linux box-guest binary to side-load into boxes")
+	guestBin := flag.String("guest-bin", "", "host path of the linux box-guest binary to side-load into boxes (docker)")
+	compute := flag.String("compute", "docker", "compute backend: docker | microvm")
+	fcBin := flag.String("fc-bin", "/usr/local/bin/firecracker", "firecracker binary (microvm)")
+	fcKernel := flag.String("fc-kernel", "/opt/hopbox-microvm/vmlinux", "vmlinux kernel (microvm)")
+	fcRootfs := flag.String("fc-rootfs", "/opt/hopbox-microvm/agent.ext4", "golden agent rootfs (microvm)")
+	fcRunDir := flag.String("fc-rundir", "/var/lib/hopbox/microvm", "per-VM working dir (microvm)")
 	flag.Parse()
 
 	if err := run(cfg{
 		sshAddr: *sshAddr, agentListen: *agentListen, advertise: *advertise, agentBin: *agentBin,
 		hostKeyPath: *hostKeyPath, image: *image, cpus: *cpus, memMB: *memMB, db: *db,
-		metaAddr: *metaAddr, guestBin: *guestBin,
+		metaAddr: *metaAddr, guestBin: *guestBin, compute: *compute,
+		fcBin: *fcBin, fcKernel: *fcKernel, fcRootfs: *fcRootfs, fcRunDir: *fcRunDir,
 	}); err != nil {
 		log.Fatal(err)
 	}
@@ -47,8 +53,28 @@ func main() {
 
 type cfg struct {
 	sshAddr, agentListen, advertise, agentBin, hostKeyPath, image, db, metaAddr, guestBin string
+	compute, fcBin, fcKernel, fcRootfs, fcRunDir                                          string
 	cpus                                                                                  float64
 	memMB                                                                                 int64
+}
+
+// gatewayHost is the address the in-box agent + box-guest reach the host at,
+// per backend: docker boxes use the magic host alias; microVMs use the bridge
+// gateway IP.
+func gatewayHost(compute string) string {
+	if compute == "microvm" {
+		return "10.0.0.1"
+	}
+	return "host.docker.internal"
+}
+
+// portOf extracts the port from a listen address (":7777" -> "7777"), falling
+// back to def.
+func portOf(addr, def string) string {
+	if _, p, err := net.SplitHostPort(addr); err == nil && p != "" {
+		return p
+	}
+	return def
 }
 
 func run(c cfg) error {
@@ -61,12 +87,17 @@ func run(c cfg) error {
 	}
 	defer store.Close()
 
-	// Metadata API: a box reaches it by source IP (no credential in the box). The
-	// box-guest client in each box reads $BOX_META = http://host.docker.internal:PORT.
-	metaPort := c.metaAddr
-	if _, p, err := net.SplitHostPort(c.metaAddr); err == nil && p != "" {
-		metaPort = p
+	// The agent + box-guest reach the host at the backend's gateway. The agent
+	// dials `advertise`; box-guest reads $BOX_META; both derived from one host.
+	gwHost := gatewayHost(c.compute)
+	agentPort := portOf(c.agentListen, "7777")
+	metaPort := portOf(c.metaAddr, "8090")
+	advertise := c.advertise
+	if advertise == "" {
+		advertise = net.JoinHostPort(gwHost, agentPort)
 	}
+	metaURL := "http://" + net.JoinHostPort(gwHost, metaPort)
+
 	go func() {
 		mux := boxmeta.New(store.GetByIP).Handler()
 		mln, err := net.Listen("tcp", c.metaAddr)
@@ -74,11 +105,11 @@ func run(c cfg) error {
 			log.Printf("boxd: metadata API listen %s: %v", c.metaAddr, err)
 			return
 		}
-		log.Printf("boxd: metadata API on %s", c.metaAddr)
+		log.Printf("boxd: metadata API on %s (boxes reach %s)", c.metaAddr, metaURL)
 		_ = (&http.Server{Handler: mux}).Serve(mln)
 	}()
 
-	compute, err := newCompute(c.advertise, metaPort) // build-tagged: docker (or a stub without -tags docker)
+	compute, err := newCompute(c, advertise, metaPort) // build-tagged backend (docker/microvm); stub otherwise
 	if err != nil {
 		return err
 	}
@@ -86,9 +117,9 @@ func run(c cfg) error {
 	// agent hub: resolve the agent's bootstrap token to its box, and report
 	// connect/disconnect back to the store + wake the reconciler.
 	rec := box.NewReconciler(store, compute, box.ReconcileConfig{
-		AgentAddr: c.advertise,
+		AgentAddr: advertise,
 		Agent:     ports.AgentImage{HostBinaryPath: c.agentBin, TargetPath: "/hopbox/hopbox-agent"},
-		MetaURL:   "http://host.docker.internal:" + metaPort,
+		MetaURL:   metaURL,
 		GuestBin:  c.guestBin,
 	})
 	hub := agenthub.New().
@@ -108,7 +139,7 @@ func run(c cfg) error {
 		return err
 	}
 	go func() {
-		log.Printf("boxd: agent gateway on %s (advertise %s)", c.agentListen, c.advertise)
+		log.Printf("boxd: agent gateway on %s (advertise %s)", c.agentListen, advertise)
 		if err := hub.Serve(ctx, agentLn); err != nil {
 			log.Printf("boxd: agent hub stopped: %v", err)
 		}
