@@ -38,6 +38,7 @@ type Box struct {
 	// status (observed, written by the reconciler / agenthub)
 	Phase          Phase
 	InstanceRef    string // provider-opaque (e.g. docker container id)
+	IP             string // box IP on its network; identifies it to the metadata API by source IP
 	BootstrapToken string // one-time, box-scoped agent token
 	AgentConnected bool   // set by agenthub when the agent dials in (box-alive signal)
 	Attached       bool   // an owner SSH front-door session is held open (reap signal)

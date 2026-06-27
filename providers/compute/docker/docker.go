@@ -174,7 +174,26 @@ func (p *Provider) Provision(ctx context.Context, r ports.ProvisionRequest) (por
 	if err := p.cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
 		return ports.Instance{}, fmt.Errorf("docker: start: %w", err)
 	}
-	return ports.Instance{Ref: created.ID, Phase: ports.InstanceRunning}, nil
+	ip := ""
+	if info, ierr := p.cli.ContainerInspect(ctx, created.ID); ierr == nil {
+		ip = containerIP(info, p.network)
+	}
+	return ports.Instance{Ref: created.ID, Phase: ports.InstanceRunning, IP: ip}, nil
+}
+
+// containerIP returns the box's IP on its network (the dedicated bridge if set,
+// else the default bridge) — the identity the metadata API matches by source IP.
+func containerIP(info container.InspectResponse, network string) string {
+	ns := info.NetworkSettings
+	if ns == nil {
+		return ""
+	}
+	if network != "" {
+		if n, ok := ns.Networks[network]; ok && n != nil {
+			return n.IPAddress
+		}
+	}
+	return ns.IPAddress
 }
 
 // ensureImage pulls ref if it is not already present locally (IfNotPresent).
