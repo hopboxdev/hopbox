@@ -105,16 +105,18 @@ func run(c cfg) error {
 	}
 	metaURL := "http://" + net.JoinHostPort(gwHost, metaPort)
 
-	record := func(ctx context.Context, ip string, hb boxmeta.Heartbeat) error {
+	// One write seam backs every metadata mutation (heartbeat + owner commands):
+	// resolve the calling box by IP, apply, persist.
+	mutate := func(ctx context.Context, ip string, fn func(*box.Box)) error {
 		b, err := store.GetByIP(ctx, ip)
 		if err != nil {
 			return err
 		}
-		b.RecordHeartbeat(hb.Load, time.Now(), box.DefaultIdle)
+		fn(b)
 		return store.Update(ctx, b)
 	}
 	go func() {
-		mux := boxmeta.New(store.GetByIP, record).Handler()
+		mux := boxmeta.New(store.GetByIP, mutate).Handler()
 		mln, err := net.Listen("tcp", c.metaAddr)
 		if err != nil {
 			log.Printf("boxd: metadata API listen %s: %v", c.metaAddr, err)

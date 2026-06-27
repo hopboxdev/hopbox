@@ -57,30 +57,60 @@ func TestMeIdentifiesBoxBySourceIP(t *testing.T) {
 	}
 }
 
-func TestHeartbeatRecordsLoad(t *testing.T) {
-	b := box.New("default", "alice", "proj", "alpine")
-	b.IP = "10.0.0.5"
-	var got Heartbeat
-	srv := New(
+// mutateServer wires a Server whose mutate applies fn to b (resolved by IP).
+func mutateServer(b *box.Box) *Server {
+	return New(
 		func(_ context.Context, _ string) (*box.Box, error) { return b, nil },
-		func(_ context.Context, ip string, hb Heartbeat) error {
-			if ip != "10.0.0.5" {
-				t.Fatalf("recorder got ip %q", ip)
+		func(_ context.Context, ip string, fn func(*box.Box)) error {
+			if ip != b.IP {
+				return box.ErrNotFound
 			}
-			got = hb
-			b.RecordHeartbeat(hb.Load, time.Now(), box.DefaultIdle)
+			fn(b)
 			return nil
 		},
 	)
-	req, _ := http.NewRequest("POST", "/v1/me/heartbeat", strings.NewReader(`{"load":1.5}`))
-	req.RemoteAddr = "10.0.0.5:40000"
+}
+
+func postTo(t *testing.T, srv *Server, path, body, srcIP string) {
+	t.Helper()
+	req, _ := http.NewRequest("POST", path, strings.NewReader(body))
+	req.RemoteAddr = srcIP + ":40000"
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != 204 {
-		t.Fatalf("heartbeat status=%d", rec.Code)
+		t.Fatalf("%s status=%d body=%s", path, rec.Code, rec.Body.String())
 	}
-	if got.Load != 1.5 || b.Load != 1.5 {
-		t.Fatalf("load not recorded: got=%v box=%v", got.Load, b.Load)
+}
+
+func TestHeartbeatRecordsLoad(t *testing.T) {
+	b := box.New("default", "alice", "proj", "alpine")
+	b.IP = "10.0.0.5"
+	postTo(t, mutateServer(b), "/v1/me/heartbeat", `{"load":1.5}`, "10.0.0.5")
+	if b.Load != 1.5 {
+		t.Fatalf("load not recorded: %v", b.Load)
+	}
+}
+
+func TestOwnerCommands(t *testing.T) {
+	b := box.New("default", "alice", "proj", "alpine")
+	b.IP = "10.0.0.6"
+	b.AutoSuspend = true
+	srv := mutateServer(b)
+
+	postTo(t, srv, "/v1/me/keep-alive", `{"duration":"30m"}`, "10.0.0.6")
+	if d := time.Until(b.KeepAliveUntil); d < 29*time.Minute || d > 31*time.Minute {
+		t.Fatalf("keep-alive not applied: until=%v", b.KeepAliveUntil)
+	}
+
+	postTo(t, srv, "/v1/me/auto-suspend", `{"enabled":false}`, "10.0.0.6")
+	if b.AutoSuspend {
+		t.Fatal("auto-suspend off not applied")
+	}
+
+	postTo(t, srv, "/v1/me/idle", `{"timeout":"45m"}`, "10.0.0.6")
+	if b.IdleTimeoutOverride != 45*time.Minute {
+		t.Fatalf("idle override not applied: %v", b.IdleTimeoutOverride)
 	}
 }
 
