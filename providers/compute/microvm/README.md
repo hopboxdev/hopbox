@@ -23,5 +23,20 @@ install -m0755 assets/hopbox-init  "$mnt/sbin/hopbox-init"
 umount "$mnt"
 ```
 
-Verified on the KVM host (F1.3): the agent boots in the VM and reverse-dials the
-hub — `agenthub: agent connected for workspace box-vmtest`.
+## Running boxd on microVMs
+
+```sh
+sudo boxd --compute microvm \
+  --fc-kernel /opt/hopbox-microvm/vmlinux \
+  --fc-rootfs /opt/hopbox-microvm/agent.ext4 \
+  --fc-rundir /var/lib/hopbox/microvm
+# then: ssh box@<host>  ->  a Firecracker microVM
+```
+
+boxd derives the agent + metadata addresses from the VM gateway (`10.0.0.1`)
+automatically; it needs root (KVM, tap, iptables). The egress fence on the VM
+subnet is a follow-up.
+
+Verified end to end on the KVM host (F1.5): `ssh box@host` spawns a microVM, the
+agent connects, and a PTY shell bridges in —
+`root@box:/#  MARKER=box__PID1=hopbox-agent__Ubuntu 22.04.5 LTS__5.10.223`.

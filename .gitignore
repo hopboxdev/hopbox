@@ -11,3 +11,4 @@
 
 # built control-plane binary (use /bin or go run)
 /hopboxd
+/boxd
