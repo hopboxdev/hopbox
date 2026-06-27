@@ -35,16 +35,24 @@ type Provider struct {
 }
 
 type vm struct {
-	cmd      *exec.Cmd
-	dir      string
-	ip       string      // allocated guest IP
-	tap      string      // host tap device
-	sock     string      // firecracker API socket (for snapshot/suspend, F4)
-	teardown func()      // release the CoW rootfs clone
-	done     atomic.Bool // set when the firecracker process exits
+	cmd       *exec.Cmd
+	dir       string
+	ip        string      // allocated guest IP
+	tap       string      // host tap device
+	sock      string      // firecracker API socket (for snapshot/suspend, F4)
+	teardown  func()      // release the CoW rootfs clone
+	suspended bool        // snapshotted to disk; firecracker not running
+	done      atomic.Bool // set when the firecracker process exits
 }
 
-var _ ports.Compute = (*Provider)(nil)
+var (
+	_ ports.Compute   = (*Provider)(nil)
+	_ ports.Suspender = (*Provider)(nil)
+)
+
+func (v *vm) snapPaths() (state, mem string) {
+	return filepath.Join(v.dir, "snapshot"), filepath.Join(v.dir, "mem")
+}
 
 // New builds the provider. It requires /dev/kvm and sets up the VM bridge +
 // egress fence. allowHostPorts are the host ports a box may reach (agent hub +
@@ -147,11 +155,95 @@ func (p *Provider) Close() error {
 func (p *Provider) Status(_ context.Context, ref string) (ports.Instance, error) {
 	p.mu.Lock()
 	v := p.vms[ref]
+	suspended := v != nil && v.suspended
 	p.mu.Unlock()
-	if v == nil || v.done.Load() {
+	switch {
+	case v == nil:
 		return ports.Instance{Ref: ref, Phase: ports.InstanceGone}, nil
+	case suspended:
+		return ports.Instance{Ref: ref, Phase: ports.InstanceStopped, IP: v.ip}, nil
+	case v.done.Load():
+		return ports.Instance{Ref: ref, Phase: ports.InstanceGone}, nil
+	default:
+		return ports.Instance{Ref: ref, Phase: ports.InstanceRunning, IP: v.ip}, nil
 	}
-	return ports.Instance{Ref: ref, Phase: ports.InstanceRunning}, nil
+}
+
+// Suspend pauses the box and snapshots it to disk, then stops firecracker. The
+// tap, IP, and CoW rootfs are kept so Resume can restore it.
+func (p *Provider) Suspend(_ context.Context, ref string) error {
+	p.mu.Lock()
+	v := p.vms[ref]
+	p.mu.Unlock()
+	if v == nil {
+		return fmt.Errorf("microvm: suspend: unknown box %s", ref)
+	}
+	if v.suspended {
+		return nil
+	}
+	cl := newFCClient(v.sock)
+	if err := cl.pause(); err != nil {
+		return fmt.Errorf("microvm: pause: %w", err)
+	}
+	state, mem := v.snapPaths()
+	if err := cl.snapshot(state, mem); err != nil {
+		return fmt.Errorf("microvm: snapshot: %w", err)
+	}
+	if v.cmd.Process != nil {
+		_ = v.cmd.Process.Kill()
+	}
+	p.mu.Lock()
+	v.suspended = true
+	p.mu.Unlock()
+	return nil
+}
+
+// Resume restores a suspended box from its snapshot into a fresh firecracker.
+func (p *Provider) Resume(_ context.Context, ref string) error {
+	p.mu.Lock()
+	v := p.vms[ref]
+	p.mu.Unlock()
+	if v == nil {
+		return fmt.Errorf("microvm: resume: unknown box %s", ref)
+	}
+	if !v.suspended {
+		return nil
+	}
+	// The original firecracker died holding the tap; recreate it fresh (same name,
+	// which the snapshot references) so the restored VM's NIC has a live host end.
+	if err := p.net.createTap(v.tap); err != nil {
+		return fmt.Errorf("microvm: resume tap: %w", err)
+	}
+	state, mem := v.snapPaths()
+	_ = os.Remove(v.sock) // the old socket is stale
+	logf, err := os.OpenFile(filepath.Join(v.dir, "serial.log"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(p.fcBin, "--api-sock", v.sock)
+	cmd.Stdin = nil
+	cmd.Stdout, cmd.Stderr = logf, logf
+	if err := cmd.Start(); err != nil {
+		logf.Close()
+		return fmt.Errorf("microvm: resume start: %w", err)
+	}
+	if err := waitForSocket(v.sock, 3*time.Second); err != nil {
+		_ = cmd.Process.Kill()
+		logf.Close()
+		return err
+	}
+	if err := newFCClient(v.sock).loadSnapshot(state, mem, true); err != nil {
+		_ = cmd.Process.Kill()
+		logf.Close()
+		return fmt.Errorf("microvm: load snapshot: %w", err)
+	}
+	p.mu.Lock()
+	v.cmd = cmd
+	v.suspended = false
+	v.done.Store(false)
+	p.mu.Unlock()
+	go func() { _ = cmd.Wait(); v.done.Store(true); logf.Close() }()
+	return nil
 }
 
 func (p *Provider) Stop(_ context.Context, ref string) error { return p.kill(ref) }

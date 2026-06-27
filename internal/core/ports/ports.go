@@ -87,6 +87,15 @@ type Compute interface {
 	Destroy(ctx context.Context, ref string) error
 }
 
+// Suspender is an optional Compute capability: snapshot a box to disk (freeing
+// CPU/RAM) and restore it on demand. Providers that can (microVM via Firecracker
+// snapshots) implement it; callers type-assert. The box keeps its instance ref,
+// IP, and storage across a suspend.
+type Suspender interface {
+	Suspend(ctx context.Context, ref string) error
+	Resume(ctx context.Context, ref string) error
+}
+
 type Storage interface {
 	EnsureHome(ctx context.Context, r HomeRequest) (Mount, error)
 	Delete(ctx context.Context, homeRef string) error

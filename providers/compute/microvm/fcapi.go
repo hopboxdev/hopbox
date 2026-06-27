@@ -32,12 +32,15 @@ func newFCClient(sock string) *fcClient {
 	}}
 }
 
-func (c *fcClient) put(path string, body any) error {
+func (c *fcClient) put(path string, body any) error   { return c.do(http.MethodPut, path, body) }
+func (c *fcClient) patch(path string, body any) error { return c.do(http.MethodPatch, path, body) }
+
+func (c *fcClient) do(method, path string, body any) error {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPut, "http://unix"+path, bytes.NewReader(b))
+	req, err := http.NewRequest(method, "http://unix"+path, bytes.NewReader(b))
 	if err != nil {
 		return err
 	}
@@ -49,7 +52,7 @@ func (c *fcClient) put(path string, body any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		rb, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("fc PUT %s: %s: %s", path, resp.Status, bytes.TrimSpace(rb))
+		return fmt.Errorf("fc %s %s: %s: %s", method, path, resp.Status, bytes.TrimSpace(rb))
 	}
 	return nil
 }
@@ -73,6 +76,31 @@ func (c *fcClient) boot(cfg fcConfig) error {
 		}
 	}
 	return c.put("/actions", map[string]string{"action_type": "InstanceStart"})
+}
+
+// pause moves the VM to the Paused state (a precondition for snapshotting). VM
+// state changes are PATCH /vm in the Firecracker API.
+func (c *fcClient) pause() error {
+	return c.patch("/vm", map[string]string{"state": "Paused"})
+}
+
+// snapshot writes a full snapshot (VM state + guest memory) to the given paths.
+func (c *fcClient) snapshot(statePath, memPath string) error {
+	return c.put("/snapshot/create", map[string]any{
+		"snapshot_type": "Full",
+		"snapshot_path": statePath,
+		"mem_file_path": memPath,
+	})
+}
+
+// loadSnapshot restores a VM from disk (into a fresh firecracker), optionally
+// resuming it immediately.
+func (c *fcClient) loadSnapshot(statePath, memPath string, resume bool) error {
+	return c.put("/snapshot/load", map[string]any{
+		"snapshot_path": statePath,
+		"mem_file_path": memPath,
+		"resume_vm":     resume,
+	})
 }
 
 // waitForSocket blocks until firecracker has created its API socket.
