@@ -36,8 +36,9 @@ type Box struct {
 	MaxTTL    time.Duration // hard cap from CreatedAt regardless of connection; 0 = none
 	Deadline  *time.Time    // reap-after instant, stamped on detach; nil while attached
 	// suspend (persistent boxes only): snapshot to disk when idle, wake on attach.
-	AutoSuspend    bool      // true = suspend when idle (vs reap); persistent boxes
-	KeepAliveUntil time.Time // pin: do not suspend before this instant (box-guest keep-alive)
+	AutoSuspend         bool          // true = suspend when idle (vs reap); persistent boxes
+	KeepAliveUntil      time.Time     // pin: do not suspend before this instant (box-guest keep-alive)
+	IdleTimeoutOverride time.Duration // per-box idle timeout; 0 = use the daemon default
 	// status (observed, written by the reconciler / agenthub)
 	Phase          Phase
 	InstanceRef    string // provider-opaque (e.g. docker container id)

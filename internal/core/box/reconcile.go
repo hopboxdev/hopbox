@@ -143,7 +143,7 @@ func (r *Reconciler) shouldSuspend(b *Box) bool {
 		return false
 	}
 	now := r.now()
-	return now.After(b.KeepAliveUntil) && b.IsIdle(now, r.cfg.Idle)
+	return now.After(b.KeepAliveUntil) && b.IsIdle(now, b.EffectiveIdle(r.cfg.Idle))
 }
 
 func (r *Reconciler) suspend(ctx context.Context, b *Box) error {

@@ -22,6 +22,15 @@ func (b *Box) RecordHeartbeat(load float64, now time.Time, cfg IdleConfig) {
 	}
 }
 
+// EffectiveIdle applies the box's per-box idle-timeout override (box-guest
+// `idle --timeout`) over the daemon default.
+func (b *Box) EffectiveIdle(def IdleConfig) IdleConfig {
+	if b.IdleTimeoutOverride > 0 {
+		def.Timeout = b.IdleTimeoutOverride
+	}
+	return def
+}
+
 // IsIdle reports whether the box has been quiet (unattached, low load) for at
 // least cfg.Timeout. A box with no activity marker yet is not idle.
 func (b *Box) IsIdle(now time.Time, cfg IdleConfig) bool {
