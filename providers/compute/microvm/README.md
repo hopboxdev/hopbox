@@ -34,8 +34,9 @@ sudo boxd --compute microvm \
 ```
 
 boxd derives the agent + metadata addresses from the VM gateway (`10.0.0.1`)
-automatically; it needs root (KVM, tap, iptables). The egress fence on the VM
-subnet is a follow-up.
+automatically; it needs root (KVM, tap, iptables). Boxes are egress-fenced: they
+may reach the agent hub + metadata ports and the public internet, but not the
+host's other services, the LAN, or the tailnet.
 
 Verified end to end on the KVM host (F1.5): `ssh box@host` spawns a microVM, the
 agent connects, and a PTY shell bridges in —

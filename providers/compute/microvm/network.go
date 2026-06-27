@@ -21,11 +21,12 @@ type vmNet struct {
 	used   map[int]bool // host octet -> allocated
 }
 
-func newVMNet() (*vmNet, error) {
+func newVMNet(allowHostPorts []string) (*vmNet, error) {
 	n := &vmNet{bridge: vmBridge, used: map[int]bool{}}
 	if err := n.ensureBridge(); err != nil {
 		return nil, err
 	}
+	n.ensureFence(allowHostPorts) // best-effort egress fence on the VM subnet
 	return n, nil
 }
 
@@ -48,7 +49,8 @@ func (n *vmNet) ensureBridge() error {
 	}
 	for _, r := range [][]string{
 		{"nat", "POSTROUTING", "-s", vmSubnet, "!", "-o", n.bridge, "-j", "MASQUERADE"},
-		{"filter", "FORWARD", "-i", n.bridge, "-j", "ACCEPT"},
+		// VM -> beyond is governed by the egress fence (ensureFence); here we only
+		// permit return traffic back to the VMs.
 		{"filter", "FORWARD", "-o", n.bridge, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
 	} {
 		if err := ipt.AppendUnique(r[0], r[1], r[2:]...); err != nil {
