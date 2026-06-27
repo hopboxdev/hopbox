@@ -83,7 +83,13 @@ func connectAndServe(addr string, hs agentproto.Handshake) error {
 	if err := agentproto.WriteHandshake(conn, hs); err != nil {
 		return err
 	}
-	sess, err := yamux.Server(conn, nil)
+	// Short keepalive so a dead control connection is detected within seconds —
+	// notably after a suspend/restore, where the old session is frozen and the
+	// peer is gone; the agent then reconnects promptly for a fast wake.
+	yc := yamux.DefaultConfig()
+	yc.KeepAliveInterval = 5 * time.Second
+	yc.ConnectionWriteTimeout = 5 * time.Second
+	sess, err := yamux.Server(conn, yc)
 	if err != nil {
 		return err
 	}
