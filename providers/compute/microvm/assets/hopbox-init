@@ -1,0 +1,9 @@
+#!/bin/sh
+# Minimal microVM init (F1.3/F9 seed): mount essentials, then hand off to the
+# agent, which inherits the HOPBOX_* env the kernel placed from the cmdline.
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mount -t tmpfs tmpfs /run 2>/dev/null
+hostname box 2>/dev/null
+exec /usr/local/bin/hopbox-agent
