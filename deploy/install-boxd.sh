@@ -70,9 +70,10 @@ HOPBOX_HOST_KEY=$LIBDIR/boxd-ssh-host-key
 # docker backend: binaries side-loaded into each box
 HOPBOX_AGENT_BIN=$LIBDIR/hopbox-agent-linux-$ARCH
 HOPBOX_GUEST_BIN=$LIBDIR/box-guest-linux-$ARCH
-# microvm backend: golden rootfs + kernel (build with build/microvm/build-rootfs.sh)
+# microvm backend: kernel + image catalog (build with build/microvm/build-rootfs.sh)
 HOPBOX_FC_KERNEL=/opt/hopbox-microvm/vmlinux
-HOPBOX_FC_ROOTFS=/opt/hopbox-microvm/agent.ext4
+HOPBOX_FC_IMAGES_DIR=/opt/hopbox-microvm/images
+HOPBOX_DEFAULT_IMAGE=ubuntu-22.04
 HOPBOX_FC_RUNDIR=$LIBDIR/microvm
 # persistent boxes that auto-suspend when idle (vs ephemeral reap):
 HOPBOX_AUTO_SUSPEND=
@@ -97,7 +98,8 @@ ExecStart=$PREFIX/boxd --compute \${HOPBOX_COMPUTE} \\
   --ssh-addr \${HOPBOX_SSH_ADDR} --agent-listen \${HOPBOX_AGENT_LISTEN} --meta-addr \${HOPBOX_META_ADDR} \\
   --db \${HOPBOX_DB} --host-key \${HOPBOX_HOST_KEY} \\
   --agent-bin \${HOPBOX_AGENT_BIN} --guest-bin \${HOPBOX_GUEST_BIN} \\
-  --fc-kernel \${HOPBOX_FC_KERNEL} --fc-rootfs \${HOPBOX_FC_ROOTFS} --fc-rundir \${HOPBOX_FC_RUNDIR} \\
+  --fc-kernel \${HOPBOX_FC_KERNEL} --fc-images-dir \${HOPBOX_FC_IMAGES_DIR} --fc-rundir \${HOPBOX_FC_RUNDIR} \\
+  --default-image \${HOPBOX_DEFAULT_IMAGE} \\
   \${HOPBOX_AUTO_SUSPEND:+--auto-suspend} --idle-timeout \${HOPBOX_IDLE_TIMEOUT}
 Restart=on-failure
 RestartSec=2
@@ -123,10 +125,11 @@ boxd is installed and running ($COMPUTE backend).
 EOF
 if [ "$COMPUTE" = microvm ]; then
 cat <<EOF
-microVM backend selected — build the golden rootfs first (once), then restart:
+microVM backend selected — build the image catalog first (once), then restart:
   # on a machine with Go (or pass prebuilt AGENT_BIN/GUEST_BIN):
-  sudo OUT_DIR=/opt/hopbox-microvm build/microvm/build-rootfs.sh
+  sudo IMAGE=ubuntu-22.04 OUT_DIR=/opt/hopbox-microvm build/microvm/build-rootfs.sh
   systemctl restart boxd
+  # add more images:  sudo IMAGE=debian-default BASE_URL=<debian.ext4> ... build-rootfs.sh
 EOF
 fi
 echo "Boxes are anonymous (key = identity). Keep the SSH front door where you want it."

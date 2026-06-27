@@ -39,7 +39,7 @@ func main() {
 	compute := flag.String("compute", "docker", "compute backend: docker | microvm")
 	fcBin := flag.String("fc-bin", "/usr/local/bin/firecracker", "firecracker binary (microvm)")
 	fcKernel := flag.String("fc-kernel", "/opt/hopbox-microvm/vmlinux", "vmlinux kernel (microvm)")
-	fcRootfs := flag.String("fc-rootfs", "/opt/hopbox-microvm/agent.ext4", "golden agent rootfs (microvm)")
+	fcImagesDir := flag.String("fc-images-dir", "/opt/hopbox-microvm/images", "base-image catalog dir; image <name> -> <dir>/<name>.ext4 (microvm)")
 	fcRunDir := flag.String("fc-rundir", "/var/lib/hopbox/microvm", "per-VM working dir (microvm)")
 	autoSuspend := flag.Bool("auto-suspend", false, "persistent boxes that auto-suspend when idle, waking on reconnect (vs ephemeral reap)")
 	idleTimeout := flag.Duration("idle-timeout", 5*time.Minute, "suspend a box after this long idle (with --auto-suspend)")
@@ -49,7 +49,7 @@ func main() {
 		sshAddr: *sshAddr, agentListen: *agentListen, advertise: *advertise, agentBin: *agentBin,
 		hostKeyPath: *hostKeyPath, image: *image, cpus: *cpus, memMB: *memMB, db: *db,
 		metaAddr: *metaAddr, guestBin: *guestBin, compute: *compute,
-		fcBin: *fcBin, fcKernel: *fcKernel, fcRootfs: *fcRootfs, fcRunDir: *fcRunDir,
+		fcBin: *fcBin, fcKernel: *fcKernel, fcImagesDir: *fcImagesDir, fcRunDir: *fcRunDir,
 		autoSuspend: *autoSuspend, idleTimeout: *idleTimeout,
 	}); err != nil {
 		log.Fatal(err)
@@ -58,7 +58,7 @@ func main() {
 
 type cfg struct {
 	sshAddr, agentListen, advertise, agentBin, hostKeyPath, image, db, metaAddr, guestBin string
-	compute, fcBin, fcKernel, fcRootfs, fcRunDir                                          string
+	compute, fcBin, fcKernel, fcImagesDir, fcRunDir                                       string
 	cpus                                                                                  float64
 	memMB                                                                                 int64
 	autoSuspend                                                                           bool

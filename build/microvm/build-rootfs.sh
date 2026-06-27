@@ -22,6 +22,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT_DIR="${OUT_DIR:-/opt/hopbox-microvm}"
 CACHE_DIR="${CACHE_DIR:-$OUT_DIR/cache}"
+IMAGE="${IMAGE:-ubuntu-22.04}" # catalog name -> $OUT_DIR/images/$IMAGE.ext4
 FC_CI="https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.10/x86_64"
 BASE_URL="${BASE_URL:-$FC_CI/ubuntu-22.04.ext4}"
 KERNEL_URL="${KERNEL_URL:-$FC_CI/vmlinux-5.10.223}"
@@ -44,12 +45,13 @@ fi
 
 echo "==> kernel + base rootfs (cached)"
 [ -f "$CACHE_DIR/vmlinux" ]   || curl -fSL --retry 3 -o "$CACHE_DIR/vmlinux"   "$KERNEL_URL"
-[ -f "$CACHE_DIR/base.ext4" ] || curl -fSL --retry 3 -o "$CACHE_DIR/base.ext4" "$BASE_URL"
+[ -f "$CACHE_DIR/$IMAGE-base.ext4" ] || curl -fSL --retry 3 -o "$CACHE_DIR/$IMAGE-base.ext4" "$BASE_URL"
 cp "$CACHE_DIR/vmlinux" "$OUT_DIR/vmlinux"
 
-echo "==> compose agent.ext4 (base + grow + inject)"
-IMG="$OUT_DIR/agent.ext4"
-cp "$CACHE_DIR/base.ext4" "$IMG"
+echo "==> compose image '$IMAGE' (base + grow + inject)"
+mkdir -p "$OUT_DIR/images"
+IMG="$OUT_DIR/images/$IMAGE.ext4"
+cp "$CACHE_DIR/$IMAGE-base.ext4" "$IMG"
 truncate -s "+${GROW_MB}M" "$IMG"
 e2fsck -fy "$IMG" >/dev/null 2>&1 || true
 resize2fs "$IMG" >/dev/null 2>&1
@@ -59,4 +61,4 @@ install -m0755 "$WORK/box-guest"    "$WORK/mnt/usr/local/bin/box-guest"
 install -m0755 "$INIT_ASSET"        "$WORK/mnt/sbin/hopbox-init"
 sync; umount "$WORK/mnt"
 
-echo "==> done: $OUT_DIR/vmlinux  $IMG ($(du -h "$IMG" | cut -f1))"
+echo "==> done: kernel $OUT_DIR/vmlinux  image $IMG ($(du -h "$IMG" | cut -f1))"

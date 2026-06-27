@@ -17,5 +17,5 @@ func newMicrovm(c cfg, advertise, metaPort string) (ports.Compute, error) {
 	if _, p, err := net.SplitHostPort(advertise); err == nil && p != "" {
 		allow = append(allow, p)
 	}
-	return microvm.New(c.fcBin, c.fcKernel, c.fcRootfs, c.fcRunDir, allow)
+	return microvm.New(c.fcBin, c.fcKernel, c.fcImagesDir, c.fcRunDir, allow)
 }

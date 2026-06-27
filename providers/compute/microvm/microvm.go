@@ -23,12 +23,12 @@ import (
 // the mechanism proven on the host; the API socket (for snapshots/F4) is a later
 // upgrade.
 type Provider struct {
-	fcBin  string      // firecracker binary
-	kernel string      // vmlinux
-	rootfs string      // golden base rootfs
-	runDir string      // per-VM working dirs live here
-	net    *vmNet      // host bridge + tap + IP allocation
-	pool   *rootfsPool // CoW rootfs clones (dm snapshot, or copy fallback)
+	fcBin     string      // firecracker binary
+	kernel    string      // vmlinux
+	imagesDir string      // catalog of base images: <name>.ext4
+	runDir    string      // per-VM working dirs live here
+	net       *vmNet      // host bridge + tap + IP allocation
+	pool      *rootfsPool // CoW rootfs clones (dm snapshot, or copy fallback)
 
 	mu  sync.Mutex
 	vms map[string]*vm
@@ -55,9 +55,9 @@ func (v *vm) snapPaths() (state, mem string) {
 }
 
 // New builds the provider. It requires /dev/kvm and sets up the VM bridge +
-// egress fence. allowHostPorts are the host ports a box may reach (agent hub +
-// metadata); everything else on the host is blocked.
-func New(fcBin, kernel, rootfs, runDir string, allowHostPorts []string) (*Provider, error) {
+// egress fence. imagesDir is the base-image catalog (a box's image name maps to
+// <imagesDir>/<name>.ext4). allowHostPorts are the host ports a box may reach.
+func New(fcBin, kernel, imagesDir, runDir string, allowHostPorts []string) (*Provider, error) {
 	if _, err := os.Stat("/dev/kvm"); err != nil {
 		return nil, fmt.Errorf("microvm: /dev/kvm unavailable (need KVM / nested virt): %w", err)
 	}
@@ -69,9 +69,18 @@ func New(fcBin, kernel, rootfs, runDir string, allowHostPorts []string) (*Provid
 		return nil, err
 	}
 	return &Provider{
-		fcBin: fcBin, kernel: kernel, rootfs: rootfs, runDir: runDir,
-		net: net, pool: newRootfsPool(rootfs), vms: map[string]*vm{},
+		fcBin: fcBin, kernel: kernel, imagesDir: imagesDir, runDir: runDir,
+		net: net, pool: newRootfsPool(), vms: map[string]*vm{},
 	}, nil
+}
+
+// imagePath resolves a box's image name to its base rootfs in the catalog.
+func (p *Provider) imagePath(image string) (string, error) {
+	base := filepath.Join(p.imagesDir, image+".ext4")
+	if _, err := os.Stat(base); err != nil {
+		return "", fmt.Errorf("microvm: unknown image %q (no %s)", image, base)
+	}
+	return base, nil
 }
 
 func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports.Instance, error) {
@@ -79,9 +88,13 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return ports.Instance{}, err
 	}
-	// F1.4: an instant copy-on-write clone of the golden rootfs (dm snapshot),
-	// vs copying the whole image.
-	rootfs, teardown, err := p.pool.clone(r.WorkspaceID, dir)
+	// Resolve the box's image in the catalog, then make an instant copy-on-write
+	// clone of it (dm snapshot) vs copying the whole image.
+	base, err := p.imagePath(r.ImageRef)
+	if err != nil {
+		return ports.Instance{}, err
+	}
+	rootfs, teardown, err := p.pool.clone(r.WorkspaceID, dir, base)
 	if err != nil {
 		return ports.Instance{}, fmt.Errorf("microvm: stage rootfs: %w", err)
 	}
