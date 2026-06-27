@@ -26,6 +26,8 @@ func TestRoundTripCreateGetUpdateDelete(t *testing.T) {
 	b.Backend = "docker"
 	b.MemMB, b.CPUMillis = 2048, 2000
 	b.Ephemeral, b.Grace = true, 5*time.Minute
+	b.Load = 0.42
+	b.LastActive = time.Now().UTC().Round(0)
 	b.BootstrapToken = "tok-1"
 	if err := s.Create(ctx, b); err != nil {
 		t.Fatal(err)
@@ -43,6 +45,9 @@ func TestRoundTripCreateGetUpdateDelete(t *testing.T) {
 	}
 	if !got.Ephemeral || got.Grace != 5*time.Minute {
 		t.Fatalf("lifetime not persisted: ephemeral=%v grace=%v", got.Ephemeral, got.Grace)
+	}
+	if got.Load != 0.42 || !got.LastActive.Equal(b.LastActive) {
+		t.Fatalf("activity not persisted: load=%v last_active=%v", got.Load, got.LastActive)
 	}
 
 	// token lookup (hub resolver path)

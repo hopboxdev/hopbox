@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/hopboxdev/hopbox/internal/agenthub"
 	"github.com/hopboxdev/hopbox/internal/core/box"
@@ -99,8 +100,16 @@ func run(c cfg) error {
 	}
 	metaURL := "http://" + net.JoinHostPort(gwHost, metaPort)
 
+	record := func(ctx context.Context, ip string, hb boxmeta.Heartbeat) error {
+		b, err := store.GetByIP(ctx, ip)
+		if err != nil {
+			return err
+		}
+		b.RecordHeartbeat(hb.Load, time.Now(), box.DefaultIdle)
+		return store.Update(ctx, b)
+	}
 	go func() {
-		mux := boxmeta.New(store.GetByIP).Handler()
+		mux := boxmeta.New(store.GetByIP, record).Handler()
 		mln, err := net.Listen("tcp", c.metaAddr)
 		if err != nil {
 			log.Printf("boxd: metadata API listen %s: %v", c.metaAddr, err)
