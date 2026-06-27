@@ -22,22 +22,24 @@ import (
 // the mechanism proven on the host; the API socket (for snapshots/F4) is a later
 // upgrade.
 type Provider struct {
-	fcBin  string // firecracker binary
-	kernel string // vmlinux
-	rootfs string // golden base rootfs (read; copied per VM)
-	runDir string // per-VM working dirs live here
-	net    *vmNet // host bridge + tap + IP allocation
+	fcBin  string      // firecracker binary
+	kernel string      // vmlinux
+	rootfs string      // golden base rootfs
+	runDir string      // per-VM working dirs live here
+	net    *vmNet      // host bridge + tap + IP allocation
+	pool   *rootfsPool // CoW rootfs clones (dm snapshot, or copy fallback)
 
 	mu  sync.Mutex
 	vms map[string]*vm
 }
 
 type vm struct {
-	cmd  *exec.Cmd
-	dir  string
-	ip   string      // allocated guest IP
-	tap  string      // host tap device
-	done atomic.Bool // set when the firecracker process exits
+	cmd      *exec.Cmd
+	dir      string
+	ip       string      // allocated guest IP
+	tap      string      // host tap device
+	teardown func()      // release the CoW rootfs clone
+	done     atomic.Bool // set when the firecracker process exits
 }
 
 var _ ports.Compute = (*Provider)(nil)
@@ -54,7 +56,10 @@ func New(fcBin, kernel, rootfs, runDir string) (*Provider, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Provider{fcBin: fcBin, kernel: kernel, rootfs: rootfs, runDir: runDir, net: net, vms: map[string]*vm{}}, nil
+	return &Provider{
+		fcBin: fcBin, kernel: kernel, rootfs: rootfs, runDir: runDir,
+		net: net, pool: newRootfsPool(rootfs), vms: map[string]*vm{},
+	}, nil
 }
 
 func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports.Instance, error) {
@@ -62,18 +67,27 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return ports.Instance{}, err
 	}
-	// F1.1: copy the golden rootfs to a per-VM writable file (CoW overlay is F1.4).
-	rootfs := filepath.Join(dir, "rootfs.ext4")
-	if err := copyFile(p.rootfs, rootfs); err != nil {
+	// F1.4: an instant copy-on-write clone of the golden rootfs (dm snapshot),
+	// vs copying the whole image.
+	rootfs, teardown, err := p.pool.clone(r.WorkspaceID, dir)
+	if err != nil {
 		return ports.Instance{}, fmt.Errorf("microvm: stage rootfs: %w", err)
 	}
 	// F1.2: give the VM a tap on the bridge + a static IP (kernel ip=).
 	ip, err := p.net.allocIP()
 	if err != nil {
+		teardown()
 		return ports.Instance{}, err
 	}
 	tap := tapNameForIP(ip)
+	fail := func(e error) (ports.Instance, error) {
+		p.net.deleteTap(tap)
+		p.net.freeIP(ip)
+		teardown()
+		return ports.Instance{}, e
+	}
 	if err := p.net.createTap(tap); err != nil {
+		teardown()
 		p.net.freeIP(ip)
 		return ports.Instance{}, err
 	}
@@ -86,26 +100,20 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 		Env:      r.Env,  // HOPBOX_* -> kernel cmdline -> init env -> agent
 	})
 	if err := writeJSON(filepath.Join(dir, "config.json"), cfg); err != nil {
-		p.net.deleteTap(tap)
-		p.net.freeIP(ip)
-		return ports.Instance{}, err
+		return fail(err)
 	}
 	logf, err := os.Create(filepath.Join(dir, "serial.log"))
 	if err != nil {
-		p.net.deleteTap(tap)
-		p.net.freeIP(ip)
-		return ports.Instance{}, err
+		return fail(err)
 	}
 	cmd := exec.Command(p.fcBin, "--no-api", "--config-file", filepath.Join(dir, "config.json"))
 	cmd.Stdin = nil // firecracker attaches the VM serial to stdin; don't feed it ours
 	cmd.Stdout, cmd.Stderr = logf, logf
 	if err := cmd.Start(); err != nil {
 		logf.Close()
-		p.net.deleteTap(tap)
-		p.net.freeIP(ip)
-		return ports.Instance{}, fmt.Errorf("microvm: start firecracker: %w", err)
+		return fail(fmt.Errorf("microvm: start firecracker: %w", err))
 	}
-	v := &vm{cmd: cmd, dir: dir, ip: ip, tap: tap}
+	v := &vm{cmd: cmd, dir: dir, ip: ip, tap: tap, teardown: teardown}
 	p.mu.Lock()
 	p.vms[r.WorkspaceID] = v
 	p.mu.Unlock()
@@ -135,6 +143,9 @@ func (p *Provider) Destroy(_ context.Context, ref string) error {
 	if v != nil {
 		p.net.deleteTap(v.tap)
 		p.net.freeIP(v.ip)
+		if v.teardown != nil {
+			v.teardown() // release the CoW snapshot + loop before removing the dir
+		}
 		return os.RemoveAll(v.dir)
 	}
 	return nil
