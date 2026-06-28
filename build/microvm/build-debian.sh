@@ -13,8 +13,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT_DIR="${OUT_DIR:-/opt/hopbox-microvm}"
 IMAGE="${IMAGE:-debian-12}"
 SUITE="${SUITE:-bookworm}"
-SIZE_MB="${SIZE_MB:-1024}"
+SIZE_MB="${SIZE_MB:-1536}" # headroom for the dev tools below
 MIRROR="${MIRROR:-http://deb.debian.org/debian}"
+# Dev tools baked in so a box is usable out of the box (mirrors build-rootfs.sh).
+PACKAGES="${PACKAGES:-git vim nano curl wget less ca-certificates openssh-client tmux htop python3}"
 INIT_ASSET="${INIT_ASSET:-$REPO_ROOT/providers/compute/microvm/assets/hopbox-init}"
 
 [ "$(id -u)" = 0 ] || { echo "must run as root"; exit 1; }
@@ -33,8 +35,10 @@ else
   echo "no go and no \$AGENT_BIN/\$GUEST_BIN"; exit 1
 fi
 
-echo "==> debootstrap $SUITE (minbase + bash)"
-debootstrap --variant=minbase --include=bash,ca-certificates "$SUITE" "$ROOT" "$MIRROR" >/dev/null
+echo "==> debootstrap $SUITE (minbase + bash + dev tools)"
+inc="bash,ca-certificates"
+[ -n "$PACKAGES" ] && inc="$inc,$(echo "$PACKAGES" | tr ' ' ',')"
+debootstrap --variant=minbase --include="$inc" "$SUITE" "$ROOT" "$MIRROR" >/dev/null
 
 echo "==> compose image '$IMAGE' (${SIZE_MB}MB ext4)"
 mkdir -p "$OUT_DIR/images"
