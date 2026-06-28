@@ -12,10 +12,12 @@ type fakeCompute struct {
 	provisioned int
 	destroyed   int
 	status      ports.InstancePhase
+	lastReq     ports.ProvisionRequest
 }
 
-func (f *fakeCompute) Provision(_ context.Context, _ ports.ProvisionRequest) (ports.Instance, error) {
+func (f *fakeCompute) Provision(_ context.Context, r ports.ProvisionRequest) (ports.Instance, error) {
 	f.provisioned++
+	f.lastReq = r
 	return ports.Instance{Ref: "c-1", Phase: ports.InstanceRunning}, nil
 }
 func (f *fakeCompute) Status(_ context.Context, ref string) (ports.Instance, error) {
@@ -44,6 +46,61 @@ func TestReconcileProvisionsPending(t *testing.T) {
 	}
 	if got.InstanceRef == "" || got.BootstrapToken == "" || comp.provisioned != 1 {
 		t.Fatalf("provision incomplete: ref=%q token set=%v n=%d", got.InstanceRef, got.BootstrapToken != "", comp.provisioned)
+	}
+}
+
+type fakeHooks struct{ pre, post, preDestroy int }
+
+func (h *fakeHooks) PreProvision(_ context.Context, b *Box) ([]ports.Mount, map[string]string, error) {
+	h.pre++
+	return []ports.Mount{{Source: "vol-" + b.ID, Target: "/home/dev"}},
+		map[string]string{"HOPBOX_AUTHORIZED_KEYS": "ssh-ed25519 AAA"}, nil
+}
+func (h *fakeHooks) PostRunning(context.Context, *Box) error { h.post++; return nil }
+func (h *fakeHooks) PreDestroy(context.Context, *Box) error  { h.preDestroy++; return nil }
+
+// Hooks contribute mounts+env at provision and fire on running + destroy.
+func TestReconcileHooksContributeAndFire(t *testing.T) {
+	ctx := context.Background()
+	st := newFakeStore()
+	comp := &fakeCompute{}
+	h := &fakeHooks{}
+	r := NewReconciler(st, comp, ReconcileConfig{AgentAddr: "host:7777", Hooks: h})
+	b := New("default", "alice", "proj", "alpine") // plain box (not ephemeral)
+	_ = st.Create(ctx, b)
+
+	if err := r.ReconcileOne(ctx, "default", b.ID); err != nil { // provision
+		t.Fatal(err)
+	}
+	if h.pre != 1 {
+		t.Fatalf("PreProvision calls=%d want 1", h.pre)
+	}
+	if len(comp.lastReq.Mounts) != 1 || comp.lastReq.Mounts[0].Target != "/home/dev" {
+		t.Fatalf("hook mount not passed to compute: %+v", comp.lastReq.Mounts)
+	}
+	if comp.lastReq.Env["HOPBOX_AUTHORIZED_KEYS"] == "" {
+		t.Fatalf("hook env not merged into provision env: %+v", comp.lastReq.Env)
+	}
+
+	got, _ := st.Get(ctx, "default", b.ID) // -> Running + connected
+	got.AgentConnected = true
+	got.Phase = PhaseRunning
+	_ = st.Update(ctx, got)
+	if err := r.ReconcileOne(ctx, "default", b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if h.post < 1 {
+		t.Fatalf("PostRunning calls=%d want >=1", h.post)
+	}
+
+	got, _ = st.Get(ctx, "default", b.ID) // -> Destroying
+	got.Phase = PhaseDestroying
+	_ = st.Update(ctx, got)
+	if err := r.ReconcileOne(ctx, "default", b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if h.preDestroy != 1 {
+		t.Fatalf("PreDestroy calls=%d want 1", h.preDestroy)
 	}
 }
 

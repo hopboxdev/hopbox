@@ -19,7 +19,22 @@ type ReconcileConfig struct {
 	GuestBin  string           // host path of box-guest to side-load into each box; "" = none
 	Idle      IdleConfig       // when a persistent AutoSuspend box is considered idle
 	Interval  time.Duration    // backstop sweep period (default 1s)
+	Hooks     Hooks            // optional host-layer lifecycle hooks (dev-env: storage + ingress); nil = none
 	Now       func() time.Time // clock seam; nil = time.Now
+}
+
+// Hooks lets a host layer extend the box lifecycle without box-core depending on
+// it. The dev-env implements them for storage homes + ingress; boxd passes none.
+// All are optional in effect — a nil ReconcileConfig.Hooks is a plain box.
+type Hooks interface {
+	// PreProvision runs before compute.Provision, contributing storage mounts and
+	// extra env (e.g. the home mount + the box's SSH principal/CA/authorized keys).
+	PreProvision(ctx context.Context, b *Box) (mounts []ports.Mount, env map[string]string, err error)
+	// PostRunning runs each tick a box is Running with its agent connected — used
+	// to reconcile ingress endpoints. Must be idempotent.
+	PostRunning(ctx context.Context, b *Box) error
+	// PreDestroy runs before teardown (e.g. ingress unexpose). Best-effort.
+	PreDestroy(ctx context.Context, b *Box) error
 }
 
 // Reconciler drives boxes from spec to running and reaps ephemeral ones — the
@@ -119,6 +134,10 @@ func (r *Reconciler) ReconcileOne(ctx context.Context, tenant, id string) error 
 		if !b.AgentConnected {
 			return r.healIfDead(ctx, b)
 		}
+		// Running + connected: let the host layer reconcile ingress endpoints.
+		if r.cfg.Hooks != nil {
+			return r.cfg.Hooks.PostRunning(ctx, b)
+		}
 		return nil
 	case PhaseSuspended:
 		// Resume when an owner attaches; otherwise stay snapshotted (a suspended
@@ -209,12 +228,26 @@ func (r *Reconciler) provision(ctx context.Context, b *Box) error {
 	if r.cfg.MetaURL != "" {
 		env["BOX_META"] = r.cfg.MetaURL // where box-guest reaches the metadata API
 	}
+	// The host layer (dev-env) contributes a storage home mount + extra env
+	// (SSH host key on the mount, trusted CA, authorized keys). boxd has no hooks.
+	var mounts []ports.Mount
+	if r.cfg.Hooks != nil {
+		m, hookEnv, err := r.cfg.Hooks.PreProvision(ctx, b)
+		if err != nil {
+			return r.fail(ctx, b, fmt.Errorf("pre-provision: %w", err))
+		}
+		mounts = m
+		for k, v := range hookEnv {
+			env[k] = v
+		}
+	}
 	inst, err := r.compute.Provision(ctx, ports.ProvisionRequest{
 		WorkspaceID: b.ID,
 		ImageRef:    b.ImageRef,
 		MemMB:       b.MemMB,
 		CPUMillis:   b.CPUMillis,
 		GuestBin:    r.cfg.GuestBin,
+		Mounts:      mounts,
 		Agent:       r.cfg.Agent,
 		Env:         env,
 	})
@@ -281,6 +314,12 @@ func (r *Reconciler) checkAlive(ctx context.Context, b *Box) error {
 }
 
 func (r *Reconciler) destroy(ctx context.Context, b *Box) error {
+	if r.cfg.Hooks != nil {
+		// Best-effort (e.g. ingress unexpose); route cleanup must not block teardown.
+		if err := r.cfg.Hooks.PreDestroy(ctx, b); err != nil {
+			log.Printf("boxreconcile: pre-destroy %s (%s): %v", b.ID, b.Name, err)
+		}
+	}
 	if b.InstanceRef != "" {
 		if err := r.compute.Destroy(ctx, b.InstanceRef); err != nil {
 			return err
