@@ -12,3 +12,7 @@
 # built control-plane binary (use /bin or go run)
 /hopboxd
 /boxd
+
+# stray SSH CA from running a daemon in the repo dir
+hopbox-ssh-ca
+*.db
