@@ -72,6 +72,34 @@ func TestBackendAndLifetimeRoundTrip(t *testing.T) {
 	}
 }
 
+// The dev-env store must persist the box's suspend/idle state now that it runs
+// box.Reconciler — an account box's AutoSuspend (and idle clock) must survive a
+// store round-trip, else the persistent tier would silently degrade.
+func TestSuspendIdleRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	w.AutoSuspend = true
+	w.IdleTimeoutOverride = 7 * time.Minute
+	w.Load = 0.42
+	la := w.CreatedAt.Add(time.Minute)
+	ka := w.CreatedAt.Add(10 * time.Minute)
+	w.LastActive, w.KeepAliveUntil = la, ka
+	if err := s.CreateWorkspace(ctx, w); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	got, err := s.GetWorkspace(ctx, "default", w.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.AutoSuspend || got.IdleTimeoutOverride != 7*time.Minute || got.Load != 0.42 {
+		t.Fatalf("suspend round-trip: autosuspend=%v idle=%v load=%v", got.AutoSuspend, got.IdleTimeoutOverride, got.Load)
+	}
+	if !got.LastActive.Equal(la) || !got.KeepAliveUntil.Equal(ka) {
+		t.Fatalf("idle clock round-trip: lastActive=%v keepAlive=%v", got.LastActive, got.KeepAliveUntil)
+	}
+}
+
 func TestIngressAndEndpointsRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
