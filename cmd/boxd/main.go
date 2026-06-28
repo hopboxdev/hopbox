@@ -41,8 +41,9 @@ func main() {
 	fcKernel := flag.String("fc-kernel", "/opt/hopbox-microvm/vmlinux", "vmlinux kernel (microvm)")
 	fcImagesDir := flag.String("fc-images-dir", "/opt/hopbox-microvm/images", "base-image catalog dir; image <name> -> <dir>/<name>.ext4 (microvm)")
 	fcRunDir := flag.String("fc-rundir", "/var/lib/hopbox/microvm", "per-VM working dir (microvm)")
-	autoSuspend := flag.Bool("auto-suspend", false, "persistent boxes that auto-suspend when idle, waking on reconnect (vs ephemeral reap)")
+	autoSuspend := flag.Bool("auto-suspend", false, "persistent boxes that auto-suspend when idle, waking on reconnect (vs ephemeral reap) — the account/workspace tier")
 	idleTimeout := flag.Duration("idle-timeout", 5*time.Minute, "suspend a box after this long idle (with --auto-suspend)")
+	grace := flag.Duration("grace", 2*time.Minute, "ephemeral reconnect window: keep a box this long after disconnect before reaping (0 = reap immediately)")
 	flag.Parse()
 
 	if err := run(cfg{
@@ -50,7 +51,7 @@ func main() {
 		hostKeyPath: *hostKeyPath, image: *image, cpus: *cpus, memMB: *memMB, db: *db,
 		metaAddr: *metaAddr, guestBin: *guestBin, compute: *compute,
 		fcBin: *fcBin, fcKernel: *fcKernel, fcImagesDir: *fcImagesDir, fcRunDir: *fcRunDir,
-		autoSuspend: *autoSuspend, idleTimeout: *idleTimeout,
+		autoSuspend: *autoSuspend, idleTimeout: *idleTimeout, grace: *grace,
 	}); err != nil {
 		log.Fatal(err)
 	}
@@ -62,7 +63,7 @@ type cfg struct {
 	cpus                                                                                  float64
 	memMB                                                                                 int64
 	autoSuspend                                                                           bool
-	idleTimeout                                                                           time.Duration
+	idleTimeout, grace                                                                    time.Duration
 }
 
 // gatewayHost is the address the in-box agent + box-guest reach the host at,
@@ -86,6 +87,23 @@ func portOf(addr, def string) string {
 
 const engineTenant = "default" // boxd is single-tenant
 
+// resetSessions clears the Attached flag on every box at startup: no SSH session
+// survives a restart, so a box marked attached is stale. Ephemeral boxes then
+// count down their grace and reap; persistent boxes stay suspended until a real
+// reconnect (rather than spuriously resuming).
+func resetSessions(ctx context.Context, store box.Store) {
+	boxes, err := store.List(ctx, engineTenant)
+	if err != nil {
+		return
+	}
+	for _, b := range boxes {
+		if b.Attached {
+			b.Attached = false
+			_ = store.Update(ctx, b)
+		}
+	}
+}
+
 func run(c cfg) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -95,6 +113,7 @@ func run(c cfg) error {
 		return err
 	}
 	defer store.Close()
+	resetSessions(ctx, store) // no SSH session survives a restart; clear stale Attached
 
 	// The agent + box-guest reach the host at the backend's gateway. The agent
 	// dials `advertise`; box-guest reads $BOX_META; both derived from one host.
@@ -174,6 +193,7 @@ func run(c cfg) error {
 		Backends:      []string{"docker"},
 		DefaultFlavor: box.Flavor{MemMB: c.memMB, CPUMillis: int64(c.cpus * 1000)},
 		AutoSuspend:   c.autoSuspend,
+		DefaultGrace:  c.grace,
 	})
 
 	hostKey, err := sshca.LoadOrCreateCA(c.hostKeyPath)

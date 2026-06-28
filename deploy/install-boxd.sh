@@ -75,7 +75,10 @@ HOPBOX_FC_KERNEL=/opt/hopbox-microvm/vmlinux
 HOPBOX_FC_IMAGES_DIR=/opt/hopbox-microvm/images
 HOPBOX_DEFAULT_IMAGE=ubuntu-22.04
 HOPBOX_FC_RUNDIR=$LIBDIR/microvm
-# persistent boxes that auto-suspend when idle (vs ephemeral reap):
+# Default: ephemeral boxes (reaped a short grace after disconnect). HOPBOX_GRACE
+# is the reconnect/blip window. Set HOPBOX_AUTO_SUSPEND=1 for the persistent tier
+# (auto-suspend on idle, resume on reconnect) — reserve that for known accounts.
+HOPBOX_GRACE=2m
 HOPBOX_AUTO_SUSPEND=
 HOPBOX_IDLE_TIMEOUT=5m
 EOF
@@ -100,7 +103,7 @@ ExecStart=$PREFIX/boxd --compute \${HOPBOX_COMPUTE} \\
   --agent-bin \${HOPBOX_AGENT_BIN} --guest-bin \${HOPBOX_GUEST_BIN} \\
   --fc-kernel \${HOPBOX_FC_KERNEL} --fc-images-dir \${HOPBOX_FC_IMAGES_DIR} --fc-rundir \${HOPBOX_FC_RUNDIR} \\
   --default-image \${HOPBOX_DEFAULT_IMAGE} \\
-  \${HOPBOX_AUTO_SUSPEND:+--auto-suspend} --idle-timeout \${HOPBOX_IDLE_TIMEOUT}
+  --grace \${HOPBOX_GRACE} \${HOPBOX_AUTO_SUSPEND:+--auto-suspend} --idle-timeout \${HOPBOX_IDLE_TIMEOUT}
 # Only boxd gets SIGTERM on stop, so it can snapshot the firecracker children
 # before they die (graceful drain). Give the drain time before the kill.
 KillMode=mixed
