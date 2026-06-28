@@ -156,6 +156,32 @@ func (r *Reconciler) suspend(ctx context.Context, b *Box) error {
 	return r.setPhase(ctx, b, PhaseSuspended, "auto-suspended (idle)")
 }
 
+// Drain suspends every running, persistent box and marks it Suspended — for a
+// graceful boxd shutdown, so a restart resumes boxes (disk + memory) instead of
+// losing them. Best-effort; called once on shutdown with a fresh context.
+func (r *Reconciler) Drain(ctx context.Context, tenant string) {
+	susp, ok := r.compute.(ports.Suspender)
+	if !ok {
+		return
+	}
+	boxes, err := r.store.List(ctx, tenant)
+	if err != nil {
+		return
+	}
+	for _, b := range boxes {
+		if b.Ephemeral || b.Phase != PhaseRunning {
+			continue
+		}
+		if err := susp.Suspend(ctx, b.InstanceRef); err != nil {
+			log.Printf("boxreconcile: drain %s (%s): %v", b.ID, b.Name, err)
+			continue
+		}
+		b.AgentConnected = false
+		_ = r.setPhase(ctx, b, PhaseSuspended, "suspended (shutdown)")
+		log.Printf("boxreconcile: %s (%s) suspended for shutdown", b.ID, b.Name)
+	}
+}
+
 func (r *Reconciler) resume(ctx context.Context, b *Box) error {
 	susp, ok := r.compute.(ports.Suspender)
 	if !ok {

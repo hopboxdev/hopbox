@@ -24,7 +24,6 @@ const cowHeadroom = 8 << 30 // 8 GiB
 type rootfsPool struct {
 	mu      sync.Mutex
 	origins map[string]*origin // base image path -> shared read-only origin
-	n       int                // monotonic suffix for unique dm device names
 }
 
 type origin struct {
@@ -56,41 +55,58 @@ func (p *rootfsPool) originFor(base string) (*origin, error) {
 }
 
 // clone returns a per-VM rootfs path (a dm snapshot of base, or a copied file)
-// plus a teardown to release it.
+// plus a teardown to release it. It is idempotent and durable: an existing
+// cow.img is REUSED (the box's disk writes persist across restart/reboot), and
+// the dm device is rebuilt only if the kernel lost it (host reboot) — so calling
+// clone again on startup reattaches the same disk.
 func (p *rootfsPool) clone(id, dir, base string) (path string, teardown func(), err error) {
 	o, err := p.originFor(base)
-	if err != nil { // fallback: full copy
+	if err != nil { // fallback: full copy (no CoW)
 		log.Printf("microvm: CoW unavailable for %s (%v); copying", base, err)
 		f := filepath.Join(dir, "rootfs.ext4")
-		if cerr := copyFile(base, f); cerr != nil {
-			return "", nil, cerr
+		if _, serr := os.Stat(f); serr != nil { // reuse an existing copy if present
+			if cerr := copyFile(base, f); cerr != nil {
+				return "", nil, cerr
+			}
 		}
 		return f, func() {}, nil
 	}
 	cow := filepath.Join(dir, "cow.img")
-	if err := truncateFile(cow, cowHeadroom); err != nil {
-		return "", nil, err
+	if _, serr := os.Stat(cow); serr != nil { // fresh box: sparse cow store
+		if err := truncateFile(cow, cowHeadroom); err != nil {
+			return "", nil, err
+		}
+	} // else: reuse the existing cow.img — the box's disk writes persist
+
+	// Deterministic name (one snapshot per box), so a restart can recompute it.
+	name := "hopbox-" + dmSafe(id)
+	dev := "/dev/mapper/" + name
+	td := p.teardownFor(name, cow)
+	if _, serr := os.Stat(dev); serr == nil {
+		return dev, td, nil // dm device survived (boxd restart) — reuse it
 	}
-	cowLoop, err := losetup(cow, false)
+	cowLoop, err := loopFor(cow, false) // reuse a loop over cow, else create one
 	if err != nil {
 		return "", nil, err
 	}
-	p.mu.Lock()
-	p.n++
-	name := fmt.Sprintf("hopbox-%s-%d", dmSafe(id), p.n)
-	p.mu.Unlock()
 	// snapshot: origin (ro, shared) + cow store, persistent, 8-sector chunks.
 	table := fmt.Sprintf("0 %d snapshot %s %s P 8", o.sectors, o.loop, cowLoop)
 	if err := run("dmsetup", "create", name, "--table", table); err != nil {
 		_ = losetupDetach(cowLoop)
 		return "", nil, fmt.Errorf("microvm: dm snapshot: %w", err)
 	}
-	teardown = func() {
+	return dev, td, nil
+}
+
+// teardownFor releases a box's dm snapshot + the loop over its cow store.
+func (p *rootfsPool) teardownFor(name, cow string) func() {
+	return func() {
 		// --retry: firecracker may still be releasing the device right after kill.
 		_ = run("dmsetup", "remove", "--retry", name)
-		_ = losetupDetach(cowLoop)
+		if loop := findLoop(cow); loop != "" {
+			_ = losetupDetach(loop)
+		}
 	}
-	return "/dev/mapper/" + name, teardown, nil
 }
 
 func (p *rootfsPool) close() {
@@ -103,17 +119,28 @@ func (p *rootfsPool) close() {
 
 // --- host helpers ---
 
-// originLoop returns a read-only loop over base, reusing one that already exists
-// (so a boxd restart doesn't accumulate a loop per start) or creating a new one.
-func originLoop(base string) (string, error) {
-	if out, err := exec.Command("losetup", "-j", base).Output(); err == nil {
+// findLoop returns an existing loop device backed by file, or "" if none.
+func findLoop(file string) string {
+	if out, err := exec.Command("losetup", "-j", file).Output(); err == nil {
 		line := strings.SplitN(strings.TrimSpace(string(out)), "\n", 2)[0]
 		if loop := strings.SplitN(line, ":", 2)[0]; strings.HasPrefix(loop, "/dev/loop") {
-			return loop, nil
+			return loop
 		}
 	}
-	return losetup(base, true)
+	return ""
 }
+
+// loopFor reuses an existing loop over file (so a restart doesn't accumulate
+// loops) or creates a new one.
+func loopFor(file string, readonly bool) (string, error) {
+	if l := findLoop(file); l != "" {
+		return l, nil
+	}
+	return losetup(file, readonly)
+}
+
+// originLoop returns a read-only loop over a base image (shared origin).
+func originLoop(base string) (string, error) { return loopFor(base, true) }
 
 func losetup(file string, readonly bool) (string, error) {
 	args := []string{"--find", "--show"}

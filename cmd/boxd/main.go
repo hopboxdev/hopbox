@@ -84,6 +84,8 @@ func portOf(addr, def string) string {
 	return def
 }
 
+const engineTenant = "default" // boxd is single-tenant
+
 func run(c cfg) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -167,7 +169,7 @@ func run(c cfg) error {
 	}()
 
 	engine := box.NewEngine(store, rec.Trigger, box.EngineConfig{
-		Tenant:        "default",
+		Tenant:        engineTenant,
 		DefaultImage:  c.image,
 		Backends:      []string{"docker"},
 		DefaultFlavor: box.Flavor{MemMB: c.memMB, CPUMillis: int64(c.cpus * 1000)},
@@ -187,7 +189,15 @@ func run(c cfg) error {
 		return err
 	}
 	log.Printf("boxd: SSH front door on %s (default image %s)", c.sshAddr, c.image)
-	return front.Serve(ctx, frontLn)
+	err = front.Serve(ctx, frontLn)
+
+	// Graceful shutdown: snapshot persistent boxes so the next start resumes them
+	// (disk + memory) rather than re-provisioning. Fresh context — ctx is cancelled.
+	drainCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	log.Printf("boxd: draining — suspending persistent boxes")
+	rec.Drain(drainCtx, engineTenant)
+	cancel()
+	return err
 }
 
 // boxSink records agent connect state on the box and wakes the reconciler.
