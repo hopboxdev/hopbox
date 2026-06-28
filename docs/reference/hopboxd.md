@@ -12,18 +12,58 @@ roadmap). Run `hopboxd --help` for the authoritative list.
 | `--agent-advertise` | `host.docker.internal:7777` | Address agents are told to dial back (must be reachable from inside a workspace). |
 | `--db` | `./hopbox.db` | SQLite database path. |
 | `--tenant` | `default` | Single-tenant id. |
+| `--owner` | `dev` | Single principal id in open (single-user) mode. |
 
 ## Compute & storage
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `--compute` | `docker` | Compute provider: `docker` \| `kubernetes`. |
+| `--compute` | `docker` | Compute provider: `docker` \| `microvm` \| `kubernetes`. |
 | `--compute-network` | _(empty)_ | Docker: put workspace boxes on this dedicated bridge (created on first use) to isolate them from the host's other containers. The daemon also programs the egress firewall on the box subnet itself — boxes reach the agent hub and the internet, but not the host's other services, the LAN, or the tailnet. Idempotent and re-applied each provision, so it survives reboots. No script to run. Recommended for the anonymous front door. |
+| `--compute-transport` | `inproc` | Compute transport: `inproc` \| `remote`. |
+| `--compute-remote` | _(empty)_ | Remote compute provider address (when `--compute-transport=remote`). |
 | `--storage` | `localfs` | Storage provider: `localfs` \| `k8spvc`. |
-| `--agent-bin` | `./bin/hopbox-agent-linux-<arch>` | Host path of the agent binary side-loaded into workspaces. |
+| `--storage-transport` | `inproc` | Storage transport: `inproc` \| `remote`. |
+| `--storage-remote` | _(empty)_ | Remote storage provider address. |
 
-Kubernetes options: `--kube-namespace`, `--kubeconfig`, `--kube-storageclass`,
-`--kube-home-size`.
+### Agent injection
+
+The Linux `hopbox-agent` binary is side-loaded into each workspace and dials
+back to the control plane.
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--agent-bin` | `./bin/hopbox-agent-linux-<arch>` | Host path of the agent binary side-loaded into workspaces. |
+| `--agent-image` | _(empty)_ | Alternative: an OCI image carrying the agent binary. |
+| `--agent-binary-path` | `/hopbox-agent` | Agent binary path inside `--agent-image`. |
+| `--agent-target-path` | `/hopbox/hopbox-agent` | Where the agent is placed and run inside the workspace. |
+| `--guest-bin` | _(empty)_ | Host path of the `box-guest` binary side-loaded into docker workspaces (enables `box-guest` in-box; needs `--meta-addr`). The microVM backend bakes it into the rootfs. |
+
+### microVM (Firecracker)
+
+Active when `--compute microvm`. A workspace is a Firecracker microVM booted from
+a copy-on-write clone of a catalog image. See [boxd → microVM &
+catalog](/guide/boxd#microvm-image-catalog) for building the images (the same
+catalog format).
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--fc-bin` | `/usr/local/bin/firecracker` | Firecracker binary. |
+| `--fc-kernel` | `/opt/hopbox-microvm/vmlinux` | `vmlinux` guest kernel. |
+| `--fc-images-dir` | `/opt/hopbox-microvm/images` | Base-image catalog dir; image `<name>` → `<dir>/<name>.ext4`. |
+| `--fc-rundir` | `/var/lib/hopbox/microvm` | Per-VM working dir (CoW disks, sockets, homes). |
+| `--fc-bridge` | _(empty → `hopbox-vmnet`)_ | Host bridge for the microVM fleet. Set with `--fc-subnet` to run beside another daemon (e.g. boxd). |
+| `--fc-subnet` | _(empty → `10.0.0`)_ | `/24` base (first three octets); the bridge gateway is `.1`. |
+| `--home-size-mb` | `2048` | Per-workspace home ext4 image size in MB (microVM block storage). |
+
+### Kubernetes
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--kube-namespace` | `hopbox-workspaces` | Namespace for workspace pods/PVCs. |
+| `--kubeconfig` | _(empty)_ | Path to kubeconfig; empty = in-cluster config. |
+| `--kube-storageclass` | _(empty)_ | PVC StorageClass; empty = cluster default. |
+| `--kube-home-size` | `1Gi` | PVC size for a workspace home. |
 
 ## Auth (multi-user)
 
@@ -55,16 +95,18 @@ See [Auth & multi-user](/guide/auth).
 
 ## SSH front door
 
-A krillbox-style entry point: `ssh <spec>@host` where the **username is a
-workspace spec** and the **client key is the identity** — no signup, no
-pre-created workspace. Boxes spawned this way are ephemeral. See
-[SSH & VS Code → Front door](/guide/ssh#ephemeral-front-door).
+A krillbox-style entry point: `ssh <spec>@host` where the **username is a box
+spec** and the **client key is the identity** — no signup, no pre-created
+workspace. Boxes are ephemeral unless the key is registered in `--accounts`. See
+[SSH & VS Code → the front door](/guide/ssh#the-ssh-front-door).
 
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--ssh-addr` | _(empty)_ | Front-door SSH listen address (e.g. `:2222`); empty disables. |
 | `--ssh-host-key` | `./hopbox-ssh-front-key` | Front-door host key path (auto-created on first run). |
 | `--ssh-default-image` | `alpine` | Image for front-door boxes when the username names none. |
+| `--accounts` | _(empty)_ | Registered-keys file (`<ssh-key> <account>` per line). Listed keys get **persistent** boxes (auto-suspend on idle, resume on reconnect); unlisted keys stay anonymous and ephemeral. Empty = everyone anonymous/ephemeral. |
+| `--meta-addr` | _(empty)_ | Box metadata API listen address; empty = off. Boxes reach it by source IP — enables [`box-guest`](/guide/boxd#box-guest-mcp) (`info` / `keep-alive` / `auto-suspend` / `idle`) inside the box. |
 | `--ssh-default-mem-mb` | `2048` | Memory cap (MB) for front-door boxes — they are anonymous, so this bounds how much a single box can consume. `0` = unlimited. |
 | `--ssh-default-cpus` | `2` | CPU cap (vCPU) for front-door boxes. `0` = unlimited. A recognized named flavor in the spec (`box:img:medium`) overrides both caps. |
 

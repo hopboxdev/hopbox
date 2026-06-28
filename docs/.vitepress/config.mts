@@ -13,6 +13,7 @@ export default defineConfig({
     logo: '/logo.svg',
     nav: [
       { text: 'Guide', link: '/guide/what-is-hopbox' },
+      { text: 'boxd', link: '/guide/boxd' },
       { text: 'Reference', link: '/reference/cli' },
       { text: 'v0.1', items: [{ text: 'Releases', link: 'https://github.com/hopboxdev/hopbox/releases' }] },
     ],
@@ -25,9 +26,15 @@ export default defineConfig({
         ],
       },
       {
+        text: 'boxd — compute over SSH',
+        items: [
+          { text: 'Overview', link: '/guide/boxd' },
+        ],
+      },
+      {
         text: 'Access',
         items: [
-          { text: 'SSH & VS Code', link: '/guide/ssh' },
+          { text: 'SSH & the front door', link: '/guide/ssh' },
           { text: 'Auth & multi-user', link: '/guide/auth' },
         ],
       },
@@ -42,6 +49,7 @@ export default defineConfig({
         items: [
           { text: 'CLI', link: '/reference/cli' },
           { text: 'hopboxd config', link: '/reference/hopboxd' },
+          { text: 'boxd config', link: '/reference/boxd' },
         ],
       },
     ],

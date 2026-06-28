@@ -81,6 +81,33 @@ A browser device-flow (`hopbox login --oidc`) that fetches and refreshes the
 token automatically is on the roadmap.
 :::
 
+## The front-door account tier
+
+The [SSH front door](/guide/ssh#the-ssh-front-door) (`--ssh-addr`) has its own,
+separate identity model: **your SSH key is your identity** — no token, no login.
+By default every front-door box is **anonymous and ephemeral** (reaped a short
+grace after you disconnect).
+
+Point `hopboxd` at a **registered-keys file** to promote known keys to the
+**persistent tier** — their boxes auto-suspend on idle and resume on reconnect
+instead of being reaped:
+
+```
+# /etc/hopbox/accounts  —  <ssh-public-key>  <account>
+ssh-ed25519 AAAAC3Nz...alice   alice
+ssh-ed25519 AAAAC3Nz...bob     bob
+```
+
+```sh
+hopboxd --ssh-addr :2222 --accounts /etc/hopbox/accounts
+```
+
+A key listed here gets a durable box; any other key still works but stays
+anonymous and ephemeral. This is independent of the gRPC-API auth modes above —
+it gates the SSH front door, not the `hopbox` CLI. The standalone
+[boxd](/guide/boxd) daemon offers the same persistent tier as a single global
+switch (`--auto-suspend`) rather than a per-key file.
+
 ## Bring your own SSH CA
 
 Enterprises often already run an SSH CA (HashiCorp Vault SSH, Smallstep, Teleport)

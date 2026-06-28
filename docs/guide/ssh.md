@@ -61,42 +61,53 @@ scp ./file mybox:/home/dev/
 rsync -a ./src/ mybox:/home/dev/src/
 ```
 
-## Ephemeral front door
+## The SSH front door
 
 The flow above reaches a workspace you already created. hopboxd can also run a
-**front door**: a plain SSH listener where the **username is a workspace spec**
-and the **client key is the identity** — no signup, no pre-created workspace.
-Enable it with [`--ssh-addr`](/reference/hopboxd#ssh-front-door).
+**front door**: a plain SSH listener where the **username is a box spec** and the
+**client key is the identity** — no signup, no pre-created workspace. Enable it
+with [`--ssh-addr`](/reference/hopboxd#ssh-front-door). (This is the same front
+door that the standalone [boxd](/guide/boxd) daemon is built around.)
 
 ```sh
-ssh proj@host                 # spawn/attach workspace "proj" (default image)
-ssh proj:python@host          # python image
-ssh proj:go:cpu+5m@host       # go image, stay alive 5m after you disconnect
-ssh proj~docker:python@host   # pin the docker backend
+ssh proj@host                 # spawn/attach box "proj" (default image)
+ssh proj:ubuntu-22.04@host    # pick a catalog image
+ssh proj:debian-12:cpu+5m@host # image + flavor, stay alive 5m after you disconnect
+ssh proj~docker@host          # pin the docker backend
 ssh proj+@host                # force a fresh box
+ssh images@host               # list the image catalog (spawns no box)
 ```
 
 ### Username grammar
 
 ```
-workspace[~backend][:image[:flavor[+duration]]]
+name[~backend][:image[:flavor[+duration]]]
 ```
 
 | Segment | Meaning |
 | --- | --- |
-| `workspace` | Workspace name (created on first connect). Append `+` to force a fresh box. |
-| `~backend` | Compute backend (`docker`, `kubernetes`, …). Omit = auto: the sole backend, or the configured default. |
-| `:image` | Box image. Omit = `--ssh-default-image` (`alpine`). |
-| `:flavor` | Hardware flavor (reserved; not yet applied). |
-| `+duration` | Stay-alive grace after disconnect (`5m`, `1h`). Omit = reap immediately. |
+| `name` | Box name, created on first connect. Names are **per-owner** — your `proj` is distinct from another key's `proj`. Append `+` to force a fresh box. |
+| `~backend` | Compute backend (`docker`, `microvm`, `kubernetes`). Omit = auto: the sole backend, or the configured default. |
+| `:image` | Box image. With docker, any OCI ref. With microVM, a catalog name (`ssh images@host` lists them). Omit = `--ssh-default-image` (`alpine`). |
+| `:flavor` | Hardware flavor. A recognized named flavor (e.g. `:medium`) sets the box's CPU/memory caps, overriding the front-door defaults. |
+| `+duration` | Stay-alive grace after disconnect (`5m`, `1h`). Omit = the daemon default grace. |
 
-### Lifetime
+`images` (or `image`) is a **meta-command**: it prints the available image
+catalog and spawns no box. Select one with `ssh name:<image>@host`.
 
-Front-door boxes are **ephemeral**: the workspace is attached for the life of
-your SSH session and reaped when you disconnect (after the `+duration` grace, if
-any). A reconnect within the grace window cancels the reap. This is the
-temporary-box model — for a persistent workspace, create one via the
-[`hopbox` CLI](/reference/cli) instead.
+### Lifetime — ephemeral vs persistent
+
+Front-door boxes are **ephemeral by default**: the box is attached for the life
+of your SSH session and reaped a short grace window after you disconnect. A
+reconnect within that window (your `+duration`, or the daemon default) cancels
+the reap, so a network blip never loses your shell.
+
+A **registered key** gets the **persistent tier** instead: the box auto-suspends
+to disk when idle and **resumes instantly** on your next connect — durable
+across daemon restarts and host reboots. You register keys with the
+[`--accounts`](/reference/hopboxd#ssh-front-door) file (`<ssh-key> <account>`
+per line); keys not listed stay anonymous and ephemeral. See
+[Auth → the account tier](/guide/auth#the-front-door-account-tier).
 
 ### Identity & visibility
 
