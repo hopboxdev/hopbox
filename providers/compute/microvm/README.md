@@ -19,8 +19,13 @@ emits `$OUT_DIR/{vmlinux, agent.ext4}`. Run on Linux as root (it loop-mounts the
 image); supply prebuilt linux binaries via `$AGENT_BIN`/`$GUEST_BIN` when `go`
 isn't on the build host.
 
+It also bakes in a dev-tools layer (git, vim, nano, curl, openssh-client, tmux,
+…) so a box is usable out of the box; override with `PACKAGES="..."` (empty for a
+bare rootfs). `build/microvm/build-debian.sh` builds a Debian image the same way.
+
 ```sh
 sudo IMAGE=ubuntu-22.04 build/microvm/build-rootfs.sh   # build one catalog image
+sudo PACKAGES="git vim curl" IMAGE=ubuntu-22.04 build/microvm/build-rootfs.sh  # custom toolset
 sudo AGENT_BIN=./agent GUEST_BIN=./box-guest \
      build/microvm/build-rootfs.sh                 # from prebuilt binaries
 ```
