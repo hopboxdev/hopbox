@@ -59,18 +59,34 @@ func marshalJSON(v any) string {
 
 func (s *Store) Close() error { return s.db.Close() }
 
-// lifetimeJSON is the on-disk shape of a workspace's ephemeral lifetime. Grace
-// and MaxTTL are nanoseconds (time.Duration); Deadline is nil when unset.
+// lifetimeJSON is the on-disk shape of a workspace's lifetime + suspend/idle
+// state (stored in the `lifetime` column so no schema migration is needed now
+// that the dev-env runs box.Reconciler). Grace/MaxTTL/IdleTimeoutOverride are
+// nanoseconds; *time pointers/zero are nil/omitted when unset.
 type lifetimeJSON struct {
-	Ephemeral bool          `json:"ephemeral,omitempty"`
-	Grace     time.Duration `json:"grace,omitempty"`
-	MaxTTL    time.Duration `json:"max_ttl,omitempty"`
-	Deadline  *time.Time    `json:"deadline,omitempty"`
+	Ephemeral           bool          `json:"ephemeral,omitempty"`
+	Grace               time.Duration `json:"grace,omitempty"`
+	MaxTTL              time.Duration `json:"max_ttl,omitempty"`
+	Deadline            *time.Time    `json:"deadline,omitempty"`
+	AutoSuspend         bool          `json:"auto_suspend,omitempty"`
+	KeepAliveUntil      *time.Time    `json:"keep_alive_until,omitempty"`
+	IdleTimeoutOverride time.Duration `json:"idle_timeout_override,omitempty"`
+	LastActive          *time.Time    `json:"last_active,omitempty"`
+	Load                float64       `json:"load,omitempty"`
+}
+
+func nilIfZero(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
 }
 
 func marshalLifetime(w *workspace.Workspace) string {
 	b, err := json.Marshal(lifetimeJSON{
 		Ephemeral: w.Ephemeral, Grace: w.Grace, MaxTTL: w.MaxTTL, Deadline: w.Deadline,
+		AutoSuspend: w.AutoSuspend, KeepAliveUntil: nilIfZero(w.KeepAliveUntil),
+		IdleTimeoutOverride: w.IdleTimeoutOverride, LastActive: nilIfZero(w.LastActive), Load: w.Load,
 	})
 	if err != nil {
 		return "{}"
@@ -84,6 +100,13 @@ func unmarshalLifetime(s string, w *workspace.Workspace) error {
 		return fmt.Errorf("parse lifetime %q: %w", s, err)
 	}
 	w.Ephemeral, w.Grace, w.MaxTTL, w.Deadline = lt.Ephemeral, lt.Grace, lt.MaxTTL, lt.Deadline
+	w.AutoSuspend, w.IdleTimeoutOverride, w.Load = lt.AutoSuspend, lt.IdleTimeoutOverride, lt.Load
+	if lt.KeepAliveUntil != nil {
+		w.KeepAliveUntil = *lt.KeepAliveUntil
+	}
+	if lt.LastActive != nil {
+		w.LastActive = *lt.LastActive
+	}
 	return nil
 }
 
