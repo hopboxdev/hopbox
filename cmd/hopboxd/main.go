@@ -23,7 +23,6 @@ import (
 	"github.com/hopboxdev/hopbox/internal/core/box"
 	"github.com/hopboxdev/hopbox/internal/core/boxstore"
 	"github.com/hopboxdev/hopbox/internal/core/ports"
-	"github.com/hopboxdev/hopbox/internal/core/reconciler"
 	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
 	"github.com/hopboxdev/hopbox/internal/plugin"
 	"github.com/hopboxdev/hopbox/internal/sshca"
@@ -158,7 +157,14 @@ func run(cfg config.Config) error {
 	}
 
 	authKeys := loadAuthorizedKeys(cfg.AuthorizedKeysFile)
-	rec := reconciler.New(st, compute, storage, ingress, reconciler.Config{
+	// One reconciler: box.Reconciler (lifecycle + suspend/persistence) with the
+	// dev-env's storage-home + ingress folded in as hooks. The box-view of the
+	// workspace store is boxstore.New(st).
+	hooks := boxstore.NewHooks(st, storage, ingress, boxstore.HooksConfig{
+		TrustedUserCA:  caTrustLine,
+		AuthorizedKeys: authKeys,
+	})
+	rec := box.NewReconciler(boxstore.New(st), compute, box.ReconcileConfig{
 		AgentAddr: cfg.AgentAdvertise,
 		Agent: ports.AgentImage{
 			ImageRef:       cfg.AgentImageRef,
@@ -166,8 +172,7 @@ func run(cfg config.Config) error {
 			TargetPath:     cfg.AgentTargetPath,
 			HostBinaryPath: cfg.AgentBin, // M1 dev fast-path
 		},
-		TrustedUserCA:  caTrustLine,
-		AuthorizedKeys: authKeys,
+		Hooks: hooks,
 	})
 	go rec.Run(ctx)
 

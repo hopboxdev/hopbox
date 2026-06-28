@@ -44,7 +44,13 @@ func (a *Adapter) GetByName(ctx context.Context, tenant, name string) (*box.Box,
 }
 
 func (a *Adapter) List(ctx context.Context, tenant string) ([]*box.Box, error) {
-	ws, err := a.s.ListWorkspaces(ctx, tenant)
+	// box.Reconciler.Run sweeps with tenant "" meaning "all"; the workspace store
+	// filters tenant_id='' to nothing, so map the empty tenant onto ListAll.
+	list := a.s.ListWorkspaces
+	if tenant == "" {
+		list = func(ctx context.Context, _ string) ([]*workspace.Workspace, error) { return a.s.ListAll(ctx) }
+	}
+	ws, err := list(ctx, tenant)
 	if err != nil {
 		return nil, err
 	}
