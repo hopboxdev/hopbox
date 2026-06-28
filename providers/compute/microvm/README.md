@@ -21,7 +21,7 @@ isn't on the build host.
 
 It also bakes in a dev-tools layer (git, vim, nano, curl, openssh-client, tmux,
 …) so a box is usable out of the box; override with `PACKAGES="..."` (empty for a
-bare rootfs). `build/microvm/build-debian.sh` builds a Debian image the same way.
+bare rootfs). `build/microvm/build-deboot.sh` builds a fully-tooled image via debootstrap — Debian (`DISTRO=debian`) or Ubuntu (`DISTRO=ubuntu`), the apt-extensible alternative to the prebuilt FC CI base.
 
 ```sh
 sudo IMAGE=ubuntu-22.04 build/microvm/build-rootfs.sh   # build one catalog image

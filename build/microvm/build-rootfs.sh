@@ -66,7 +66,7 @@ install -m0755 "$WORK/box-guest"    "$WORK/mnt/usr/local/bin/box-guest"
 install -m0755 "$INIT_ASSET"        "$WORK/mnt/sbin/hopbox-init"
 # Best-effort dev tools via chroot apt. Some prebuilt base images (the Firecracker
 # CI ubuntu rootfs) ship without a dpkg database and can't apt-install — skip with
-# a note rather than fail. Use build-debian.sh for a fully tooled image.
+# a note rather than fail. Use build-deboot.sh for a fully tooled image.
 if [ -n "$PACKAGES" ] && [ -f "$WORK/mnt/var/lib/dpkg/status" ]; then
   echo "==> install dev tools (chroot apt): $PACKAGES"
   cp /etc/resolv.conf "$WORK/mnt/etc/resolv.conf" 2>/dev/null || true
@@ -77,7 +77,7 @@ if [ -n "$PACKAGES" ] && [ -f "$WORK/mnt/var/lib/dpkg/status" ]; then
     || echo "!! tool install failed — shipping a bare image (binaries are present)"
   umount "$WORK/mnt/dev" "$WORK/mnt/sys" "$WORK/mnt/proc"
 elif [ -n "$PACKAGES" ]; then
-  echo "==> skip dev tools: base has no dpkg database (apt-incapable image); use build-debian.sh for tools"
+  echo "==> skip dev tools: base has no dpkg database (apt-incapable image); use build-deboot.sh for tools"
 fi
 sync; umount "$WORK/mnt"
 
