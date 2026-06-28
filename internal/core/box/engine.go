@@ -9,13 +9,13 @@ import (
 
 // EngineConfig holds the box-spawn defaults the Engine applies.
 type EngineConfig struct {
-	Tenant        string        // single-tenant id boxes are created under
-	DefaultImage  string        // image when the spec names none
-	Backends      []string      // compute backends actually configured (for ResolveBackend)
-	DefBackend    string        // default backend when more than one is configured
-	DefaultFlavor Flavor        // resource caps applied to a box unless its spec names a known flavor
-	AutoSuspend   bool          // true = boxes are persistent and auto-suspend when idle (vs ephemeral reap)
-	DefaultGrace  time.Duration // ephemeral reconnect window after detach before reap (0 = reap immediately)
+	Tenant        string                  // single-tenant id boxes are created under
+	DefaultImage  string                  // image when the spec names none
+	Backends      []string                // compute backends actually configured (for ResolveBackend)
+	DefBackend    string                  // default backend when more than one is configured
+	DefaultFlavor Flavor                  // resource caps applied to a box unless its spec names a known flavor
+	Persistent    func(owner string) bool // owner -> persistent (auto-suspend) vs ephemeral reap; nil = all ephemeral
+	DefaultGrace  time.Duration           // ephemeral reconnect window after detach before reap (0 = reap immediately)
 }
 
 // Engine is the box product's core service: spawn / attach / inspect / destroy a
@@ -52,8 +52,9 @@ func (e *Engine) build(owner string, spec Spec) (*Box, error) {
 	}
 	b := New(e.cfg.Tenant, owner, spec.Name, image)
 	b.Backend = backend
-	// Persistent + auto-suspend (krillbox model) or ephemeral reap-on-disconnect.
-	if e.cfg.AutoSuspend {
+	// Tier: an identified owner gets a persistent, auto-suspending box (krillbox
+	// model); an anonymous owner gets an ephemeral reap-on-disconnect box.
+	if e.cfg.Persistent != nil && e.cfg.Persistent(owner) {
 		b.AutoSuspend = true
 	} else {
 		b.Ephemeral = true

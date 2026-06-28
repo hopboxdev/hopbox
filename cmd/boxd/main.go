@@ -192,7 +192,7 @@ func run(c cfg) error {
 		DefaultImage:  c.image,
 		Backends:      []string{"docker"},
 		DefaultFlavor: box.Flavor{MemMB: c.memMB, CPUMillis: int64(c.cpus * 1000)},
-		AutoSuspend:   c.autoSuspend,
+		Persistent:    func(string) bool { return c.autoSuspend }, // boxd: one global tier
 		DefaultGrace:  c.grace,
 	})
 

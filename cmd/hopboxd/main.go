@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc"
 
 	hopboxv1 "github.com/hopboxdev/hopbox/gen/hopbox/v1"
+	"github.com/hopboxdev/hopbox/internal/account"
 	"github.com/hopboxdev/hopbox/internal/agenthub"
 	"github.com/hopboxdev/hopbox/internal/api"
 	"github.com/hopboxdev/hopbox/internal/config"
@@ -156,6 +157,20 @@ func run(cfg config.Config) error {
 		log.Printf("hopboxd: ssh user CA %s (workspaces trust %s)", cfg.SSHCAPath, strings.TrimSpace(caTrustLine))
 	}
 
+	// Account tier: keys in the registered-keys file are accounts (persistent,
+	// auto-suspending boxes); unknown keys are anonymous (ephemeral). The same
+	// directory authenticates the front door and decides the engine's tier.
+	var frontAuthority sshfront.Authority // nil => AnyKey (everyone anonymous)
+	var persistentTier func(string) bool
+	if cfg.AccountsFile != "" {
+		dir, err := account.Load(cfg.AccountsFile)
+		if err != nil {
+			return fmt.Errorf("accounts: %w", err)
+		}
+		frontAuthority, persistentTier = dir, dir.IsAccount
+		log.Printf("hopboxd: account tier on (%d registered keys from %s)", dir.Len(), cfg.AccountsFile)
+	}
+
 	authKeys := loadAuthorizedKeys(cfg.AuthorizedKeysFile)
 	// One reconciler: box.Reconciler (lifecycle + suspend/persistence) with the
 	// dev-env's storage-home + ingress folded in as hooks. The box-view of the
@@ -227,8 +242,9 @@ func run(cfg config.Config) error {
 				MemMB:     cfg.SSHDefaultMemMB,
 				CPUMillis: int64(cfg.SSHDefaultCPUs * 1000),
 			},
+			Persistent: persistentTier, // accounts -> persistent; anonymous -> ephemeral
 		})
-		front := sshfront.NewServer(engine, hub, hostKey, nil) // AnyKey: key is identity
+		front := sshfront.NewServer(engine, hub, hostKey, frontAuthority) // nil => AnyKey
 		frontLn, err := net.Listen("tcp", cfg.SSHAddr)
 		if err != nil {
 			return err
