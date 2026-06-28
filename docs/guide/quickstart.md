@@ -3,6 +3,12 @@
 Get a workspace running and `ssh` into it in a few minutes. This walks through a
 local Docker setup; for a real server see [Deploy a server](/guide/deploy).
 
+::: tip Just want `ssh box@host`?
+If you only want **compute boxes over SSH** — no CLI, no control plane to run —
+try the standalone [boxd](/guide/boxd) layer: `ssh box@box.hopbox.dev` spawns a
+microVM and drops you in. This quickstart is for the full hopbox dev-env.
+:::
+
 ## Prerequisites
 
 - **Docker** running locally (the default compute provider).
@@ -96,5 +102,6 @@ hopbox rm demo
 ## Next
 
 - [What is Hopbox](/guide/what-is-hopbox) — the architecture in five minutes.
+- [boxd — compute over SSH](/guide/boxd) — the standalone `ssh box@host` layer.
 - [Auth & multi-user](/guide/auth) — give each user their own boxes and keys.
 - [Deploy a server](/guide/deploy) — run it for real with TLS.
