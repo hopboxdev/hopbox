@@ -89,6 +89,16 @@ func (n *vmNet) allocIP() (string, error) {
 	return "", fmt.Errorf("microvm: no free IP in %s", vmSubnet)
 }
 
+// reserveIP marks a specific IP's octet used — for reattaching a persisted box
+// to its original address across a restart.
+func (n *vmNet) reserveIP(ip string) {
+	if o := lastOctet(ip); o >= 0 {
+		n.mu.Lock()
+		n.used[o] = true
+		n.mu.Unlock()
+	}
+}
+
 func (n *vmNet) freeIP(ip string) {
 	if o := lastOctet(ip); o >= 0 {
 		n.mu.Lock()

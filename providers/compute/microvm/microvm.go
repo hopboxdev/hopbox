@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,12 +40,28 @@ type Provider struct {
 type vm struct {
 	cmd       *exec.Cmd
 	dir       string
+	image     string      // base image name (to rebuild the rootfs on reattach)
 	ip        string      // allocated guest IP
 	tap       string      // host tap device
 	sock      string      // firecracker API socket (for snapshot/suspend, F4)
 	teardown  func()      // release the CoW rootfs clone
 	suspended bool        // snapshotted to disk; firecracker not running
 	done      atomic.Bool // set when the firecracker process exits
+}
+
+// vmMeta is the on-disk record (vm.json in the box dir) that lets a restarted
+// boxd reattach the box: its disk (cow.img) + snapshot are already on disk.
+type vmMeta struct {
+	Image     string `json:"image"`
+	IP        string `json:"ip"`
+	Tap       string `json:"tap"`
+	Suspended bool   `json:"suspended"`
+}
+
+func (v *vm) persist() {
+	_ = writeJSON(filepath.Join(v.dir, "vm.json"), vmMeta{
+		Image: v.image, IP: v.ip, Tap: v.tap, Suspended: v.suspended,
+	})
 }
 
 var (
@@ -70,10 +87,56 @@ func New(fcBin, kernel, imagesDir, runDir string, allowHostPorts []string) (*Pro
 	if err != nil {
 		return nil, err
 	}
-	return &Provider{
+	p := &Provider{
 		fcBin: fcBin, kernel: kernel, imagesDir: imagesDir, runDir: runDir,
 		net: net, pool: newRootfsPool(), vms: map[string]*vm{},
-	}, nil
+	}
+	p.reattach() // restore boxes from a previous run (restart / host reboot)
+	return p, nil
+}
+
+// reattach restores boxes from a previous run so a boxd restart (or host reboot)
+// doesn't lose them — their disk (cow.img) and FC snapshot are on disk. Each
+// box that was cleanly suspended comes back as suspended; the reconciler resumes
+// it on the next connect. Boxes without a snapshot (a non-graceful exit) are left
+// for the reconciler to re-provision (Provision reuses cow.img, so disk survives).
+func (p *Provider) reattach() {
+	entries, err := os.ReadDir(p.runDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "vm-") {
+			continue
+		}
+		ref := strings.TrimPrefix(e.Name(), "vm-")
+		dir := filepath.Join(p.runDir, e.Name())
+		var m vmMeta
+		if err := readJSON(filepath.Join(dir, "vm.json"), &m); err != nil {
+			continue
+		}
+		if state, _ := (&vm{dir: dir}).snapPaths(); !fileExists(state) {
+			continue // no snapshot: let the reconciler re-provision (cow.img persists)
+		}
+		base, err := p.imagePath(m.Image)
+		if err != nil {
+			log.Printf("microvm: reattach %s: %v; skipping", ref, err)
+			continue
+		}
+		_, teardown, err := p.pool.clone(ref, dir, base) // rebuild the CoW rootfs device
+		if err != nil {
+			log.Printf("microvm: reattach %s rootfs: %v; skipping", ref, err)
+			continue
+		}
+		p.net.reserveIP(m.IP)
+		p.mu.Lock()
+		p.vms[ref] = &vm{
+			dir: dir, image: m.Image, ip: m.IP, tap: m.Tap,
+			sock: filepath.Join(dir, "fc.sock"), teardown: teardown, suspended: true,
+		}
+		p.mu.Unlock()
+		log.Printf("microvm: reattached box %s (image %s, ip %s) — suspended; resumes on connect", ref, m.Image, m.IP)
+	}
 }
 
 // imagePath resolves a box's image name to its base rootfs in the catalog.
@@ -151,7 +214,8 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 		logf.Close()
 		return fail(fmt.Errorf("microvm: boot: %w", err))
 	}
-	v := &vm{cmd: cmd, dir: dir, ip: ip, tap: tap, sock: sock, teardown: teardown}
+	v := &vm{cmd: cmd, dir: dir, image: r.ImageRef, ip: ip, tap: tap, sock: sock, teardown: teardown}
+	v.persist() // record enough to reattach this box after a restart
 	p.mu.Lock()
 	p.vms[r.WorkspaceID] = v
 	p.mu.Unlock()
@@ -210,6 +274,7 @@ func (p *Provider) Suspend(_ context.Context, ref string) error {
 	p.mu.Lock()
 	v.suspended = true
 	p.mu.Unlock()
+	v.persist()
 	return nil
 }
 
@@ -257,6 +322,7 @@ func (p *Provider) Resume(_ context.Context, ref string) error {
 	v.suspended = false
 	v.done.Store(false)
 	p.mu.Unlock()
+	v.persist()
 	go func() { _ = cmd.Wait(); v.done.Store(true); logf.Close() }()
 	return nil
 }
@@ -296,6 +362,19 @@ func writeJSON(path string, v any) error {
 		return err
 	}
 	return os.WriteFile(path, b, 0o644)
+}
+
+func readJSON(path string, v any) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, v)
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func copyFile(src, dst string) error {
