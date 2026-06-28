@@ -8,6 +8,6 @@ import (
 	dockerprov "github.com/hopboxdev/hopbox/providers/compute/docker"
 )
 
-func newCompute(cfg config.Config) (ports.Compute, error) {
+func newDocker(cfg config.Config) (ports.Compute, error) {
 	return dockerprov.New(cfg.AgentAdvertise, dockerprov.WithNetwork(cfg.ComputeNetwork))
 }

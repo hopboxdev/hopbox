@@ -32,6 +32,10 @@ type Config struct {
 	ComputeTransport string
 	ComputeRemote    string
 	ComputeNetwork   string // docker: dedicated bridge for workspace boxes (isolates them); empty = default bridge
+	FCBin            string // microvm: firecracker binary
+	FCKernel         string // microvm: vmlinux kernel
+	FCImagesDir      string // microvm: base-image catalog dir (<name>.ext4)
+	FCRunDir         string // microvm: per-VM working dir
 	StorageKind      string
 	StorageTransport string
 	StorageRemote    string
@@ -79,7 +83,11 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.AgentImageRef, "agent-image", "", "OCI image carrying the hopbox-agent binary")
 	fs.StringVar(&c.AgentBinaryPath, "agent-binary-path", "/hopbox-agent", "agent binary path inside the agent image")
 	fs.StringVar(&c.AgentTargetPath, "agent-target-path", "/hopbox/hopbox-agent", "where to place+run the agent in the workspace")
-	fs.StringVar(&c.ComputeKind, "compute", "docker", "compute provider: docker|kubernetes")
+	fs.StringVar(&c.ComputeKind, "compute", "docker", "compute provider: docker|microvm|kubernetes")
+	fs.StringVar(&c.FCBin, "fc-bin", "/usr/local/bin/firecracker", "firecracker binary (microvm)")
+	fs.StringVar(&c.FCKernel, "fc-kernel", "/opt/hopbox-microvm/vmlinux", "vmlinux kernel (microvm)")
+	fs.StringVar(&c.FCImagesDir, "fc-images-dir", "/opt/hopbox-microvm/images", "base-image catalog dir (microvm)")
+	fs.StringVar(&c.FCRunDir, "fc-rundir", "/var/lib/hopbox/microvm", "per-VM working dir (microvm)")
 	fs.StringVar(&c.ComputeNetwork, "compute-network", "", "docker: put workspace boxes on this dedicated bridge to isolate them from the host's other containers; empty = default bridge")
 	fs.StringVar(&c.ComputeTransport, "compute-transport", "inproc", "compute transport: inproc|remote")
 	fs.StringVar(&c.ComputeRemote, "compute-remote", "", "remote compute provider address (when --compute-transport=remote)")
