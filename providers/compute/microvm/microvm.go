@@ -76,14 +76,14 @@ func (v *vm) snapPaths() (state, mem string) {
 // New builds the provider. It requires /dev/kvm and sets up the VM bridge +
 // egress fence. imagesDir is the base-image catalog (a box's image name maps to
 // <imagesDir>/<name>.ext4). allowHostPorts are the host ports a box may reach.
-func New(fcBin, kernel, imagesDir, runDir string, allowHostPorts []string) (*Provider, error) {
+func New(fcBin, kernel, imagesDir, runDir string, allowHostPorts []string, netCfg NetConfig) (*Provider, error) {
 	if _, err := os.Stat("/dev/kvm"); err != nil {
 		return nil, fmt.Errorf("microvm: /dev/kvm unavailable (need KVM / nested virt): %w", err)
 	}
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return nil, err
 	}
-	net, err := newVMNet(allowHostPorts)
+	net, err := newVMNet(allowHostPorts, netCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 		teardown()
 		return ports.Instance{}, err
 	}
-	tap := tapNameForIP(ip)
+	tap := p.net.cfg.tapName(ip)
 	fail := func(e error) (ports.Instance, error) {
 		p.net.deleteTap(tap)
 		p.net.freeIP(ip)
@@ -200,7 +200,7 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 		KernelPath: p.kernel, RootfsPath: rootfs,
 		VcpuCount: vcpusFromMillis(r.CPUMillis), MemMB: r.MemMB,
 		TapDev: tap, GuestMAC: macFromIP(ip),
-		BootArgs:  DefaultBootArgs + " " + ipBootArg(ip, vmGateway, vmNetmask),
+		BootArgs:  DefaultBootArgs + " " + ipBootArg(ip, p.net.cfg.gateway(), p.net.cfg.netmask()),
 		Init:      vmInit, // launch hopbox-agent (F1.3)
 		Env:       env,    // HOPBOX_* -> kernel cmdline -> init env -> agent
 		HomeDrive: homeDrive,

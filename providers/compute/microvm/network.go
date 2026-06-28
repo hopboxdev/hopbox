@@ -16,13 +16,13 @@ import (
 // Egress NAT lets VMs reach the internet; the security fence (mirroring the
 // docker provider) is added when boxd wires this in (F1.5).
 type vmNet struct {
-	bridge string
-	mu     sync.Mutex
-	used   map[int]bool // host octet -> allocated
+	cfg  NetConfig
+	mu   sync.Mutex
+	used map[int]bool // host octet -> allocated
 }
 
-func newVMNet(allowHostPorts []string) (*vmNet, error) {
-	n := &vmNet{bridge: vmBridge, used: map[int]bool{}}
+func newVMNet(allowHostPorts []string, cfg NetConfig) (*vmNet, error) {
+	n := &vmNet{cfg: cfg.withDefaults(), used: map[int]bool{}}
 	if err := n.ensureBridge(); err != nil {
 		return nil, err
 	}
@@ -41,20 +41,20 @@ func (n *vmNet) reserveExistingTaps() {
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	for _, o := range tapOctets(string(out)) {
+	for _, o := range tapOctets(n.cfg.TapPrefix, string(out)) {
 		n.used[o] = true
 	}
 }
 
 // ensureBridge creates the bridge + gateway IP + egress NAT, idempotently.
 func (n *vmNet) ensureBridge() error {
-	if err := exec.Command("ip", "link", "show", n.bridge).Run(); err != nil {
-		if out, err := exec.Command("ip", "link", "add", n.bridge, "type", "bridge").CombinedOutput(); err != nil {
-			return fmt.Errorf("microvm: create bridge %s: %v: %s", n.bridge, err, out)
+	if err := exec.Command("ip", "link", "show", n.cfg.Bridge).Run(); err != nil {
+		if out, err := exec.Command("ip", "link", "add", n.cfg.Bridge, "type", "bridge").CombinedOutput(); err != nil {
+			return fmt.Errorf("microvm: create bridge %s: %v: %s", n.cfg.Bridge, err, out)
 		}
 	}
-	_ = exec.Command("ip", "addr", "add", vmBridgeCIDR, "dev", n.bridge).Run() // ignore "exists"
-	if out, err := exec.Command("ip", "link", "set", n.bridge, "up").CombinedOutput(); err != nil {
+	_ = exec.Command("ip", "addr", "add", n.cfg.bridgeCIDR(), "dev", n.cfg.Bridge).Run() // ignore "exists"
+	if out, err := exec.Command("ip", "link", "set", n.cfg.Bridge, "up").CombinedOutput(); err != nil {
 		return fmt.Errorf("microvm: bridge up: %v: %s", err, out)
 	}
 	_ = os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1\n"), 0o644)
@@ -64,10 +64,10 @@ func (n *vmNet) ensureBridge() error {
 		return fmt.Errorf("microvm: iptables: %w", err)
 	}
 	for _, r := range [][]string{
-		{"nat", "POSTROUTING", "-s", vmSubnet, "!", "-o", n.bridge, "-j", "MASQUERADE"},
+		{"nat", "POSTROUTING", "-s", n.cfg.subnet(), "!", "-o", n.cfg.Bridge, "-j", "MASQUERADE"},
 		// VM -> beyond is governed by the egress fence (ensureFence); here we only
 		// permit return traffic back to the VMs.
-		{"filter", "FORWARD", "-o", n.bridge, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
+		{"filter", "FORWARD", "-o", n.cfg.Bridge, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"},
 	} {
 		if err := ipt.AppendUnique(r[0], r[1], r[2:]...); err != nil {
 			return fmt.Errorf("microvm: nat rule %v: %w", r, err)
@@ -83,10 +83,10 @@ func (n *vmNet) allocIP() (string, error) {
 	for o := ipFirstOctet; o <= ipLastOctet; o++ {
 		if !n.used[o] {
 			n.used[o] = true
-			return ipForOctet(o), nil
+			return n.cfg.ip(o), nil
 		}
 	}
-	return "", fmt.Errorf("microvm: no free IP in %s", vmSubnet)
+	return "", fmt.Errorf("microvm: no free IP in %s", n.cfg.subnet())
 }
 
 // reserveIP marks a specific IP's octet used — for reattaching a persisted box
@@ -113,7 +113,7 @@ func (n *vmNet) createTap(tap string) error {
 	if out, err := exec.Command("ip", "tuntap", "add", "dev", tap, "mode", "tap").CombinedOutput(); err != nil {
 		return fmt.Errorf("microvm: tap add %s: %v: %s", tap, err, out)
 	}
-	if out, err := exec.Command("ip", "link", "set", tap, "master", n.bridge).CombinedOutput(); err != nil {
+	if out, err := exec.Command("ip", "link", "set", tap, "master", n.cfg.Bridge).CombinedOutput(); err != nil {
 		return fmt.Errorf("microvm: tap master: %v: %s", err, out)
 	}
 	if out, err := exec.Command("ip", "link", "set", tap, "up").CombinedOutput(); err != nil {

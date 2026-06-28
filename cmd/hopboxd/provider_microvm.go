@@ -11,12 +11,13 @@ import (
 )
 
 func newMicrovm(cfg config.Config) (ports.Compute, error) {
-	// Firecracker microVMs from the image catalog. The in-box agent reaches the
-	// hub over the VM bridge gateway — set --agent-advertise 10.0.0.1:<port>; the
-	// egress fence allows only that port and blocks the rest of the host.
+	// Firecracker microVMs from the image catalog. The in-box agent reaches the hub
+	// over the VM bridge gateway — set --agent-advertise <gateway>:<port> (.1 of the
+	// /24). To run beside boxd, set --fc-bridge + --fc-subnet to its own network.
 	var allow []string
 	if _, p, err := net.SplitHostPort(cfg.AgentListen); err == nil && p != "" {
 		allow = append(allow, p)
 	}
-	return microvm.New(cfg.FCBin, cfg.FCKernel, cfg.FCImagesDir, cfg.FCRunDir, allow)
+	return microvm.New(cfg.FCBin, cfg.FCKernel, cfg.FCImagesDir, cfg.FCRunDir, allow,
+		microvm.NetConfig{Bridge: cfg.FCBridge, Subnet24: cfg.FCSubnet})
 }

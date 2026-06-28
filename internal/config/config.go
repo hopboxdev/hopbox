@@ -36,6 +36,8 @@ type Config struct {
 	FCKernel         string // microvm: vmlinux kernel
 	FCImagesDir      string // microvm: base-image catalog dir (<name>.ext4)
 	FCRunDir         string // microvm: per-VM working dir
+	FCBridge         string // microvm: host bridge (default hopbox-vmnet); set with FCSubnet for a 2nd fleet
+	FCSubnet         string // microvm: /24 base (default 10.0.0; gateway .1)
 	HomeSizeMB       int64  // microvm: per-workspace home ext4 image size (block storage)
 	StorageKind      string
 	StorageTransport string
@@ -91,6 +93,8 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&c.FCKernel, "fc-kernel", "/opt/hopbox-microvm/vmlinux", "vmlinux kernel (microvm)")
 	fs.StringVar(&c.FCImagesDir, "fc-images-dir", "/opt/hopbox-microvm/images", "base-image catalog dir (microvm)")
 	fs.StringVar(&c.FCRunDir, "fc-rundir", "/var/lib/hopbox/microvm", "per-VM working dir (microvm)")
+	fs.StringVar(&c.FCBridge, "fc-bridge", "", "microvm host bridge (default hopbox-vmnet); set with --fc-subnet to run beside boxd")
+	fs.StringVar(&c.FCSubnet, "fc-subnet", "", "microvm /24 base, first three octets (default 10.0.0; gateway is .1)")
 	fs.Int64Var(&c.HomeSizeMB, "home-size-mb", 2048, "per-workspace home ext4 image size in MB (microvm block storage)")
 	fs.StringVar(&c.ComputeNetwork, "compute-network", "", "docker: put workspace boxes on this dedicated bridge to isolate them from the host's other containers; empty = default bridge")
 	fs.StringVar(&c.ComputeTransport, "compute-transport", "inproc", "compute transport: inproc|remote")
