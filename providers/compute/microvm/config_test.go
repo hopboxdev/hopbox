@@ -1,6 +1,7 @@
 package microvm
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -35,16 +36,44 @@ func TestBuildConfigDefaultsAndShape(t *testing.T) {
 }
 
 func TestBuildConfigInitAndEnvCmdline(t *testing.T) {
+	ca := "ssh-ed25519 AAAA bob@host" // a space-containing value (the dev-env's CA)
 	cfg := buildConfig(VMSpec{
 		KernelPath: "/k", RootfsPath: "/r",
 		Init: "/sbin/hopbox-init",
-		Env:  map[string]string{"HOPBOX_CONTROL_ADDR": "10.0.0.1:7777", "HOPBOX_AGENT_TOKEN": "tok"},
+		Env: map[string]string{
+			"HOPBOX_CONTROL_ADDR":    "10.0.0.1:7777",
+			"HOPBOX_AGENT_TOKEN":     "tok",
+			"HOPBOX_TRUSTED_USER_CA": ca,
+		},
 	})
 	args := cfg.BootSource.BootArgs
-	// init= present, and env appended as cmdline key=value (sorted -> deterministic).
-	want := DefaultBootArgs + " init=/sbin/hopbox-init HOPBOX_AGENT_TOKEN=tok HOPBOX_CONTROL_ADDR=10.0.0.1:7777"
-	if args != want {
-		t.Fatalf("boot args =\n  %q\nwant\n  %q", args, want)
+	// init= + space-free env inline (sorted); the space-containing CA is NOT inline.
+	if !strings.HasPrefix(args, DefaultBootArgs+" init=/sbin/hopbox-init HOPBOX_AGENT_TOKEN=tok HOPBOX_CONTROL_ADDR=10.0.0.1:7777 ") {
+		t.Fatalf("inline cmdline wrong:\n  %q", args)
+	}
+	if strings.Contains(args, ca) {
+		t.Fatalf("space-containing value leaked onto the cmdline:\n  %q", args)
+	}
+	// HOPBOX_ENV64 carries the full env (incl. the CA) base64-encoded, space-free.
+	tok := ""
+	for _, f := range strings.Fields(args) {
+		if v, ok := strings.CutPrefix(f, "HOPBOX_ENV64="); ok {
+			tok = v
+		}
+	}
+	if tok == "" {
+		t.Fatal("HOPBOX_ENV64 missing from cmdline")
+	}
+	raw, err := base64.StdEncoding.DecodeString(tok)
+	if err != nil {
+		t.Fatalf("ENV64 decode: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(raw, &env); err != nil {
+		t.Fatalf("ENV64 parse: %v", err)
+	}
+	if env["HOPBOX_TRUSTED_USER_CA"] != ca || env["HOPBOX_AGENT_TOKEN"] != "tok" {
+		t.Fatalf("ENV64 round-trip wrong: %+v", env)
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 )
 
 func main() {
+	applyPackedEnv() // microVM: unpack HOPBOX_ENV64 (env the cmdline can't carry: SSH CA + authorized_keys)
 	addr := os.Getenv("HOPBOX_CONTROL_ADDR")
 	token := os.Getenv("HOPBOX_AGENT_TOKEN")
 	wsID := os.Getenv("HOPBOX_WORKSPACE_ID")

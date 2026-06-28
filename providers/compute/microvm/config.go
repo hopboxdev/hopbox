@@ -5,7 +5,12 @@
 // mapping is unit-testable without KVM.
 package microvm
 
-import "sort"
+import (
+	"encoding/base64"
+	"encoding/json"
+	"sort"
+	"strings"
+)
 
 const defaultMemMB = 256
 
@@ -74,9 +79,20 @@ func buildConfig(s VMSpec) fcConfig {
 	}
 	// The kernel hands unrecognized key=value cmdline tokens to init's environment,
 	// so this is how the agent gets HOPBOX_* without a DHCP/config-drive. Sorted
-	// for a deterministic cmdline. (Values must be space-free — the agent's are.)
+	// for a deterministic cmdline. Cmdline tokens can't carry spaces/newlines, so
+	// only space-free values go inline; the FULL env (incl. the dev-env's CA +
+	// authorized_keys, which have spaces) is packed base64 into HOPBOX_ENV64, which
+	// the agent decodes at startup. The inline copy keeps space-free env working
+	// for an older agent that doesn't know HOPBOX_ENV64.
 	for _, k := range sortedKeys(s.Env) {
-		args += " " + k + "=" + s.Env[k]
+		if v := s.Env[k]; !strings.ContainsAny(v, " \t\n") {
+			args += " " + k + "=" + v
+		}
+	}
+	if len(s.Env) > 0 {
+		if blob, err := json.Marshal(s.Env); err == nil {
+			args += " HOPBOX_ENV64=" + base64.StdEncoding.EncodeToString(blob)
+		}
 	}
 	mem := s.MemMB
 	if mem <= 0 {
