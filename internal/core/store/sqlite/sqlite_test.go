@@ -72,6 +72,28 @@ func TestBackendAndLifetimeRoundTrip(t *testing.T) {
 	}
 }
 
+// The box IP is persisted + queryable by source IP — the metadata API (box-guest)
+// resolves the calling box that way.
+func TestGetByIP(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	w := workspace.New("default", "alice", "proj", "ubuntu:24.04")
+	w.IP = "10.0.0.7"
+	if err := s.CreateWorkspace(ctx, w); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	got, err := s.GetByIP(ctx, "10.0.0.7")
+	if err != nil {
+		t.Fatalf("get by ip: %v", err)
+	}
+	if got.ID != w.ID {
+		t.Fatalf("got %s want %s", got.ID, w.ID)
+	}
+	if _, err := s.GetByIP(ctx, "10.0.0.99"); err != store.ErrNotFound {
+		t.Fatalf("unknown ip err=%v want ErrNotFound", err)
+	}
+}
+
 // The dev-env store must persist the box's suspend/idle state now that it runs
 // box.Reconciler — an account box's AutoSuspend (and idle clock) must survive a
 // store round-trip, else the persistent tier would silently degrade.

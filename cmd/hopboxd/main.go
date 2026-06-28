@@ -22,6 +22,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/api"
 	"github.com/hopboxdev/hopbox/internal/config"
 	"github.com/hopboxdev/hopbox/internal/core/box"
+	"github.com/hopboxdev/hopbox/internal/core/boxmeta"
 	"github.com/hopboxdev/hopbox/internal/core/boxstore"
 	"github.com/hopboxdev/hopbox/internal/core/ports"
 	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
@@ -32,6 +33,14 @@ import (
 	"github.com/hopboxdev/hopbox/providers/identity/static"
 	"github.com/hopboxdev/hopbox/providers/ingress/subdomain"
 )
+
+// portOf extracts the port from a listen address (":8090" -> "8090"), falling back to def.
+func portOf(addr, def string) string {
+	if _, p, err := net.SplitHostPort(addr); err == nil && p != "" {
+		return p
+	}
+	return def
+}
 
 // splitComma parses a comma-separated flag value, trimming blanks.
 func splitComma(s string) []string {
@@ -172,6 +181,43 @@ func run(cfg config.Config) error {
 	}
 
 	authKeys := loadAuthorizedKeys(cfg.AuthorizedKeysFile)
+
+	// Box metadata API (opt-in via --meta-addr): a box reaches it by source IP to
+	// learn about itself + tune its lifecycle (box-guest). The box reaches it at
+	// the same host it reaches the agent hub (the advertise host), so derive
+	// $BOX_META from there. Works for any backend (docker bridge, microVM gateway).
+	var metaURL string
+	if cfg.MetaAddr != "" {
+		metaHost := cfg.AgentAdvertise
+		if h, _, err := net.SplitHostPort(cfg.AgentAdvertise); err == nil {
+			metaHost = h
+		}
+		metaURL = "http://" + net.JoinHostPort(metaHost, portOf(cfg.MetaAddr, "8090"))
+		resolve := func(ctx context.Context, ip string) (*box.Box, error) {
+			w, err := st.GetByIP(ctx, ip)
+			if err != nil {
+				return nil, err
+			}
+			return &w.Box, nil
+		}
+		mutate := func(ctx context.Context, ip string, fn func(*box.Box)) error {
+			w, err := st.GetByIP(ctx, ip)
+			if err != nil {
+				return err
+			}
+			fn(&w.Box)
+			return st.UpdateWorkspace(ctx, w)
+		}
+		mln, err := net.Listen("tcp", cfg.MetaAddr)
+		if err != nil {
+			return fmt.Errorf("metadata listen %s: %w", cfg.MetaAddr, err)
+		}
+		go func() {
+			log.Printf("hopboxd: box metadata API on %s (boxes reach %s)", cfg.MetaAddr, metaURL)
+			_ = (&http.Server{Handler: boxmeta.New(resolve, mutate, box.DefaultIdle).Handler()}).Serve(mln)
+		}()
+	}
+
 	// One reconciler: box.Reconciler (lifecycle + suspend/persistence) with the
 	// dev-env's storage-home + ingress folded in as hooks. The box-view of the
 	// workspace store is boxstore.New(st).
@@ -187,7 +233,9 @@ func run(cfg config.Config) error {
 			TargetPath:     cfg.AgentTargetPath,
 			HostBinaryPath: cfg.AgentBin, // M1 dev fast-path
 		},
-		Hooks: hooks,
+		MetaURL:  metaURL,      // $BOX_META in each box (box-guest); "" when --meta-addr off
+		GuestBin: cfg.GuestBin, // side-load box-guest into docker boxes; microVM bakes it in
+		Hooks:    hooks,
 	})
 	go rec.Run(ctx)
 

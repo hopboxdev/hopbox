@@ -15,6 +15,7 @@ type Store interface {
 	GetWorkspace(ctx context.Context, tenantID, id string) (*workspace.Workspace, error)
 	GetByName(ctx context.Context, tenantID, name string) (*workspace.Workspace, error)
 	GetByToken(ctx context.Context, token string) (*workspace.Workspace, error)
+	GetByIP(ctx context.Context, ip string) (*workspace.Workspace, error)
 	ListWorkspaces(ctx context.Context, tenantID string) ([]*workspace.Workspace, error)
 	ListAll(ctx context.Context) ([]*workspace.Workspace, error) // reconciler scan
 	UpdateWorkspace(ctx context.Context, w *workspace.Workspace) error

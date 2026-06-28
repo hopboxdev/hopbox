@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     cpu_millis      INTEGER NOT NULL DEFAULT 0,
     phase           TEXT NOT NULL,
     instance_ref    TEXT NOT NULL DEFAULT '',
+    ip              TEXT NOT NULL DEFAULT '',
     home_mount      TEXT NOT NULL DEFAULT '',
     bootstrap_token TEXT NOT NULL DEFAULT '',
     agent_connected INTEGER NOT NULL DEFAULT 0,
