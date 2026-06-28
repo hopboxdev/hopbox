@@ -21,7 +21,8 @@ var banned = []string{
 
 func TestCoreHasNoProviderSDKImports(t *testing.T) {
 	corePkgs := []string{
-		"workspace", "ports", "store", "store/sqlite", "reconciler",
+		"workspace", "ports", "store", "store/sqlite",
+		"box", "boxmeta", "boxstore", // the box foundations + the dev-env's box adapters
 	}
 	for _, rel := range corePkgs {
 		dir := filepath.Join(".", rel)
