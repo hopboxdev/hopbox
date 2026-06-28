@@ -56,6 +56,32 @@ func newEngine(st Store) (*Engine, *[]string) {
 	return e, &woke
 }
 
+// The tier policy: an account owner gets a persistent (auto-suspend) box; an
+// anonymous owner gets an ephemeral one.
+func TestEngineTierPolicy(t *testing.T) {
+	ctx := context.Background()
+	e, _ := newEngine(newFakeStore())
+	e.cfg.Persistent = func(owner string) bool { return owner == "alice" } // alice = account
+
+	acct, rel, err := e.Attach(ctx, "alice", "proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel()
+	if !acct.AutoSuspend || acct.Ephemeral {
+		t.Fatalf("account box must be persistent: autosuspend=%v ephemeral=%v", acct.AutoSuspend, acct.Ephemeral)
+	}
+
+	anon, rel2, err := e.Attach(ctx, "bob", "proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel2()
+	if anon.AutoSuspend || !anon.Ephemeral {
+		t.Fatalf("anonymous box must be ephemeral: autosuspend=%v ephemeral=%v", anon.AutoSuspend, anon.Ephemeral)
+	}
+}
+
 func TestEngineAttachCreatesEphemeralBox(t *testing.T) {
 	ctx := context.Background()
 	e, woke := newEngine(newFakeStore())
