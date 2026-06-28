@@ -213,6 +213,7 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 	// F4.1: boot over the API socket (rather than --no-api --config-file), so the
 	// same VM can later be snapshotted/suspended (F4).
 	sock := filepath.Join(dir, "fc.sock")
+	_ = os.Remove(sock) // a re-provision reuses the dir; a stale socket would fool waitForSocket
 	cmd := exec.Command(p.fcBin, "--api-sock", sock)
 	cmd.Stdin = nil // firecracker attaches the VM serial to stdin; don't feed it ours
 	cmd.Stdout, cmd.Stderr = logf, logf
