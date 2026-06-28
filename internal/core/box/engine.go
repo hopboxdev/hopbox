@@ -9,12 +9,13 @@ import (
 
 // EngineConfig holds the box-spawn defaults the Engine applies.
 type EngineConfig struct {
-	Tenant        string   // single-tenant id boxes are created under
-	DefaultImage  string   // image when the spec names none
-	Backends      []string // compute backends actually configured (for ResolveBackend)
-	DefBackend    string   // default backend when more than one is configured
-	DefaultFlavor Flavor   // resource caps applied to a box unless its spec names a known flavor
-	AutoSuspend   bool     // true = boxes are persistent and auto-suspend when idle (vs ephemeral reap)
+	Tenant        string        // single-tenant id boxes are created under
+	DefaultImage  string        // image when the spec names none
+	Backends      []string      // compute backends actually configured (for ResolveBackend)
+	DefBackend    string        // default backend when more than one is configured
+	DefaultFlavor Flavor        // resource caps applied to a box unless its spec names a known flavor
+	AutoSuspend   bool          // true = boxes are persistent and auto-suspend when idle (vs ephemeral reap)
+	DefaultGrace  time.Duration // ephemeral reconnect window after detach before reap (0 = reap immediately)
 }
 
 // Engine is the box product's core service: spawn / attach / inspect / destroy a
@@ -58,6 +59,9 @@ func (e *Engine) build(owner string, spec Spec) (*Box, error) {
 		b.Ephemeral = true
 	}
 	b.Grace = spec.Grace
+	if b.Ephemeral && b.Grace == 0 {
+		b.Grace = e.cfg.DefaultGrace // a brief reconnect/blip window before reaping
+	}
 	fl := e.cfg.DefaultFlavor
 	if named, ok := ResolveFlavor(spec.Flavor); ok {
 		fl = named
