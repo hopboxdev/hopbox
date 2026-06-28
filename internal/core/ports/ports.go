@@ -18,9 +18,10 @@ const (
 
 // Mount is how a Storage provider hands persistent data to a Compute provider.
 type Mount struct {
-	Source   string // provider-opaque (host path, volume name, PVC claim, ...)
+	Source   string // provider-opaque (host path, volume name, PVC claim, block image, ...)
 	Target   string // path inside the workspace
 	ReadOnly bool
+	Device   bool // true: Source is a block-device image to attach (microVM); false: a dir to bind-mount
 }
 
 // Instance is a provider-opaque handle to a running (or not) workspace box.

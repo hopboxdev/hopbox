@@ -24,6 +24,7 @@ import (
 
 func main() {
 	applyPackedEnv() // microVM: unpack HOPBOX_ENV64 (env the cmdline can't carry: SSH CA + authorized_keys)
+	mountHome()      // microVM: mount the persistent home block device (no-op on docker)
 	addr := os.Getenv("HOPBOX_CONTROL_ADDR")
 	token := os.Getenv("HOPBOX_AGENT_TOKEN")
 	wsID := os.Getenv("HOPBOX_WORKSPACE_ID")

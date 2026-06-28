@@ -77,6 +77,23 @@ func TestBuildConfigInitAndEnvCmdline(t *testing.T) {
 	}
 }
 
+// A home drive adds a second, non-root virtio-blk drive; without it there's only
+// the rootfs.
+func TestBuildConfigHomeDrive(t *testing.T) {
+	bare := buildConfig(VMSpec{KernelPath: "/k", RootfsPath: "/r"})
+	if len(bare.Drives) != 1 {
+		t.Fatalf("bare: %d drives want 1", len(bare.Drives))
+	}
+	withHome := buildConfig(VMSpec{KernelPath: "/k", RootfsPath: "/r", HomeDrive: "/data/home.ext4"})
+	if len(withHome.Drives) != 2 {
+		t.Fatalf("home: %d drives want 2", len(withHome.Drives))
+	}
+	h := withHome.Drives[1]
+	if h.DriveID != "home" || h.PathOnHost != "/data/home.ext4" || h.IsRootDevice {
+		t.Fatalf("home drive wrong: %+v", h)
+	}
+}
+
 func TestBuildConfigResourcesAndNet(t *testing.T) {
 	cfg := buildConfig(VMSpec{
 		KernelPath: "/k", RootfsPath: "/r", MemMB: 2048, VcpuCount: vcpusFromMillis(2000),
