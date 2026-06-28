@@ -35,6 +35,7 @@ type VMSpec struct {
 	GuestMAC   string
 	Init       string            // init= path (the in-VM launcher); "" = rootfs default
 	Env        map[string]string // injected via kernel cmdline key=value -> init's environment
+	HomeDrive  string            // host path of a persistent home ext4 image -> /dev/vdb; "" = none
 }
 
 // fcConfig mirrors Firecracker's `--config-file` JSON.
@@ -102,9 +103,14 @@ func buildConfig(s VMSpec) fcConfig {
 	if vcpu < 1 {
 		vcpu = 1
 	}
+	drives := []fcDrive{{DriveID: "rootfs", PathOnHost: s.RootfsPath, IsRootDevice: true, IsReadOnly: false}}
+	if s.HomeDrive != "" {
+		// second virtio-blk drive -> /dev/vdb, the dev-env's persistent home.
+		drives = append(drives, fcDrive{DriveID: "home", PathOnHost: s.HomeDrive, IsRootDevice: false, IsReadOnly: false})
+	}
 	cfg := fcConfig{
 		BootSource:    fcBootSource{KernelImagePath: s.KernelPath, BootArgs: args},
-		Drives:        []fcDrive{{DriveID: "rootfs", PathOnHost: s.RootfsPath, IsRootDevice: true, IsReadOnly: false}},
+		Drives:        drives,
 		MachineConfig: fcMachineConfig{VcpuCount: vcpu, MemSizeMib: mem},
 	}
 	if s.TapDev != "" {

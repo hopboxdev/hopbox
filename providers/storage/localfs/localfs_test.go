@@ -3,6 +3,7 @@ package localfs_test
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -70,5 +71,34 @@ func TestEnsureHomeRejectsBadID(t *testing.T) {
 		if _, err := p.EnsureHome(context.Background(), ports.HomeRequest{WorkspaceID: bad}); err == nil {
 			t.Errorf("EnsureHome(%q) should have errored", bad)
 		}
+	}
+}
+
+// Block mode creates a per-workspace ext4 image and reports it as a Device mount
+// (the microVM home). Skipped where mkfs.ext4 isn't available (e.g. macOS).
+func TestEnsureHomeBlock(t *testing.T) {
+	if _, err := exec.LookPath("mkfs.ext4"); err != nil {
+		t.Skip("no mkfs.ext4")
+	}
+	root := t.TempDir()
+	p := localfs.NewBlock(root, 64)
+	m, err := p.EnsureHome(context.Background(), ports.HomeRequest{WorkspaceID: "w1"})
+	if err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	if !m.Device || m.Source != filepath.Join(root, "w1.ext4") || m.Target != "/home/dev" {
+		t.Fatalf("block mount wrong: %+v", m)
+	}
+	if fi, err := os.Stat(m.Source); err != nil || fi.Size() != 64<<20 {
+		t.Fatalf("image stat: %v size=%d", err, fi.Size())
+	}
+	if m2, err := p.EnsureHome(context.Background(), ports.HomeRequest{WorkspaceID: "w1"}); err != nil || m2.Source != m.Source {
+		t.Fatalf("not idempotent: %+v %v", m2, err)
+	}
+	if err := p.Delete(context.Background(), m.Source); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := os.Stat(m.Source); !os.IsNotExist(err) {
+		t.Fatalf("image not removed: %v", err)
 	}
 }

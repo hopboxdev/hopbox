@@ -181,13 +181,29 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 		p.net.freeIP(ip)
 		return ports.Instance{}, err
 	}
+	// A block-device mount (the dev-env's persistent home) is attached as a second
+	// drive (/dev/vdb); the agent mounts it at the mount target. Copy the env so we
+	// don't mutate the caller's map.
+	env := make(map[string]string, len(r.Env)+2)
+	for k, v := range r.Env {
+		env[k] = v
+	}
+	homeDrive := ""
+	for _, m := range r.Mounts {
+		if m.Device {
+			homeDrive = m.Source
+			env["HOPBOX_HOME_DEV"], env["HOPBOX_HOME_MOUNT"] = "/dev/vdb", m.Target
+			break
+		}
+	}
 	cfg := buildConfig(VMSpec{
 		KernelPath: p.kernel, RootfsPath: rootfs,
 		VcpuCount: vcpusFromMillis(r.CPUMillis), MemMB: r.MemMB,
 		TapDev: tap, GuestMAC: macFromIP(ip),
-		BootArgs: DefaultBootArgs + " " + ipBootArg(ip, vmGateway, vmNetmask),
-		Init:     vmInit, // launch hopbox-agent (F1.3)
-		Env:      r.Env,  // HOPBOX_* -> kernel cmdline -> init env -> agent
+		BootArgs:  DefaultBootArgs + " " + ipBootArg(ip, vmGateway, vmNetmask),
+		Init:      vmInit, // launch hopbox-agent (F1.3)
+		Env:       env,    // HOPBOX_* -> kernel cmdline -> init env -> agent
+		HomeDrive: homeDrive,
 	})
 	_ = writeJSON(filepath.Join(dir, "config.json"), cfg) // debug aid; boot goes via the API
 	logf, err := os.Create(filepath.Join(dir, "serial.log"))
