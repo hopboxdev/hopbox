@@ -41,6 +41,8 @@ func main() {
 	fcKernel := flag.String("fc-kernel", "/opt/hopbox-microvm/vmlinux", "vmlinux kernel (microvm)")
 	fcImagesDir := flag.String("fc-images-dir", "/opt/hopbox-microvm/images", "base-image catalog dir; image <name> -> <dir>/<name>.ext4 (microvm)")
 	fcRunDir := flag.String("fc-rundir", "/var/lib/hopbox/microvm", "per-VM working dir (microvm)")
+	fcBridge := flag.String("fc-bridge", "", "microvm host bridge (default hopbox-vmnet); set with --fc-subnet to run a second fleet beside another daemon")
+	fcSubnet := flag.String("fc-subnet", "", "microvm /24 base, first three octets (default 10.0.0; gateway is .1)")
 	autoSuspend := flag.Bool("auto-suspend", false, "persistent boxes that auto-suspend when idle, waking on reconnect (vs ephemeral reap) — the account/workspace tier")
 	idleTimeout := flag.Duration("idle-timeout", 5*time.Minute, "suspend a box after this long idle (with --auto-suspend)")
 	grace := flag.Duration("grace", 2*time.Minute, "ephemeral reconnect window: keep a box this long after disconnect before reaping (0 = reap immediately)")
@@ -51,6 +53,7 @@ func main() {
 		hostKeyPath: *hostKeyPath, image: *image, cpus: *cpus, memMB: *memMB, db: *db,
 		metaAddr: *metaAddr, guestBin: *guestBin, compute: *compute,
 		fcBin: *fcBin, fcKernel: *fcKernel, fcImagesDir: *fcImagesDir, fcRunDir: *fcRunDir,
+		fcBridge: *fcBridge, fcSubnet: *fcSubnet,
 		autoSuspend: *autoSuspend, idleTimeout: *idleTimeout, grace: *grace,
 	}); err != nil {
 		log.Fatal(err)
@@ -59,19 +62,23 @@ func main() {
 
 type cfg struct {
 	sshAddr, agentListen, advertise, agentBin, hostKeyPath, image, db, metaAddr, guestBin string
-	compute, fcBin, fcKernel, fcImagesDir, fcRunDir                                       string
+	compute, fcBin, fcKernel, fcImagesDir, fcRunDir, fcBridge, fcSubnet                   string
 	cpus                                                                                  float64
 	memMB                                                                                 int64
 	autoSuspend                                                                           bool
 	idleTimeout, grace                                                                    time.Duration
 }
 
-// gatewayHost is the address the in-box agent + box-guest reach the host at,
-// per backend: docker boxes use the magic host alias; microVMs use the bridge
-// gateway IP.
-func gatewayHost(compute string) string {
-	if compute == "microvm" {
-		return "10.0.0.1"
+// gatewayHost is the address the in-box agent + box-guest reach the host at, per
+// backend: docker boxes use the magic host alias; microVMs use the bridge gateway
+// (.1 of the fleet's /24).
+func gatewayHost(c cfg) string {
+	if c.compute == "microvm" {
+		sub := c.fcSubnet
+		if sub == "" {
+			sub = "10.0.0"
+		}
+		return sub + ".1"
 	}
 	return "host.docker.internal"
 }
@@ -117,7 +124,7 @@ func run(c cfg) error {
 
 	// The agent + box-guest reach the host at the backend's gateway. The agent
 	// dials `advertise`; box-guest reads $BOX_META; both derived from one host.
-	gwHost := gatewayHost(c.compute)
+	gwHost := gatewayHost(c)
 	agentPort := portOf(c.agentListen, "7777")
 	metaPort := portOf(c.metaAddr, "8090")
 	advertise := c.advertise

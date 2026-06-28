@@ -9,11 +9,6 @@ import (
 	"github.com/coreos/go-iptables/iptables"
 )
 
-const (
-	vmFenceInChain  = "HOPBOX-VM-IN"
-	vmFenceFwdChain = "HOPBOX-VM-FWD"
-)
-
 // vmFenceRules is the egress policy for VM boxes, by chain. Boxes may reach the
 // allowed host ports (agent hub + metadata) and the public internet, but not the
 // host's other services, the LAN, the tailnet, or link-local/metadata ranges.
@@ -49,10 +44,10 @@ func (n *vmNet) ensureFence(allowHostPorts []string) {
 		return
 	}
 	in, fwd := vmFenceRules(allowHostPorts)
-	if err := n.applyFence(ipt, "INPUT", vmFenceInChain, in); err != nil {
+	if err := n.applyFence(ipt, "INPUT", n.cfg.fenceIn(), in); err != nil {
 		log.Printf("microvm: firewall (INPUT): %v", err)
 	}
-	if err := n.applyFence(ipt, "FORWARD", vmFenceFwdChain, fwd); err != nil {
+	if err := n.applyFence(ipt, "FORWARD", n.cfg.fenceFwd(), fwd); err != nil {
 		log.Printf("microvm: firewall (FORWARD): %v", err)
 	}
 }
@@ -68,7 +63,7 @@ func (n *vmNet) applyFence(ipt *iptables.IPTables, parent, chain string, rules [
 			return fmt.Errorf("append %s %v: %w", chain, r, err)
 		}
 	}
-	jump := []string{"-i", n.bridge, "-j", chain} // traffic from the VM bridge
+	jump := []string{"-i", n.cfg.Bridge, "-j", chain} // traffic from the VM bridge
 	if err := ipt.InsertUnique("filter", parent, 1, jump...); err != nil {
 		return fmt.Errorf("hook %s->%s: %w", parent, chain, err)
 	}
