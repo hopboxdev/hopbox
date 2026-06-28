@@ -101,6 +101,10 @@ ExecStart=$PREFIX/boxd --compute \${HOPBOX_COMPUTE} \\
   --fc-kernel \${HOPBOX_FC_KERNEL} --fc-images-dir \${HOPBOX_FC_IMAGES_DIR} --fc-rundir \${HOPBOX_FC_RUNDIR} \\
   --default-image \${HOPBOX_DEFAULT_IMAGE} \\
   \${HOPBOX_AUTO_SUSPEND:+--auto-suspend} --idle-timeout \${HOPBOX_IDLE_TIMEOUT}
+# Only boxd gets SIGTERM on stop, so it can snapshot the firecracker children
+# before they die (graceful drain). Give the drain time before the kill.
+KillMode=mixed
+TimeoutStopSec=60
 Restart=on-failure
 RestartSec=2
 User=root
