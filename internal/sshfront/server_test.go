@@ -1,14 +1,11 @@
 package sshfront
 
 import (
-	"bytes"
 	"context"
 	"io"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/hopboxdev/hopbox/internal/agentproto"
 	"github.com/hopboxdev/hopbox/internal/core/box"
 )
 
@@ -37,29 +34,17 @@ func (s *memStore) Create(_ context.Context, b *box.Box) error       { s.put(b);
 func (s *memStore) Update(_ context.Context, b *box.Box) error       { s.put(b); return nil }
 func (s *memStore) Delete(context.Context, string, string) error     { return nil }
 
+// fakeHub drives waitReady: Connected flips true after connectAfter checks.
+// (The SSH proxy itself is exercised end-to-end on a live box, not here.)
 type fakeHub struct {
 	connectAfter int
 	checks       int
-	lastHdr      agentproto.ShellHeader
-	opened       bool
 }
 
 func (h *fakeHub) Connected(string) bool { h.checks++; return h.checks >= h.connectAfter }
-func (h *fakeHub) OpenShell(_ context.Context, _ string, hdr agentproto.ShellHeader) (io.ReadWriteCloser, error) {
-	h.lastHdr, h.opened = hdr, true
-	return eofShell{}, nil
+func (h *fakeHub) OpenSSH(string) (io.ReadWriteCloser, error) {
+	return nil, io.ErrClosedPipe // not reached by these tests
 }
-func (h *fakeHub) OpenSFTP(_ context.Context, _ string) (io.ReadWriteCloser, error) {
-	h.opened = true
-	return eofShell{}, nil
-}
-
-// eofShell ends the bridge immediately: Read EOFs, Write is discarded.
-type eofShell struct{}
-
-func (eofShell) Read([]byte) (int, error)    { return 0, io.EOF }
-func (eofShell) Write(p []byte) (int, error) { return len(p), nil }
-func (eofShell) Close() error                { return nil }
 
 func newServer(st box.Store, hub Hub) *Server {
 	e := box.NewEngine(st, nil, box.EngineConfig{Tenant: "default", DefaultImage: "alpine", Backends: []string{"docker"}})
@@ -68,81 +53,6 @@ func newServer(st box.Store, hub Hub) *Server {
 		hub:          hub,
 		readyTimeout: time.Second,
 		pollInterval: time.Millisecond,
-	}
-}
-
-func TestServeSessionBridgesAndDetaches(t *testing.T) {
-	ctx := context.Background()
-	st := newMemStore()
-	hub := &fakeHub{connectAfter: 1}
-	s := newServer(st, hub)
-
-	hdr := agentproto.ShellHeader{Cols: 80, Rows: 24}
-	if err := s.serveSession(ctx, "alice", "proj:python", hdr, eofShell{}); err != nil {
-		t.Fatalf("serveSession: %v", err)
-	}
-	if !hub.opened {
-		t.Fatal("serveSession must open a shell in the box")
-	}
-	if hub.lastHdr.Cols != 80 || hub.lastHdr.Rows != 24 {
-		t.Fatalf("pty header not forwarded: %+v", hub.lastHdr)
-	}
-	got, _ := st.GetByName(ctx, "default", "proj")
-	if got == nil || got.Attached {
-		t.Fatal("session end must detach the box (release)")
-	}
-}
-
-// lateClient models a one-shot `ssh host cmd` client: it sends no stdin (Read
-// EOFs at once) and captures everything written back to it.
-type lateClient struct{ out bytes.Buffer }
-
-func (c *lateClient) Read([]byte) (int, error)    { return 0, io.EOF }
-func (c *lateClient) Write(p []byte) (int, error) { return c.out.Write(p) }
-func (c *lateClient) Close() error                { return nil }
-
-// lateShell emits its output only after a beat — a command that produces output
-// after the client has already half-closed stdin — then EOFs. It records the
-// half-close so the test can assert stdin EOF was propagated, not swallowed.
-type lateShell struct {
-	out      []byte
-	emitted  bool
-	writeEnd bool
-}
-
-func (s *lateShell) Read(p []byte) (int, error) {
-	if !s.emitted {
-		time.Sleep(20 * time.Millisecond)
-		s.emitted = true
-		return copy(p, s.out), nil
-	}
-	return 0, io.EOF
-}
-func (s *lateShell) Write(p []byte) (int, error) { return len(p), nil }
-func (s *lateShell) Close() error                { return nil }
-func (s *lateShell) CloseWrite() error           { s.writeEnd = true; return nil }
-
-// TestBridgeDrainsShellOutputAfterStdinEOF guards the exec race: a non-interactive
-// client half-closes stdin immediately, but the shell's output must still drain
-// in full before the bridge returns. The old "return on whichever copy finished
-// first" behaviour truncated it.
-func TestBridgeDrainsShellOutputAfterStdinEOF(t *testing.T) {
-	client := &lateClient{}
-	shell := &lateShell{out: []byte("HOPBOX_BRIDGE_OK")}
-
-	done := make(chan struct{})
-	go func() { bridge(client, shell); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("bridge did not return")
-	}
-
-	if got := client.out.String(); !strings.Contains(got, "HOPBOX_BRIDGE_OK") {
-		t.Fatalf("bridge truncated shell output on stdin EOF: %q", got)
-	}
-	if !shell.writeEnd {
-		t.Fatal("bridge must half-close the shell write side when client stdin EOFs")
 	}
 }
 

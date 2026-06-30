@@ -165,11 +165,12 @@ func run(c cfg) error {
 	// agent hub: resolve the agent's bootstrap token to its box, and report
 	// connect/disconnect back to the store + wake the reconciler.
 	rec := box.NewReconciler(store, compute, box.ReconcileConfig{
-		AgentAddr: advertise,
-		Agent:     ports.AgentImage{HostBinaryPath: c.agentBin, TargetPath: "/hopbox/hopbox-agent"},
-		MetaURL:   metaURL,
-		GuestBin:  c.guestBin,
-		Idle:      box.IdleConfig{Timeout: c.idleTimeout, LoadThreshold: box.DefaultIdle.LoadThreshold},
+		AgentAddr:  advertise,
+		Agent:      ports.AgentImage{HostBinaryPath: c.agentBin, TargetPath: "/hopbox/hopbox-agent"},
+		MetaURL:    metaURL,
+		GuestBin:   c.guestBin,
+		Idle:       box.IdleConfig{Timeout: c.idleTimeout, LoadThreshold: box.DefaultIdle.LoadThreshold},
+		TrustedSSH: true, // the front door authenticates the user, then proxies the SSH session into the box
 	})
 	hub := agenthub.New().
 		WithResolver(func(ctx context.Context, token string) (string, error) {
