@@ -148,8 +148,16 @@ func (r *Reconciler) ReconcileOne(ctx context.Context, tenant, id string) error 
 		return nil
 	case PhaseDestroying:
 		return r.destroy(ctx, b)
+	case PhaseFailed, PhaseStopped:
+		// A throwaway box that failed to start shouldn't linger as an orphaned
+		// run dir + IP + store row — clean it up. A persistent box's failure is
+		// kept so its owner can see the message and retry.
+		if b.Ephemeral {
+			return r.destroy(ctx, b)
+		}
+		return nil
 	default:
-		return nil // Failed/Stopped terminal
+		return nil // terminal
 	}
 }
 
