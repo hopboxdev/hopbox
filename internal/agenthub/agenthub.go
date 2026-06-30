@@ -113,20 +113,6 @@ func (h *Hub) OpenShell(ctx context.Context, workspaceID string, hdr agentproto.
 	return stream, nil
 }
 
-// OpenSFTP opens a yamux stream on which the agent serves SFTP, so the front
-// door can bridge a client's `sftp` subsystem channel to the box.
-func (h *Hub) OpenSFTP(ctx context.Context, workspaceID string) (io.ReadWriteCloser, error) {
-	stream, err := h.openStream(workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	if err := agentproto.WriteOpenFrame(stream, agentproto.OpenFrame{Kind: agentproto.KindSFTP}); err != nil {
-		_ = stream.Close()
-		return nil, fmt.Errorf("agenthub: write open frame: %w", err)
-	}
-	return stream, nil
-}
-
 // OpenForward opens a yamux stream and asks the agent to dial 127.0.0.1:port
 // inside the workspace. The returned net.Conn is a raw pipe to that service —
 // hopbox-gw uses it to proxy an inbound request into the workspace.
