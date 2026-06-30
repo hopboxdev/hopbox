@@ -26,7 +26,7 @@ MIRROR="${MIRROR:-$d_mirror}"
 KEYRING="${KEYRING:-$d_keyring}"
 SIZE_MB="${SIZE_MB:-1536}" # headroom for the dev tools below
 # Dev tools baked in so a box is usable out of the box (mirrors build-rootfs.sh).
-PACKAGES="${PACKAGES:-git vim nano curl wget less ca-certificates openssh-client tmux htop python3}"
+PACKAGES="${PACKAGES:-git vim nano curl wget less ca-certificates openssh-client tmux htop python3 rsync}"
 INIT_ASSET="${INIT_ASSET:-$REPO_ROOT/providers/compute/microvm/assets/hopbox-init}"
 
 [ "$(id -u)" = 0 ] || { echo "must run as root"; exit 1; }

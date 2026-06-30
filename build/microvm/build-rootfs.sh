@@ -30,7 +30,7 @@ GROW_MB="${GROW_MB:-768}" # headroom for the dev tools below
 INIT_ASSET="${INIT_ASSET:-$REPO_ROOT/providers/compute/microvm/assets/hopbox-init}"
 # Dev tools baked into the image so a box is usable out of the box. Override with
 # PACKAGES="..."; PACKAGES="" bakes a bare rootfs.
-PACKAGES="${PACKAGES:-git vim nano curl wget less ca-certificates openssh-client tmux htop python3}"
+PACKAGES="${PACKAGES:-git vim nano curl wget less ca-certificates openssh-client tmux htop python3 rsync}"
 
 [ "$(id -u)" = 0 ] || { echo "must run as root (loop mount)"; exit 1; }
 mkdir -p "$OUT_DIR" "$CACHE_DIR"
