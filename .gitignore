@@ -16,3 +16,4 @@
 # stray SSH CA from running a daemon in the repo dir
 hopbox-ssh-ca
 *.db
+.claude/worktrees/

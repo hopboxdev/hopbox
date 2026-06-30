@@ -148,6 +148,9 @@ func (p *Provider) imagePath(image string) (string, error) {
 	return base, nil
 }
 
+// defaultDNS is the resolver set in guests when the request doesn't specify one.
+const defaultDNS = "1.1.1.1 8.8.8.8"
+
 func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports.Instance, error) {
 	dir := filepath.Join(p.runDir, "vm-"+r.WorkspaceID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -184,9 +187,15 @@ func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports
 	// A block-device mount (the dev-env's persistent home) is attached as a second
 	// drive (/dev/vdb); the agent mounts it at the mount target. Copy the env so we
 	// don't mutate the caller's map.
-	env := make(map[string]string, len(r.Env)+2)
+	env := make(map[string]string, len(r.Env)+3)
 	for k, v := range r.Env {
 		env[k] = v
+	}
+	// A microVM guest gets its IP+gateway from the kernel ip= arg but no DNS, and
+	// the catalog images point resolv.conf at a dead stub — so the agent writes a
+	// working resolv.conf from HOPBOX_DNS. Overridable via the request env.
+	if _, ok := env["HOPBOX_DNS"]; !ok {
+		env["HOPBOX_DNS"] = defaultDNS
 	}
 	homeDrive := ""
 	for _, m := range r.Mounts {
