@@ -126,6 +126,8 @@ func handleStream(stream io.ReadWriteCloser) {
 		handleExec(stream)
 	case agentproto.KindSSH:
 		handleSSH(stream)
+	case agentproto.KindSFTP:
+		handleSFTP(stream)
 	default: // KindShell
 		handleShell(stream)
 	}
