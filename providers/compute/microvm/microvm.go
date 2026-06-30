@@ -151,11 +151,19 @@ func (p *Provider) imagePath(image string) (string, error) {
 // defaultDNS is the resolver set in guests when the request doesn't specify one.
 const defaultDNS = "1.1.1.1 8.8.8.8"
 
-func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (ports.Instance, error) {
+func (p *Provider) Provision(_ context.Context, r ports.ProvisionRequest) (inst ports.Instance, err error) {
 	dir := filepath.Join(p.runDir, "vm-"+r.WorkspaceID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return ports.Instance{}, err
 	}
+	// If we bail out before the VM is live, don't leave the run dir orphaned (the
+	// box may have no InstanceRef yet, so Destroy can't find it). Resource frees
+	// (IP/tap/dm) are handled inline; this sweeps the directory.
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(dir)
+		}
+	}()
 	// Resolve the box's image in the catalog, then make an instant copy-on-write
 	// clone of it (dm snapshot) vs copying the whole image.
 	base, err := p.imagePath(r.ImageRef)

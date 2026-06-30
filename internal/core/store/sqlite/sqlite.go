@@ -202,7 +202,9 @@ func (s *Store) GetByIP(ctx context.Context, ip string) (*workspace.Workspace, e
 	if ip == "" {
 		return nil, store.ErrNotFound
 	}
-	return s.one(ctx, "ip=?", ip)
+	// Most recent wins: on IP recycling a just-reaped box's row can briefly coexist
+	// with the new holder's, and the metadata must resolve to the current box.
+	return s.one(ctx, "ip=? ORDER BY updated_at DESC", ip)
 }
 
 func (s *Store) list(ctx context.Context, where string, args ...any) ([]*workspace.Workspace, error) {
