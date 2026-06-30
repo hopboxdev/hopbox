@@ -52,18 +52,19 @@ The full grammar is documented once in [SSH & the front door](/guide/ssh#usernam
 
 ## Files in and out {#files}
 
-The front door speaks the SFTP subsystem, so `scp`, `sftp`, and `rsync` work
-against a box like any SSH host. Paths are relative to the box home, so they land
-where a shell does:
+The front door speaks the SFTP subsystem, so `scp` and `sftp` work against a box
+like any SSH host. Paths are relative to the box home, so they land where a shell
+does:
 
 ```sh
 scp -r ./src proj@box.hopbox.dev:src      # copy a tree in
 scp proj@box.hopbox.dev:out.tgz .         # copy results out
-rsync -az ./ proj@box.hopbox.dev:proj/    # sync a directory
 sftp proj@box.hopbox.dev                  # interactive
 ```
 
 You can also stream over a one-off command — `ssh proj@host "tar czf - out" > out.tgz`.
+(`rsync` over the front door isn't supported yet — it needs a raw exec channel;
+use `scp`/`sftp` or the streaming form.)
 
 ## microVM & the image catalog {#microvm-image-catalog}
 
