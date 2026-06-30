@@ -49,6 +49,10 @@ func (h *fakeHub) OpenShell(_ context.Context, _ string, hdr agentproto.ShellHea
 	h.lastHdr, h.opened = hdr, true
 	return eofShell{}, nil
 }
+func (h *fakeHub) OpenSFTP(_ context.Context, _ string) (io.ReadWriteCloser, error) {
+	h.opened = true
+	return eofShell{}, nil
+}
 
 // eofShell ends the bridge immediately: Read EOFs, Write is discarded.
 type eofShell struct{}

@@ -19,6 +19,7 @@ import (
 type Hub interface {
 	Connected(workspaceID string) bool
 	OpenShell(ctx context.Context, workspaceID string, hdr agentproto.ShellHeader) (io.ReadWriteCloser, error)
+	OpenSFTP(ctx context.Context, workspaceID string) (io.ReadWriteCloser, error)
 }
 
 // Authority turns a client's public key into a principal (its identity). The
@@ -172,6 +173,36 @@ func (s *Server) serveSession(ctx context.Context, principal, username string, h
 	return nil
 }
 
+// serveSFTP bridges a client's `sftp` subsystem channel to an SFTP server in the
+// box — so scp/sftp/rsync work even though the front door itself only speaks
+// shells + exec. Same ensure-box-then-bridge flow as serveSession, but the agent
+// serves SFTP on the stream (no pty) instead of a shell.
+func (s *Server) serveSFTP(ctx context.Context, principal, username string, client io.ReadWriteCloser) error {
+	b, release, err := s.engine.Attach(ctx, principal, username)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if err := s.waitReady(ctx, b.ID); err != nil {
+		return err
+	}
+	stream, err := s.hub.OpenSFTP(ctx, b.ID)
+	if err != nil {
+		return fmt.Errorf("open sftp: %w", err)
+	}
+	defer stream.Close()
+	// Unlike a shell (which ends when its process exits), the box's SFTP server
+	// only stops when its input closes — so when the client is done, close the
+	// stream to tear it down, or both sides wait forever (the yamux stream has no
+	// half-close for the shell bridge to lean on).
+	go func() {
+		_, _ = io.Copy(stream, client)
+		_ = stream.Close()
+	}()
+	_, _ = io.Copy(client, stream)
+	return nil
+}
+
 // bridge copies between the client and the box shell. The session ends when the
 // shell side closes — its output stream hits EOF, i.e. the box shell exited (or
 // the client write fails because the client is gone). Client stdin reaching EOF
@@ -200,6 +231,8 @@ type ptyReq struct {
 }
 
 type execReq struct{ Command string }
+
+type subsystemReq struct{ Name string }
 
 func (s *Server) handleConn(ctx context.Context, nc net.Conn) {
 	defer nc.Close()
@@ -258,6 +291,17 @@ func (s *Server) handleSession(ctx context.Context, principal, username string, 
 			}
 			_ = req.Reply(true, nil)
 			err := s.serveSession(ctx, principal, username, hdr, ch)
+			sendExit(ch, err)
+			return
+		case "subsystem":
+			var sub subsystemReq
+			_ = ssh.Unmarshal(req.Payload, &sub)
+			if sub.Name != "sftp" {
+				_ = req.Reply(false, nil) // only sftp (scp/rsync ride on it)
+				continue
+			}
+			_ = req.Reply(true, nil)
+			err := s.serveSFTP(ctx, principal, username, ch)
 			sendExit(ch, err)
 			return
 		default:

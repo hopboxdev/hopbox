@@ -22,7 +22,8 @@ const (
 	KindShell   = "shell"
 	KindForward = "forward"
 	KindExec    = "exec"
-	KindSSH     = "ssh" // raw SSH transport; the agent serves an SSH server on it
+	KindSSH     = "ssh"  // raw SSH transport; the agent serves an SSH server on it
+	KindSFTP    = "sftp" // the agent serves an SFTP server directly on the stream
 )
 
 // OpenFrame is the first frame on every yamux stream; Kind selects the handler.
