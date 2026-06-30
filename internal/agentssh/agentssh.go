@@ -27,6 +27,8 @@ type Config struct {
 	Principal      string          // the workspace owner; the SSH username must equal it
 	AuthorizedKeys []ssh.PublicKey // fallback: a client key must match one of these (single-user / no login)
 	Shell          string          // login shell; "" => $SHELL, /bin/bash, or /bin/sh
+	HomeDir        string          // working dir + $HOME for shells/exec/sftp; "" => the agent's cwd
+	Trusted        bool            // accept with no client auth — the caller (boxd front door) already authenticated the user and the stream is control-plane-only
 }
 
 // Serve runs the SSH protocol over rwc until the connection closes. rwc is
@@ -67,6 +69,12 @@ func Serve(rwc io.ReadWriteCloser, cfg Config) error {
 			}
 			return nil, fmt.Errorf("agentssh: unauthorized credential")
 		},
+	}
+	if cfg.Trusted {
+		// The boxd front door terminates the client's SSH, authenticates the user
+		// (key fingerprint = identity), then proxies the session here over the
+		// control-plane-only KindSSH stream — so this hop needs no further auth.
+		sc.NoClientAuth = true
 	}
 	sc.AddHostKey(cfg.HostKey)
 
@@ -147,7 +155,7 @@ func handleSession(ch ssh.Channel, reqs <-chan *ssh.Request, cfg Config) {
 				cmdline = shellDashC(cfg.Shell, e.Command)
 			}
 			_ = req.Reply(true, nil)
-			go runCommand(ch, cmdline, hasPTY, cols, rows, &mu, &ptmx)
+			go runCommand(ch, cmdline, cfg.HomeDir, hasPTY, cols, rows, &mu, &ptmx)
 		case "subsystem":
 			var s subsystemReq
 			_ = ssh.Unmarshal(req.Payload, &s)
@@ -157,7 +165,7 @@ func handleSession(ch ssh.Channel, reqs <-chan *ssh.Request, cfg Config) {
 			}
 			started = true
 			_ = req.Reply(true, nil)
-			go runSFTP(ch)
+			go runSFTP(ch, cfg.HomeDir)
 		default:
 			_ = req.Reply(false, nil)
 		}
@@ -166,9 +174,13 @@ func handleSession(ch ssh.Channel, reqs <-chan *ssh.Request, cfg Config) {
 
 // runCommand runs an interactive shell, a login shell, or `sh -c <cmd>` and
 // bridges it to the channel, with a pty when one was requested.
-func runCommand(ch ssh.Channel, cmdline []string, hasPTY bool, cols, rows uint16, mu *sync.Mutex, ptmx **os.File) {
+func runCommand(ch ssh.Channel, cmdline []string, home string, hasPTY bool, cols, rows uint16, mu *sync.Mutex, ptmx **os.File) {
 	cmd := exec.Command(cmdline[0], cmdline[1:]...)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	if home != "" {
+		cmd.Dir = home
+		cmd.Env = append(cmd.Env, "HOME="+home) // a later HOME= wins, so this overrides any inherited one
+	}
 
 	if hasPTY {
 		f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: cols, Rows: rows})
@@ -188,16 +200,31 @@ func runCommand(ch ssh.Channel, cmdline []string, hasPTY bool, cols, rows uint16
 		return
 	}
 
-	// no pty: wire stdio directly.
-	cmd.Stdin = ch
+	// no pty: wire stdio directly. Use a stdin pipe + an unwaited copy so the
+	// process exiting doesn't block on the client closing its write side — rsync's
+	// server can finish before the client half-closes stdin, and `cmd.Stdin = ch`
+	// would make cmd.Wait hang on the stuck copy goroutine (deadlock).
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		exitClose(ch, 1)
+		return
+	}
 	cmd.Stdout = ch
 	cmd.Stderr = ch.Stderr()
-	err := cmd.Run()
-	exitClose(ch, exitCode(err))
+	if err := cmd.Start(); err != nil {
+		exitClose(ch, exitCode(err))
+		return
+	}
+	go func() { _, _ = io.Copy(stdin, ch); _ = stdin.Close() }()
+	exitClose(ch, exitCode(cmd.Wait()))
 }
 
-func runSFTP(ch ssh.Channel) {
-	srv, err := sftp.NewServer(ch)
+func runSFTP(ch ssh.Channel, home string) {
+	var opts []sftp.ServerOption
+	if home != "" {
+		opts = append(opts, sftp.WithServerWorkingDirectory(home)) // relative paths resolve against ~
+	}
+	srv, err := sftp.NewServer(ch, opts...)
 	if err != nil {
 		exitClose(ch, 1)
 		return

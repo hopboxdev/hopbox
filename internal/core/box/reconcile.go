@@ -21,6 +21,11 @@ type ReconcileConfig struct {
 	Interval  time.Duration    // backstop sweep period (default 1s)
 	Hooks     Hooks            // optional host-layer lifecycle hooks (dev-env: storage + ingress); nil = none
 	Now       func() time.Time // clock seam; nil = time.Now
+
+	// TrustedSSH makes boxes accept the front door's proxied SSH session with no
+	// further auth (the daemon already authenticated the user). boxd sets this; a
+	// dev-env that authenticates the client directly at the box (CA) leaves it off.
+	TrustedSSH bool
 }
 
 // Hooks lets a host layer extend the box lifecycle without box-core depending on
@@ -235,6 +240,9 @@ func (r *Reconciler) provision(ctx context.Context, b *Box) error {
 	}
 	if r.cfg.MetaURL != "" {
 		env["BOX_META"] = r.cfg.MetaURL // where box-guest reaches the metadata API
+	}
+	if r.cfg.TrustedSSH {
+		env["HOPBOX_SSH_TRUSTED"] = "1" // the front door proxies an already-authenticated session
 	}
 	// The host layer (dev-env) contributes a storage home mount + extra env
 	// (SSH host key on the mount, trusted CA, authorized keys). boxd has no hooks.

@@ -11,15 +11,15 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/hopboxdev/hopbox/internal/agentproto"
 	"github.com/hopboxdev/hopbox/internal/core/box"
 )
 
 // Hub is the slice of the agent hub the front door bridges sessions through.
 type Hub interface {
 	Connected(workspaceID string) bool
-	OpenShell(ctx context.Context, workspaceID string, hdr agentproto.ShellHeader) (io.ReadWriteCloser, error)
-	OpenSFTP(ctx context.Context, workspaceID string) (io.ReadWriteCloser, error)
+	// OpenSSH returns a stream the in-box agent serves an SSH server on; the front
+	// door proxies the authenticated client's session into it.
+	OpenSSH(workspaceID string) (io.ReadWriteCloser, error)
 }
 
 // Authority turns a client's public key into a principal (its identity). The
@@ -133,106 +133,167 @@ func (s *Server) waitReady(ctx context.Context, workspaceID string) error {
 	}
 }
 
-// serveSession is the per-session loop: ensure the workspace named by username,
-// wait for it to be ready, bridge the client byte stream to a shell in the box,
-// and detach on exit so the reconciler can reap an ephemeral box.
-func (s *Server) serveSession(ctx context.Context, principal, username string, hdr agentproto.ShellHeader, client io.ReadWriteCloser) error {
-	if spec, err := box.ParseSpec(username); err == nil {
-		// `ssh images@host` (or `image`) is a meta-command: list the catalog, no box.
-		if spec.Name == "images" || spec.Name == "image" {
-			if s.writeImages(client) {
-				return nil
-			}
-		}
-		// Fail fast on an unknown image: otherwise we boot a box that can never
-		// provision and the client waits out the whole readyTimeout for an agent
-		// that never dials back.
-		if spec.Image != "" && s.images != nil {
-			if cat := s.images(); len(cat) > 0 && !slices.Contains(cat, spec.Image) {
-				fmt.Fprintf(client, "unknown image %q — run  ssh images@host  to list the catalog\r\n", spec.Image)
-				return fmt.Errorf("unknown image %q", spec.Image)
-			}
+// route resolves the box the username names, then proxies the client's SSH
+// session into the box's own SSH server (agentssh) — which handles interactive
+// shells, exec (pty and raw), and the sftp subsystem, so scp/sftp/rsync and clean
+// `ssh host cmd` all behave like a normal SSH host. The front door has already
+// authenticated the user; the box trusts the proxied session (TrustedSSH).
+func (s *Server) route(ctx context.Context, principal, username string, chans <-chan ssh.NewChannel) {
+	spec, perr := box.ParseSpec(username)
+	// `ssh images@host` is a meta-command: list the catalog, spawn no box.
+	if perr == nil && (spec.Name == "images" || spec.Name == "image") && s.images != nil && len(s.images()) > 0 {
+		s.replyAll(chans, func(w io.Writer) { s.writeImages(w) }, 0)
+		return
+	}
+	// Fail fast on an unknown image rather than booting a box that can't provision.
+	if perr == nil && spec.Image != "" && s.images != nil {
+		if cat := s.images(); len(cat) > 0 && !slices.Contains(cat, spec.Image) {
+			s.replyAll(chans, msg("unknown image %q — run  ssh images@host  to list the catalog", spec.Image), 1)
+			return
 		}
 	}
 	b, release, err := s.engine.Attach(ctx, principal, username)
 	if err != nil {
-		return err
+		s.replyAll(chans, msg("hopbox: %v", err), 1)
+		return
 	}
 	defer release()
-
 	if err := s.waitReady(ctx, b.ID); err != nil {
-		return err
+		s.replyAll(chans, msg("hopbox: %v", err), 1)
+		return
 	}
-	shell, err := s.hub.OpenShell(ctx, b.ID, hdr)
+	up, err := s.dialAgentSSH(b.ID)
 	if err != nil {
-		return fmt.Errorf("open shell: %w", err)
+		s.replyAll(chans, msg("hopbox: connect to box: %v", err), 1)
+		return
 	}
-	defer shell.Close()
-
-	bridge(client, shell)
-	return nil
+	defer up.Close()
+	for nch := range chans {
+		go s.proxyChannel(nch, up)
+	}
 }
 
-// serveSFTP bridges a client's `sftp` subsystem channel to an SFTP server in the
-// box — so scp/sftp/rsync work even though the front door itself only speaks
-// shells + exec. Same ensure-box-then-bridge flow as serveSession, but the agent
-// serves SFTP on the stream (no pty) instead of a shell.
-func (s *Server) serveSFTP(ctx context.Context, principal, username string, client io.ReadWriteCloser) error {
-	b, release, err := s.engine.Attach(ctx, principal, username)
+// dialAgentSSH opens an SSH client to the box's agentssh over the control-plane
+// stream. No client auth: the stream is reachable only by the front door, which
+// already authenticated the user, and the box accepts it (TrustedSSH).
+func (s *Server) dialAgentSSH(workspaceID string) (ssh.Conn, error) {
+	stream, err := s.hub.OpenSSH(workspaceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer release()
-	if err := s.waitReady(ctx, b.ID); err != nil {
-		return err
+	nc, ok := stream.(net.Conn)
+	if !ok {
+		nc = rwcConn{stream}
 	}
-	stream, err := s.hub.OpenSFTP(ctx, b.ID)
+	cc, chans, reqs, err := ssh.NewClientConn(nc, "box", &ssh.ClientConfig{
+		User:            "box",
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // control-plane stream; no host key to pin
+		Timeout:         15 * time.Second,
+	})
 	if err != nil {
-		return fmt.Errorf("open sftp: %w", err)
-	}
-	defer stream.Close()
-	// Unlike a shell (which ends when its process exits), the box's SFTP server
-	// only stops when its input closes — so when the client is done, close the
-	// stream to tear it down, or both sides wait forever (the yamux stream has no
-	// half-close for the shell bridge to lean on).
-	go func() {
-		_, _ = io.Copy(stream, client)
 		_ = stream.Close()
-	}()
-	_, _ = io.Copy(client, stream)
-	return nil
-}
-
-// bridge copies between the client and the box shell. The session ends when the
-// shell side closes — its output stream hits EOF, i.e. the box shell exited (or
-// the client write fails because the client is gone). Client stdin reaching EOF
-// (a one-shot `ssh host cmd`, which half-closes stdin immediately) must NOT end
-// the session: it only half-closes the write side into the shell, so the shell's
-// output keeps draining to the client until the command actually exits. Waiting
-// on whichever side finished first — the old behaviour — truncated that output.
-func bridge(client, shell io.ReadWriteCloser) {
+		return nil, err
+	}
+	go ssh.DiscardRequests(reqs)
 	go func() {
-		_, _ = io.Copy(shell, client) // client stdin -> shell
-		// stdin done; tell the shell (half-close) without tearing the session down.
-		if cw, ok := shell.(interface{ CloseWrite() error }); ok {
-			_ = cw.CloseWrite()
+		for nch := range chans {
+			_ = nch.Reject(ssh.Prohibited, "no reverse channels")
 		}
 	}()
-	_, _ = io.Copy(client, shell) // shell -> client; returns only when the shell exits
+	return cc, nil
 }
+
+// proxyChannel pipes one client session channel to a fresh session channel on the
+// box's SSH server, forwarding requests (pty-req, env, shell/exec/subsystem,
+// window-change, exit-status) and data both ways — a generic SSH session relay.
+func (s *Server) proxyChannel(nch ssh.NewChannel, up ssh.Conn) {
+	if nch.ChannelType() != "session" {
+		_ = nch.Reject(ssh.UnknownChannelType, "only session channels are supported")
+		return
+	}
+	upCh, upReqs, err := up.OpenChannel("session", nil)
+	if err != nil {
+		_ = nch.Reject(ssh.ConnectionFailed, "box session: "+err.Error())
+		return
+	}
+	dnCh, dnReqs, err := nch.Accept()
+	if err != nil {
+		_ = upCh.Close()
+		return
+	}
+	go forwardRequests(dnReqs, upCh) // client -> box
+	go func() { _, _ = io.Copy(upCh, dnCh); _ = upCh.CloseWrite() }()
+	go func() { _, _ = io.Copy(dnCh.Stderr(), upCh.Stderr()) }()
+	done := make(chan struct{})
+	go func() { _, _ = io.Copy(dnCh, upCh); close(done) }()
+	forwardRequests(upReqs, dnCh) // box -> client (exit-status); returns when the box closes the channel
+	<-done
+	_ = dnCh.Close()
+	_ = upCh.Close()
+}
+
+func forwardRequests(in <-chan *ssh.Request, out ssh.Channel) {
+	for r := range in {
+		ok, _ := out.SendRequest(r.Type, r.WantReply, r.Payload)
+		if r.WantReply {
+			_ = r.Reply(ok, nil)
+		}
+	}
+}
+
+// replyAll answers each session channel with a one-shot message + exit code (for
+// the `images` meta-command and pre-box errors), spawning no box.
+func (s *Server) replyAll(chans <-chan ssh.NewChannel, write func(io.Writer), code uint32) {
+	for nch := range chans {
+		go replySession(nch, write, code)
+	}
+}
+
+func replySession(nch ssh.NewChannel, write func(io.Writer), code uint32) {
+	if nch.ChannelType() != "session" {
+		_ = nch.Reject(ssh.UnknownChannelType, "only session channels are supported")
+		return
+	}
+	ch, reqs, err := nch.Accept()
+	if err != nil {
+		return
+	}
+	defer ch.Close()
+	for req := range reqs {
+		switch req.Type {
+		case "shell", "exec", "subsystem":
+			_ = req.Reply(true, nil)
+			if write != nil {
+				write(ch)
+			}
+			sendExitCode(ch, code)
+			return
+		default:
+			_ = req.Reply(req.Type == "pty-req" || req.Type == "env" || req.Type == "window-change", nil)
+		}
+	}
+}
+
+func msg(format string, a ...any) func(io.Writer) {
+	return func(w io.Writer) { fmt.Fprintf(w, format+"\r\n", a...) }
+}
+
+// rwcConn adapts a stream to net.Conn for ssh.NewClientConn (yamux streams
+// already satisfy net.Conn; this is the fallback).
+type rwcConn struct{ io.ReadWriteCloser }
+
+func (rwcConn) LocalAddr() net.Addr                { return boxAddr{} }
+func (rwcConn) RemoteAddr() net.Addr               { return boxAddr{} }
+func (rwcConn) SetDeadline(_ time.Time) error      { return nil }
+func (rwcConn) SetReadDeadline(_ time.Time) error  { return nil }
+func (rwcConn) SetWriteDeadline(_ time.Time) error { return nil }
+
+type boxAddr struct{}
+
+func (boxAddr) Network() string { return "yamux" }
+func (boxAddr) String() string  { return "box" }
 
 // --- SSH handshake glue (build-verified; exercised end-to-end, not in unit tests) ---
-
-type ptyReq struct {
-	Term          string
-	Cols, Rows    uint32
-	Width, Height uint32
-	Modes         string
-}
-
-type execReq struct{ Command string }
-
-type subsystemReq struct{ Name string }
 
 func (s *Server) handleConn(ctx context.Context, nc net.Conn) {
 	defer nc.Close()
@@ -256,67 +317,11 @@ func (s *Server) handleConn(ctx context.Context, nc net.Conn) {
 	defer conn.Close()
 	username := conn.User()
 	go ssh.DiscardRequests(reqs)
-
-	for nch := range chans {
-		if nch.ChannelType() != "session" {
-			_ = nch.Reject(ssh.UnknownChannelType, "only session channels are supported")
-			continue
-		}
-		ch, chReqs, err := nch.Accept()
-		if err != nil {
-			continue
-		}
-		go s.handleSession(ctx, principal, username, ch, chReqs)
-	}
+	s.route(ctx, principal, username, chans)
 }
 
-func (s *Server) handleSession(ctx context.Context, principal, username string, ch ssh.Channel, reqs <-chan *ssh.Request) {
-	defer ch.Close()
-	hdr := agentproto.ShellHeader{}
-	for req := range reqs {
-		switch req.Type {
-		case "pty-req":
-			var p ptyReq
-			if ssh.Unmarshal(req.Payload, &p) == nil {
-				hdr.Cols, hdr.Rows = uint16(p.Cols), uint16(p.Rows)
-			}
-			_ = req.Reply(true, nil)
-		case "window-change":
-			_ = req.Reply(true, nil) // resize is best-effort; the shell is already attached
-		case "shell", "exec":
-			if req.Type == "exec" {
-				var e execReq
-				_ = ssh.Unmarshal(req.Payload, &e)
-				hdr.Cmd = e.Command
-			}
-			_ = req.Reply(true, nil)
-			err := s.serveSession(ctx, principal, username, hdr, ch)
-			sendExit(ch, err)
-			return
-		case "subsystem":
-			var sub subsystemReq
-			_ = ssh.Unmarshal(req.Payload, &sub)
-			if sub.Name != "sftp" {
-				_ = req.Reply(false, nil) // only sftp (scp/rsync ride on it)
-				continue
-			}
-			_ = req.Reply(true, nil)
-			err := s.serveSFTP(ctx, principal, username, ch)
-			sendExit(ch, err)
-			return
-		default:
-			_ = req.Reply(false, nil)
-		}
-	}
-}
-
-// sendExit sends an exit-status so the client sees a clean close (0 on success).
-func sendExit(ch ssh.Channel, err error) {
-	code := uint32(0)
-	if err != nil {
-		code = 1
-		_, _ = io.WriteString(ch, "hopbox: "+err.Error()+"\r\n")
-	}
+// sendExitCode sends an exit-status so the client sees a clean close.
+func sendExitCode(ch ssh.Channel, code uint32) {
 	payload := make([]byte, 4)
 	binary.BigEndian.PutUint32(payload, code)
 	_, _ = ch.SendRequest("exit-status", false, payload)

@@ -28,6 +28,11 @@ func loadSSHConfig() {
 	}
 	agentSSH.HostKey = signer
 
+	// boxd front-door model: the daemon authenticates the user and proxies the
+	// session over the control-plane-only stream, so this hop accepts no-auth.
+	agentSSH.Trusted = os.Getenv("HOPBOX_SSH_TRUSTED") == "1"
+	agentSSH.HomeDir = workspaceHome() // shells/exec/sftp land in ~ (/home/dev if mounted, else /root)
+
 	// CA model: trust one user CA, scoped to this workspace's owner.
 	agentSSH.Principal = os.Getenv("HOPBOX_PRINCIPAL")
 	if ca := os.Getenv("HOPBOX_TRUSTED_USER_CA"); ca != "" {
