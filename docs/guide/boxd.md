@@ -50,6 +50,21 @@ ssh images@host                  # list the image catalog (spawns no box)
 
 The full grammar is documented once in [SSH & the front door](/guide/ssh#username-grammar).
 
+## Files in and out {#files}
+
+The front door speaks the SFTP subsystem, so `scp`, `sftp`, and `rsync` work
+against a box like any SSH host. Paths are relative to the box home, so they land
+where a shell does:
+
+```sh
+scp -r ./src proj@box.hopbox.dev:src      # copy a tree in
+scp proj@box.hopbox.dev:out.tgz .         # copy results out
+rsync -az ./ proj@box.hopbox.dev:proj/    # sync a directory
+sftp proj@box.hopbox.dev                  # interactive
+```
+
+You can also stream over a one-off command — `ssh proj@host "tar czf - out" > out.tgz`.
+
 ## microVM & the image catalog {#microvm-image-catalog}
 
 With the **microVM backend** (`--compute microvm`) every box is a real
