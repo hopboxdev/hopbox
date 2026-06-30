@@ -111,6 +111,17 @@ func (e *Engine) Attach(ctx context.Context, owner, username string) (*Box, func
 	return b, e.releaser(b.ID), nil
 }
 
+// State reports a box's current phase + message, and whether it still exists.
+// The front door polls it to abort a readiness wait the moment a box fails to
+// start (vs waiting out the whole timeout for an agent that never dials back).
+func (e *Engine) State(ctx context.Context, id string) (Phase, string, bool) {
+	b, err := e.store.Get(ctx, e.cfg.Tenant, id)
+	if err != nil {
+		return "", "", false
+	}
+	return b.Phase, b.Message, true
+}
+
 // byOwnerName finds an owner's box by name (the box namespace is per-owner).
 func (e *Engine) byOwnerName(ctx context.Context, owner, name string) (*Box, error) {
 	all, err := e.store.List(ctx, e.cfg.Tenant)

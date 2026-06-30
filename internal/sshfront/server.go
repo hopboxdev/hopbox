@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -103,8 +104,19 @@ func (s *Server) waitReady(ctx context.Context, workspaceID string) error {
 	defer deadline.Stop()
 	tick := time.NewTicker(s.pollInterval)
 	defer tick.Stop()
-	if s.hub.Connected(workspaceID) {
-		return nil
+	ready := func() (bool, error) {
+		if s.hub.Connected(workspaceID) {
+			return true, nil
+		}
+		// Abort early if the box failed to start, instead of waiting out the whole
+		// timeout for an agent that will never connect.
+		if ph, msg, ok := s.engine.State(ctx, workspaceID); ok && ph == box.PhaseFailed {
+			return false, fmt.Errorf("box failed to start: %s", msg)
+		}
+		return false, nil
+	}
+	if ok, err := ready(); ok || err != nil {
+		return err
 	}
 	for {
 		select {
@@ -113,8 +125,8 @@ func (s *Server) waitReady(ctx context.Context, workspaceID string) error {
 		case <-deadline.C:
 			return fmt.Errorf("workspace %s not ready within %s", workspaceID, s.readyTimeout)
 		case <-tick.C:
-			if s.hub.Connected(workspaceID) {
-				return nil
+			if ok, err := ready(); ok || err != nil {
+				return err
 			}
 		}
 	}
@@ -124,10 +136,21 @@ func (s *Server) waitReady(ctx context.Context, workspaceID string) error {
 // wait for it to be ready, bridge the client byte stream to a shell in the box,
 // and detach on exit so the reconciler can reap an ephemeral box.
 func (s *Server) serveSession(ctx context.Context, principal, username string, hdr agentproto.ShellHeader, client io.ReadWriteCloser) error {
-	// `ssh images@host` (or `image`) is a meta-command: list the catalog, no box.
-	if spec, err := box.ParseSpec(username); err == nil && (spec.Name == "images" || spec.Name == "image") {
-		if s.writeImages(client) {
-			return nil
+	if spec, err := box.ParseSpec(username); err == nil {
+		// `ssh images@host` (or `image`) is a meta-command: list the catalog, no box.
+		if spec.Name == "images" || spec.Name == "image" {
+			if s.writeImages(client) {
+				return nil
+			}
+		}
+		// Fail fast on an unknown image: otherwise we boot a box that can never
+		// provision and the client waits out the whole readyTimeout for an agent
+		// that never dials back.
+		if spec.Image != "" && s.images != nil {
+			if cat := s.images(); len(cat) > 0 && !slices.Contains(cat, spec.Image) {
+				fmt.Fprintf(client, "unknown image %q — run  ssh images@host  to list the catalog\r\n", spec.Image)
+				return fmt.Errorf("unknown image %q", spec.Image)
+			}
 		}
 	}
 	b, release, err := s.engine.Attach(ctx, principal, username)
