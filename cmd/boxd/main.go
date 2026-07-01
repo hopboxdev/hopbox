@@ -11,7 +11,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/hopboxdev/hopbox/internal/core/boxmeta"
 	"github.com/hopboxdev/hopbox/internal/core/boxsqlite"
 	"github.com/hopboxdev/hopbox/internal/core/ports"
+	"github.com/hopboxdev/hopbox/internal/mcp"
 	"github.com/hopboxdev/hopbox/internal/sshca"
 	"github.com/hopboxdev/hopbox/internal/sshfront"
 )
@@ -46,6 +49,7 @@ func main() {
 	autoSuspend := flag.Bool("auto-suspend", false, "persistent boxes that auto-suspend when idle, waking on reconnect (vs ephemeral reap) — the account/workspace tier")
 	idleTimeout := flag.Duration("idle-timeout", 5*time.Minute, "suspend a box after this long idle (with --auto-suspend)")
 	grace := flag.Duration("grace", 2*time.Minute, "ephemeral reconnect window: keep a box this long after disconnect before reaping (0 = reap immediately)")
+	mcpAddr := flag.String("mcp-addr", "", "serve the AI-control MCP plane here (unix:/path or host:port); empty = off")
 	flag.Parse()
 
 	if err := run(cfg{
@@ -55,6 +59,7 @@ func main() {
 		fcBin: *fcBin, fcKernel: *fcKernel, fcImagesDir: *fcImagesDir, fcRunDir: *fcRunDir,
 		fcBridge: *fcBridge, fcSubnet: *fcSubnet,
 		autoSuspend: *autoSuspend, idleTimeout: *idleTimeout, grace: *grace,
+		mcpAddr: *mcpAddr,
 	}); err != nil {
 		log.Fatal(err)
 	}
@@ -62,7 +67,7 @@ func main() {
 
 type cfg struct {
 	sshAddr, agentListen, advertise, agentBin, hostKeyPath, image, db, metaAddr, guestBin string
-	compute, fcBin, fcKernel, fcImagesDir, fcRunDir, fcBridge, fcSubnet                   string
+	compute, fcBin, fcKernel, fcImagesDir, fcRunDir, fcBridge, fcSubnet, mcpAddr          string
 	cpus                                                                                  float64
 	memMB                                                                                 int64
 	autoSuspend                                                                           bool
@@ -217,6 +222,27 @@ func run(c cfg) error {
 		return err
 	}
 	log.Printf("boxd: SSH front door on %s (default image %s)", c.sshAddr, c.image)
+
+	// AI-control plane: serve the MCP protocol (fleet resource + box tools + pushed
+	// changes) over the real engine + hub, so an AI drives the live fleet.
+	if c.mcpAddr != "" {
+		network, a := "tcp", c.mcpAddr
+		if s, ok := strings.CutPrefix(c.mcpAddr, "unix:"); ok {
+			network, a = "unix", s
+			_ = os.Remove(a)
+		}
+		mcpLn, err := net.Listen(network, a)
+		if err != nil {
+			return err
+		}
+		go func() {
+			log.Printf("boxd: AI-control MCP plane on %s", c.mcpAddr)
+			if err := mcp.Listen(ctx, mcpLn, mcp.NewEngineBackend(engine, hub)); err != nil {
+				log.Printf("boxd: mcp plane stopped: %v", err)
+			}
+		}()
+	}
+
 	err = front.Serve(ctx, frontLn)
 
 	// Graceful shutdown: snapshot persistent boxes so the next start resumes them
