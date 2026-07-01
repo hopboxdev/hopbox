@@ -17,3 +17,6 @@
 hopbox-ssh-ca
 *.db
 .claude/worktrees/
+/hopbox-mcp
+/boxd
+/hopboxd
