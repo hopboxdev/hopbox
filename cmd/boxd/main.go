@@ -50,6 +50,8 @@ func main() {
 	idleTimeout := flag.Duration("idle-timeout", 5*time.Minute, "suspend a box after this long idle (with --auto-suspend)")
 	grace := flag.Duration("grace", 2*time.Minute, "ephemeral reconnect window: keep a box this long after disconnect before reaping (0 = reap immediately)")
 	mcpAddr := flag.String("mcp-addr", "", "serve the AI-control MCP plane here (unix:/path or host:port); empty = off")
+	surfaceAddr := flag.String("surface-addr", "", "serve AI-rendered canvas surfaces over HTTP here (host:port); empty = off")
+	surfaceURL := flag.String("surface-url", "", "public base URL for surface links (default: http://<surface-addr>)")
 	flag.Parse()
 
 	if err := run(cfg{
@@ -59,7 +61,7 @@ func main() {
 		fcBin: *fcBin, fcKernel: *fcKernel, fcImagesDir: *fcImagesDir, fcRunDir: *fcRunDir,
 		fcBridge: *fcBridge, fcSubnet: *fcSubnet,
 		autoSuspend: *autoSuspend, idleTimeout: *idleTimeout, grace: *grace,
-		mcpAddr: *mcpAddr,
+		mcpAddr: *mcpAddr, surfaceAddr: *surfaceAddr, surfaceURL: *surfaceURL,
 	}); err != nil {
 		log.Fatal(err)
 	}
@@ -68,6 +70,7 @@ func main() {
 type cfg struct {
 	sshAddr, agentListen, advertise, agentBin, hostKeyPath, image, db, metaAddr, guestBin string
 	compute, fcBin, fcKernel, fcImagesDir, fcRunDir, fcBridge, fcSubnet, mcpAddr          string
+	surfaceAddr, surfaceURL                                                               string
 	cpus                                                                                  float64
 	memMB                                                                                 int64
 	autoSuspend                                                                           bool
@@ -226,6 +229,24 @@ func run(c cfg) error {
 	// AI-control plane: serve the MCP protocol (fleet resource + box tools + pushed
 	// changes) over the real engine + hub, so an AI drives the live fleet.
 	if c.mcpAddr != "" {
+		surfaceURL := c.surfaceURL
+		if surfaceURL == "" && c.surfaceAddr != "" {
+			surfaceURL = "http://" + c.surfaceAddr
+		}
+		be := mcp.NewEngineBackend(engine, hub, surfaceURL)
+
+		// canvas loop: serve AI-rendered surfaces (+ capture interactions) over HTTP.
+		if c.surfaceAddr != "" {
+			sln, err := net.Listen("tcp", c.surfaceAddr)
+			if err != nil {
+				return err
+			}
+			go func() {
+				log.Printf("boxd: canvas surfaces on %s (base %s)", c.surfaceAddr, surfaceURL)
+				_ = (&http.Server{Handler: be.Surfaces().Handler()}).Serve(sln)
+			}()
+		}
+
 		network, a := "tcp", c.mcpAddr
 		if s, ok := strings.CutPrefix(c.mcpAddr, "unix:"); ok {
 			network, a = "unix", s
@@ -237,7 +258,7 @@ func run(c cfg) error {
 		}
 		go func() {
 			log.Printf("boxd: AI-control MCP plane on %s", c.mcpAddr)
-			if err := mcp.Listen(ctx, mcpLn, mcp.NewEngineBackend(engine, hub)); err != nil {
+			if err := mcp.Listen(ctx, mcpLn, be); err != nil {
 				log.Printf("boxd: mcp plane stopped: %v", err)
 			}
 		}()

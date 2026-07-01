@@ -41,6 +41,11 @@ type Backend interface {
 	// Apply declares a desired set of task-boxes and converges to it: spawn each
 	// key whose box is absent, leave the rest. Returns the ids created this call.
 	Apply(ctx context.Context, spec []SpecBox) (created []string, err error)
-	// OnChange registers fn, called whenever the fleet changes; cancel unregisters.
+	// RenderSurface stores an AI-rendered canvas and returns its URL; interactions
+	// come back via hopbox://surface/{name}/events (the canvas loop).
+	RenderSurface(name, html string) (url string)
+	// SurfaceEvents returns a surface's interaction events (backs its resource).
+	SurfaceEvents(name string) []SurfaceEvent
+	// OnChange registers fn, called on any fleet or surface change; cancel unregisters.
 	OnChange(fn func()) (cancel func())
 }

@@ -25,21 +25,31 @@ type EngineBackend struct {
 	hub    execHub
 	owner  string
 
-	mu      sync.Mutex
-	tasks   map[string]*task  // box id -> delegated task overlay (state + captured output)
-	keys    map[string]string // fleet.apply key -> box id (idempotency)
-	subs    map[int]func()
-	nextSub int
+	surfaces *Surfaces
+	mu       sync.Mutex
+	tasks    map[string]*task  // box id -> delegated task overlay (state + captured output)
+	keys     map[string]string // fleet.apply key -> box id (idempotency)
+	subs     map[int]func()
+	nextSub  int
 }
 
 type task struct{ task, state, result string }
 
-// NewEngineBackend wires the backend to a daemon's engine + hub.
-func NewEngineBackend(engine *box.Engine, hub execHub) *EngineBackend {
+// NewEngineBackend wires the backend to a daemon's engine + hub. surfaceBase is
+// the public base URL for rendered surfaces (Surfaces().Handler serves them).
+func NewEngineBackend(engine *box.Engine, hub execHub, surfaceBase string) *EngineBackend {
 	b := &EngineBackend{engine: engine, hub: hub, owner: "mcp",
 		tasks: map[string]*task{}, keys: map[string]string{}, subs: map[int]func(){}}
+	b.surfaces = NewSurfaces(surfaceBase, b.notify)
 	go b.watch()
 	return b
+}
+
+// Surfaces exposes the surface store so the daemon can serve its HTTP handler.
+func (b *EngineBackend) Surfaces() *Surfaces                    { return b.surfaces }
+func (b *EngineBackend) RenderSurface(name, html string) string { return b.surfaces.Render(name, html) }
+func (b *EngineBackend) SurfaceEvents(name string) []SurfaceEvent {
+	return b.surfaces.Events(name)
 }
 
 func (b *EngineBackend) Fleet(ctx context.Context) []Box {

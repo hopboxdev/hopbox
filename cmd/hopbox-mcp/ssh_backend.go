@@ -19,14 +19,18 @@ import (
 type sshBackend struct {
 	host, keyFile, dir string
 
-	mu      sync.Mutex
-	order   []string
-	boxes   map[string]*mcp.Box
-	keys    map[string]string // fleet.apply key -> box id
-	subs    map[int]func()
-	nextSub int
-	seq     int
+	mu       sync.Mutex
+	order    []string
+	boxes    map[string]*mcp.Box
+	keys     map[string]string // fleet.apply key -> box id
+	surfaces *mcp.Surfaces
+	subs     map[int]func()
+	nextSub  int
+	seq      int
 }
+
+func (b *sshBackend) RenderSurface(name, html string) string       { return b.surfaces.Render(name, html) }
+func (b *sshBackend) SurfaceEvents(name string) []mcp.SurfaceEvent { return b.surfaces.Events(name) }
 
 func newSSHBackend(host string) *sshBackend {
 	dir, err := os.MkdirTemp("", "hopbox-mcp")
@@ -37,8 +41,10 @@ func newSSHBackend(host string) *sshBackend {
 	if out, err := exec.Command("ssh-keygen", "-t", "ed25519", "-N", "", "-q", "-f", key).CombinedOutput(); err != nil {
 		log.Fatalf("ssh-keygen: %v: %s", err, out)
 	}
-	return &sshBackend{host: host, keyFile: key, dir: dir,
+	b := &sshBackend{host: host, keyFile: key, dir: dir,
 		boxes: map[string]*mcp.Box{}, keys: map[string]string{}, subs: map[int]func(){}}
+	b.surfaces = mcp.NewSurfaces("http://localhost", b.notify)
+	return b
 }
 
 func (b *sshBackend) cleanup() { _ = os.RemoveAll(b.dir) }
