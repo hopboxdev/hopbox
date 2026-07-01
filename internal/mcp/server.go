@@ -81,6 +81,7 @@ func (s *Server) handle(r req) {
 			"protocolVersion": "2024-11-05",
 			"capabilities":    map[string]any{"tools": map[string]any{}, "resources": map[string]any{"subscribe": true}},
 			"serverInfo":      map[string]any{"name": "hopbox", "version": "0.1"},
+			"instructions":    guide,
 		})
 	case "notifications/initialized":
 	case "tools/list":
@@ -88,10 +89,12 @@ func (s *Server) handle(r req) {
 	case "tools/call":
 		s.toolCall(r)
 	case "resources/list":
-		s.reply(r.ID, map[string]any{"resources": []map[string]any{{
-			"uri": "hopbox://fleet", "name": "fleet", "mimeType": "application/json",
-			"description": "every box and its live state",
-		}}})
+		s.reply(r.ID, map[string]any{"resources": []map[string]any{
+			{"uri": "hopbox://guide", "name": "guide", "mimeType": "text/markdown",
+				"description": "how to use hopbox, including the canvas loop for talking to humans"},
+			{"uri": "hopbox://fleet", "name": "fleet", "mimeType": "application/json",
+				"description": "every box and its live state"},
+		}})
 	case "resources/read":
 		var p struct {
 			URI string `json:"uri"`
@@ -100,8 +103,12 @@ func (s *Server) handle(r req) {
 		if p.URI == "" {
 			p.URI = "hopbox://fleet"
 		}
+		mime, body := "application/json", s.readResource(p.URI)
+		if p.URI == "hopbox://guide" {
+			mime, body = "text/markdown", guide
+		}
 		s.reply(r.ID, map[string]any{"contents": []map[string]any{{
-			"uri": p.URI, "mimeType": "application/json", "text": s.readResource(p.URI),
+			"uri": p.URI, "mimeType": mime, "text": body,
 		}}})
 	case "resources/subscribe":
 		var p struct {
@@ -118,6 +125,36 @@ func (s *Server) handle(r req) {
 		}
 	}
 }
+
+// guide is delivered to every client in the initialize response (MCP `instructions`)
+// and re-readable as hopbox://guide. It teaches the plane — above all the canvas
+// loop, so an AI knows it can talk to humans with interactive UIs, not just text.
+const guide = `hopbox is a live control plane for isolated cloud boxes, shared by humans and AIs.
+It is EVENT-DRIVEN: subscribe to resources and react to pushed changes — never poll.
+
+RESOURCES (resources/subscribe, then react to notifications/resources/updated):
+- hopbox://fleet — every box with its live phase and the agent's self-reported status.
+- hopbox://surface/<name>/events — a rendered surface's interaction events.
+
+TOOLS:
+- box.delegate {task} — spawn a box, run a task; watch hopbox://fleet for the result.
+- fleet.apply {boxes:[{key,image,task}]} — declare a desired set of task-boxes; hopbox
+  converges to it, idempotent per key. Prefer this over many box.delegate calls.
+- surface.render {name,html} — the CANVAS LOOP, below.
+- box.spawn, fleet.get — spawn an empty box / snapshot the fleet.
+
+THE CANVAS LOOP — talk to humans with more than text:
+When you need a human's decision, input, approval, or attention, you are NOT limited to
+chat. Render an interactive UI and watch them use it, live:
+  1. surface.render {name:"approve", html:"<h3>Deploy?</h3><button id=ok>Approve</button>"}
+     returns a URL — give it to the human.
+  2. resources/subscribe hopbox://surface/approve/events.
+  3. Each click/input is PUSHED to you as {kind,target,value}. React: re-render the surface,
+     branch your work, or unblock a waiting task. You can even block until a specific
+     interaction happens (e.g. an approval), then continue autonomously.
+Reach for this for approvals and gates, choices, forms, and dashboards you update live —
+anytime showing beats telling. The loop is bidirectional: you render, they act, you
+observe, you respond. It is a primary way to collaborate with a human here, not a fallback.`
 
 var tools = []map[string]any{
 	{"name": "box.delegate", "description": "Spawn a box and run a task on it. Returns immediately with an id; watch hopbox://fleet for completion.",
