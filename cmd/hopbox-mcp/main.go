@@ -4,6 +4,7 @@
 // event-driven, no-poll model.
 //
 //	hopbox-mcp                 # serve MCP over stdio; spawn boxes via ssh (standalone)
+//	hopbox-mcp ps [--connect ADDR] [--once]   # live fleet glance (name·phase·agent·status)
 //	hopbox-mcp --demo          # self-drive a demo against box.hopbox.dev
 //	hopbox-mcp --connect ADDR  # bridge stdio <-> a daemon MCP socket (unix:/path or host:port)
 package main
@@ -20,6 +21,17 @@ import (
 )
 
 func main() {
+	// `hopbox-mcp ps` — the live fleet glance.
+	if len(os.Args) > 1 && os.Args[1] == "ps" {
+		fs := flag.NewFlagSet("ps", flag.ExitOnError)
+		connect := fs.String("connect", "", "daemon MCP socket (unix:/path or host:port); empty = standalone")
+		host := fs.String("host", "box.hopbox.dev", "boxd front door for standalone mode")
+		once := fs.Bool("once", false, "print once and exit (default: live, redraw on change)")
+		_ = fs.Parse(os.Args[2:])
+		runPSMode(*connect, *host, *once)
+		return
+	}
+
 	demo := flag.Bool("demo", false, "self-drive a demo over an in-memory MCP pipe")
 	host := flag.String("host", "box.hopbox.dev", "boxd front door for standalone/demo boxes")
 	connect := flag.String("connect", "", "bridge stdio to a daemon MCP socket (unix:/path or host:port)")

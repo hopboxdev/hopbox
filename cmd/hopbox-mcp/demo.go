@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
-	"net"
 	"strings"
 	"time"
 
@@ -18,46 +16,18 @@ import (
 // standalone ssh backend over an in-memory pipe.
 func runDemoMode(connect, host string) {
 	if connect != "" {
-		network, a := "tcp", connect
-		if s, ok := strings.CutPrefix(connect, "unix:"); ok {
-			network, a = "unix", s
-		}
-		c, err := net.Dial(network, a)
-		if err != nil {
-			log.Fatalf("connect %s: %v", connect, err)
-		}
-		defer c.Close()
 		fmt.Printf("(driving the daemon MCP plane at %s)\n", connect)
-		runDemoClient(c, c)
-		return
 	}
-	be := newSSHBackend(host)
-	defer be.cleanup()
-	csr, csw := io.Pipe()
-	scr, scw := io.Pipe()
-	go mcp.NewServer(be).Serve(csr, scw)
-	runDemoClient(csw, scr)
+	w, r, closeFn := openTransport(connect, host)
+	defer closeFn()
+	runDemoClient(w, r)
 }
 
 func runDemoClient(w io.Writer, r io.Reader) {
 	enc := json.NewEncoder(w)
 	responses := make(chan map[string]any, 64)
 	notifs := make(chan map[string]any, 64)
-	go func() {
-		dec := json.NewDecoder(r)
-		for {
-			var m map[string]any
-			if err := dec.Decode(&m); err != nil {
-				close(responses)
-				return
-			}
-			if m["method"] != nil {
-				notifs <- m
-			} else {
-				responses <- m
-			}
-		}
-	}()
+	go route(r, responses, notifs)
 
 	start := time.Now()
 	ts := func() string { return fmt.Sprintf("[+%4.1fs]", time.Since(start).Seconds()) }
