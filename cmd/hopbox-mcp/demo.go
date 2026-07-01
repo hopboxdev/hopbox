@@ -4,24 +4,47 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"net"
+	"strings"
 	"time"
+
+	"github.com/hopboxdev/hopbox/internal/mcp"
 )
 
-// runDemo wires an in-memory MCP client to the server over two pipes and drives a
-// real scenario against box.hopbox.dev: subscribe to the fleet, delegate two
-// tasks, then REACT to pushed notifications (re-reading the fleet) until both
-// finish. A background reader routes responses vs. notifications onto channels so
-// the client never polls — it blocks on the event stream.
-func runDemo(s *server) {
-	csr, csw := io.Pipe() // client -> server
-	scr, scw := io.Pipe() // server -> client
-	go s.serve(csr, scw)
+// runDemoMode drives an MCP demo: subscribe to the fleet, delegate two tasks, then
+// REACT to pushed notifications until both finish — no polling. Against a daemon
+// socket (connect != "") it exercises the real engine backend; otherwise it runs a
+// standalone ssh backend over an in-memory pipe.
+func runDemoMode(connect, host string) {
+	if connect != "" {
+		network, a := "tcp", connect
+		if s, ok := strings.CutPrefix(connect, "unix:"); ok {
+			network, a = "unix", s
+		}
+		c, err := net.Dial(network, a)
+		if err != nil {
+			log.Fatalf("connect %s: %v", connect, err)
+		}
+		defer c.Close()
+		fmt.Printf("(driving the daemon MCP plane at %s)\n", connect)
+		runDemoClient(c, c)
+		return
+	}
+	be := newSSHBackend(host)
+	defer be.cleanup()
+	csr, csw := io.Pipe()
+	scr, scw := io.Pipe()
+	go mcp.NewServer(be).Serve(csr, scw)
+	runDemoClient(csw, scr)
+}
 
-	enc := json.NewEncoder(csw)
-	responses := make(chan map[string]any, 32)
-	notifs := make(chan map[string]any, 32)
+func runDemoClient(w io.Writer, r io.Reader) {
+	enc := json.NewEncoder(w)
+	responses := make(chan map[string]any, 64)
+	notifs := make(chan map[string]any, 64)
 	go func() {
-		dec := json.NewDecoder(scr)
+		dec := json.NewDecoder(r)
 		for {
 			var m map[string]any
 			if err := dec.Decode(&m); err != nil {
@@ -44,43 +67,60 @@ func runDemo(s *server) {
 		_ = enc.Encode(map[string]any{"jsonrpc": "2.0", "id": reqID, "method": method, "params": params})
 		return <-responses
 	}
-	delegate := func(task string) {
-		r := call("tools/call", map[string]any{"name": "box.delegate", "arguments": map[string]any{"task": task}})
-		fmt.Printf("%s → box.delegate  %-42q  %s\n", ts(), task, toolText(r))
+	delegate := func(task string) string {
+		txt := toolText(call("tools/call", map[string]any{"name": "box.delegate", "arguments": map[string]any{"task": task}}))
+		fmt.Printf("%s → box.delegate  %-46q  %s\n", ts(), task, txt)
+		return idFrom(txt)
 	}
 
-	fmt.Println("hopbox-mcp demo — event-driven, no polling (delegated tasks run on real boxes)")
-	fmt.Println("----------------------------------------------------------------------------")
+	fmt.Println("hopbox-mcp demo — event-driven, no polling (tasks run on real boxes)")
+	fmt.Println("-------------------------------------------------------------------")
 	init := call("initialize", map[string]any{"protocolVersion": "2024-11-05", "capabilities": map[string]any{}})
 	si, _ := init["result"].(map[string]any)["serverInfo"].(map[string]any)
 	fmt.Printf("%s ← connected to %v %v\n", ts(), si["name"], si["version"])
 	call("resources/subscribe", map[string]any{"uri": "hopbox://fleet"})
 	fmt.Printf("%s → subscribed hopbox://fleet\n", ts())
 
-	delegate("echo host=$(hostname); uname -r")
-	delegate("python3 -c 'import sys;print(\"python\",sys.version.split()[0])'")
+	mine := map[string]bool{}
+	mine[delegate("echo host=$(hostname); uname -r")] = true
+	mine[delegate("python3 -c 'import sys;print(\"python\",sys.version.split()[0])'")] = true
+	delete(mine, "")
 
-	fmt.Printf("%s ── now blocking on the event stream; the server will PUSH each change ──\n", ts())
-	terminal := map[string]bool{}
-	for len(terminal) < 2 {
-		n := <-notifs // a push, not a poll
-		uri, _ := n["params"].(map[string]any)["uri"].(string)
-		fmt.Printf("%s ← PUSH  %s  — reacting (resources/read)\n", ts(), uri)
+	fmt.Printf("%s ── blocking on the event stream; the server PUSHes each change ──\n", ts())
+	for {
+		<-notifs // a push, not a poll
 		fleet := fleetFrom(call("resources/read", map[string]any{"uri": "hopbox://fleet"}))
-		parts := make([]string, 0, len(fleet))
+		done, parts := 0, []string{}
 		for _, b := range fleet {
-			parts = append(parts, fmt.Sprintf("%s=%s", b.ID, b.State))
-			if b.State == "done" || b.State == "failed" {
-				terminal[b.ID] = true
+			if mine[b.ID] {
+				parts = append(parts, fmt.Sprintf("%s=%s", b.ID, b.State))
+				if b.State == "done" || b.State == "failed" {
+					done++
+				}
 			}
 		}
-		fmt.Printf("           fleet: %v\n", parts)
+		fmt.Printf("%s ← PUSH  my boxes: %v\n", ts(), parts)
+		if done == len(mine) {
+			break
+		}
 	}
 
-	fmt.Printf("%s ✓ all delegated boxes finished — results:\n", ts())
+	fmt.Printf("%s ✓ my delegated boxes finished — results:\n", ts())
 	for _, b := range fleetFrom(call("resources/read", map[string]any{"uri": "hopbox://fleet"})) {
-		fmt.Printf("   %s (%s) %s: %s\n", b.ID, b.Name, b.State, oneLine(b.Result))
+		if mine[b.ID] {
+			fmt.Printf("   %s (%s) %s: %s\n", b.ID, b.Name, b.State, oneLine(b.Result))
+		}
 	}
+}
+
+func idFrom(txt string) string {
+	if i := strings.Index(txt, "box "); i >= 0 {
+		f := strings.Fields(txt[i+4:])
+		if len(f) > 0 {
+			return strings.TrimRight(f[0], ");")
+		}
+	}
+	return ""
 }
 
 func toolText(m map[string]any) string {
@@ -94,7 +134,7 @@ func toolText(m map[string]any) string {
 	return t
 }
 
-func fleetFrom(m map[string]any) []boxState {
+func fleetFrom(m map[string]any) []mcp.Box {
 	res, _ := m["result"].(map[string]any)
 	contents, _ := res["contents"].([]any)
 	if len(contents) == 0 {
@@ -102,19 +142,11 @@ func fleetFrom(m map[string]any) []boxState {
 	}
 	c0, _ := contents[0].(map[string]any)
 	text, _ := c0["text"].(string)
-	var bs []boxState
+	var bs []mcp.Box
 	_ = json.Unmarshal([]byte(text), &bs)
 	return bs
 }
 
 func oneLine(s string) string {
-	out := ""
-	for _, r := range s {
-		if r == '\n' {
-			out += " ⏎ "
-		} else {
-			out += string(r)
-		}
-	}
-	return out
+	return strings.ReplaceAll(s, "\n", " ⏎ ")
 }
