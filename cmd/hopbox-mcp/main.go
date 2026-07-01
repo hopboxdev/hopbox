@@ -32,6 +32,16 @@ func main() {
 		return
 	}
 
+	// `hopbox-mcp watch <uri>` — live-print a surface's interaction events.
+	if len(os.Args) > 1 && os.Args[1] == "watch" {
+		fs := flag.NewFlagSet("watch", flag.ExitOnError)
+		connect := fs.String("connect", "", "daemon MCP socket (unix:/path or host:port)")
+		host := fs.String("host", "box.hopbox.dev", "boxd front door for standalone mode")
+		_ = fs.Parse(os.Args[2:])
+		runWatchMode(*connect, *host, fs.Arg(0))
+		return
+	}
+
 	demo := flag.Bool("demo", false, "self-drive a demo over an in-memory MCP pipe")
 	host := flag.String("host", "box.hopbox.dev", "boxd front door for standalone/demo boxes")
 	connect := flag.String("connect", "", "bridge stdio to a daemon MCP socket (unix:/path or host:port)")
