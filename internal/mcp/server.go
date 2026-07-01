@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 )
 
@@ -23,7 +24,7 @@ func NewServer(be Backend) *Server { return &Server{be: be, subs: map[string]boo
 // Serve runs the protocol over in/out until in closes.
 func (s *Server) Serve(in io.Reader, out io.Writer) {
 	s.enc = json.NewEncoder(out)
-	cancel := s.be.OnChange(func() { s.notifyFleet() })
+	cancel := s.be.OnChange(s.notifyAll)
 	defer cancel()
 	dec := json.NewDecoder(in)
 	for {
@@ -92,8 +93,15 @@ func (s *Server) handle(r req) {
 			"description": "every box and its live state",
 		}}})
 	case "resources/read":
+		var p struct {
+			URI string `json:"uri"`
+		}
+		_ = json.Unmarshal(r.Params, &p)
+		if p.URI == "" {
+			p.URI = "hopbox://fleet"
+		}
 		s.reply(r.ID, map[string]any{"contents": []map[string]any{{
-			"uri": "hopbox://fleet", "mimeType": "application/json", "text": s.fleetJSON(),
+			"uri": p.URI, "mimeType": "application/json", "text": s.readResource(p.URI),
 		}}})
 	case "resources/subscribe":
 		var p struct {
@@ -124,6 +132,9 @@ var tools = []map[string]any{
 					"key":   map[string]any{"type": "string"},
 					"image": map[string]any{"type": "string"},
 					"task":  map[string]any{"type": "string"}}}}}}},
+	{"name": "surface.render", "description": "Render an interactive HTML canvas at a URL; the user's clicks/inputs come back via hopbox://surface/<name>/events (the canvas loop).",
+		"inputSchema": map[string]any{"type": "object", "required": []string{"name", "html"}, "properties": map[string]any{
+			"name": map[string]any{"type": "string"}, "html": map[string]any{"type": "string"}}}},
 	{"name": "fleet.get", "description": "Snapshot of every box and its state.",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
 }
@@ -177,6 +188,14 @@ func (s *Server) toolCall(r req) {
 		}
 		text(fmt.Sprintf("applied %d box(es): %d created, %d already present; watch hopbox://fleet",
 			len(a.Boxes), len(created), len(a.Boxes)-len(created)))
+	case "surface.render":
+		var a struct {
+			Name string `json:"name"`
+			HTML string `json:"html"`
+		}
+		arg(&a)
+		url := s.be.RenderSurface(a.Name, a.HTML)
+		text(fmt.Sprintf("surface %q at %s — subscribe hopbox://surface/%s/events", a.Name, url, a.Name))
 	case "fleet.get":
 		text(s.fleetJSON())
 	default:
@@ -184,14 +203,32 @@ func (s *Server) toolCall(r req) {
 	}
 }
 
-func (s *Server) notifyFleet() {
+// notifyAll pushes a resources/updated for every subscribed resource on any
+// change (fleet box state or a surface interaction); the client re-reads.
+func (s *Server) notifyAll() {
 	s.mu.Lock()
-	sub := s.subs["hopbox://fleet"]
-	s.mu.Unlock()
-	if sub {
-		s.send(map[string]any{"jsonrpc": "2.0", "method": "notifications/resources/updated",
-			"params": map[string]any{"uri": "hopbox://fleet"}})
+	uris := make([]string, 0, len(s.subs))
+	for u := range s.subs {
+		uris = append(uris, u)
 	}
+	s.mu.Unlock()
+	for _, u := range uris {
+		s.send(map[string]any{"jsonrpc": "2.0", "method": "notifications/resources/updated",
+			"params": map[string]any{"uri": u}})
+	}
+}
+
+// readResource returns a resource's JSON body: hopbox://fleet or a surface's
+// hopbox://surface/<name>/events.
+func (s *Server) readResource(uri string) string {
+	if rest, ok := strings.CutPrefix(uri, "hopbox://surface/"); ok {
+		name := strings.TrimSuffix(rest, "/events")
+		if b, _ := json.Marshal(s.be.SurfaceEvents(name)); b != nil {
+			return string(b)
+		}
+		return "[]"
+	}
+	return s.fleetJSON()
 }
 
 func (s *Server) fleetJSON() string {
