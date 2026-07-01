@@ -20,6 +20,7 @@ Usage:
   box-guest keep-alive [DURATION]        Pin the box alive (no suspend) for DURATION (default 5m).
   box-guest auto-suspend on|off|status   Toggle / show auto-suspend.
   box-guest idle [DURATION]              Set this box's idle timeout (empty = back to default).
+  box-guest status STATE [MESSAGE]       Report agent state (working|blocked|done) + a status line.
   box-guest mcp                          Run an MCP server (stdio) exposing the above as tools.
 
 Durations are Go-style: 30s, 5m, 1h30m. Reads $BOX_META (default http://169.254.169.254).`
@@ -61,6 +62,8 @@ func main() {
 		}
 	case "idle":
 		emit("", setIdle(arg(args, 1)))
+	case "status":
+		emit("", setStatus(arg(args, 1), arg(args, 2)))
 	case "mcp":
 		runMCP(base())
 	default:
@@ -105,6 +108,10 @@ func autoSuspend(on bool) error {
 
 func setIdle(timeout string) error {
 	return doPost(base()+"/v1/me/idle", fmt.Sprintf(`{"timeout":%q}`, timeout))
+}
+
+func setStatus(state, status string) error {
+	return doPost(base()+"/v1/me/status", fmt.Sprintf(`{"state":%q,"status":%q}`, state, status))
 }
 
 func client() *http.Client { return &http.Client{Timeout: 5 * time.Second} }

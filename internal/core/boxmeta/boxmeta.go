@@ -51,6 +51,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/me/keep-alive", s.keepAlive)
 	mux.HandleFunc("POST /v1/me/auto-suspend", s.autoSuspend)
 	mux.HandleFunc("POST /v1/me/idle", s.idle)
+	mux.HandleFunc("POST /v1/me/status", s.status)
 	return mux
 }
 
@@ -70,6 +71,8 @@ type meta struct {
 	AutoSuspend    bool    `json:"auto_suspend"`
 	KeepAliveUntil int64   `json:"keep_alive_until"`
 	IdleTimeoutSec int64   `json:"idle_timeout_sec"`
+	AgentState     string  `json:"agent_state,omitempty"`
+	AgentStatus    string  `json:"agent_status,omitempty"`
 	StartedAt      int64   `json:"started_at"`
 	ServerTimeNS   string  `json:"server_time_ns"`
 }
@@ -99,7 +102,8 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		Load: b.Load, Idle: b.IsIdle(now, idle), LastActive: unix(b.LastActive),
 		AutoSuspend: b.AutoSuspend, KeepAliveUntil: unix(b.KeepAliveUntil),
 		IdleTimeoutSec: int64(idle.Timeout.Seconds()),
-		StartedAt:      b.CreatedAt.Unix(), ServerTimeNS: nsString(now),
+		AgentState:     b.AgentState, AgentStatus: b.AgentStatus,
+		StartedAt: b.CreatedAt.Unix(), ServerTimeNS: nsString(now),
 	})
 }
 
@@ -188,6 +192,18 @@ func (s *Server) idle(w http.ResponseWriter, r *http.Request) {
 		if d, err := time.ParseDuration(req.Timeout); err == nil {
 			b.IdleTimeoutOverride = d
 		}
+	})
+}
+
+// status records the in-box agent's self-report (box-guest status) for the fleet
+// at-a-glance view. Not interpreted by the control plane.
+func (s *Server) status(w http.ResponseWriter, r *http.Request) {
+	type body struct {
+		State  string `json:"state"`
+		Status string `json:"status"`
+	}
+	apply(s, w, r, func(b *box.Box, req body) {
+		b.AgentState, b.AgentStatus = req.State, req.Status
 	})
 }
 
