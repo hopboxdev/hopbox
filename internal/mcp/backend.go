@@ -21,6 +21,14 @@ type Box struct {
 	Updated     int64  `json:"updated"`
 }
 
+// SpecBox is one desired box in a declarative fleet.apply. Key labels it: apply
+// is idempotent per key (re-applying a key whose box is still alive is a no-op).
+type SpecBox struct {
+	Key   string `json:"key"`
+	Image string `json:"image,omitempty"`
+	Task  string `json:"task,omitempty"`
+}
+
 // Backend is the box world behind the protocol.
 type Backend interface {
 	// Fleet is the current snapshot (backs hopbox://fleet + fleet.get).
@@ -30,6 +38,9 @@ type Backend interface {
 	Delegate(ctx context.Context, task string) (id string, err error)
 	// Spawn creates a box with no task.
 	Spawn(ctx context.Context, name string) (id string, err error)
+	// Apply declares a desired set of task-boxes and converges to it: spawn each
+	// key whose box is absent, leave the rest. Returns the ids created this call.
+	Apply(ctx context.Context, spec []SpecBox) (created []string, err error)
 	// OnChange registers fn, called whenever the fleet changes; cancel unregisters.
 	OnChange(fn func()) (cancel func())
 }

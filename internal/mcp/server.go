@@ -117,17 +117,25 @@ var tools = []map[string]any{
 			"task": map[string]any{"type": "string"}}}},
 	{"name": "box.spawn", "description": "Spawn a box (no task).",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"name": map[string]any{"type": "string"}}}},
+	{"name": "fleet.apply", "description": "Declare a desired set of task-boxes and converge to it (idempotent per key). Spawns each key whose box is absent; watch hopbox://fleet.",
+		"inputSchema": map[string]any{"type": "object", "required": []string{"boxes"}, "properties": map[string]any{
+			"boxes": map[string]any{"type": "array", "items": map[string]any{"type": "object",
+				"required": []string{"key"}, "properties": map[string]any{
+					"key":   map[string]any{"type": "string"},
+					"image": map[string]any{"type": "string"},
+					"task":  map[string]any{"type": "string"}}}}}}},
 	{"name": "fleet.get", "description": "Snapshot of every box and its state.",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
 }
 
 func (s *Server) toolCall(r req) {
 	var p struct {
-		Name      string                      `json:"name"`
-		Arguments struct{ Task, Name string } `json:"arguments"`
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
 	}
 	_ = json.Unmarshal(r.Params, &p)
 	ctx := context.Background()
+	arg := func(v any) { _ = json.Unmarshal(p.Arguments, v) }
 	text := func(t string) {
 		s.reply(r.ID, map[string]any{"content": []map[string]any{{"type": "text", "text": t}}, "isError": false})
 	}
@@ -136,19 +144,39 @@ func (s *Server) toolCall(r req) {
 	}
 	switch p.Name {
 	case "box.delegate":
-		id, err := s.be.Delegate(ctx, p.Arguments.Task)
+		var a struct {
+			Task string `json:"task"`
+		}
+		arg(&a)
+		id, err := s.be.Delegate(ctx, a.Task)
 		if err != nil {
 			fail(err)
 			return
 		}
 		text(fmt.Sprintf("delegated (box %s); watch hopbox://fleet", id))
 	case "box.spawn":
-		id, err := s.be.Spawn(ctx, p.Arguments.Name)
+		var a struct {
+			Name string `json:"name"`
+		}
+		arg(&a)
+		id, err := s.be.Spawn(ctx, a.Name)
 		if err != nil {
 			fail(err)
 			return
 		}
 		text(fmt.Sprintf("spawned box %s", id))
+	case "fleet.apply":
+		var a struct {
+			Boxes []SpecBox `json:"boxes"`
+		}
+		arg(&a)
+		created, err := s.be.Apply(ctx, a.Boxes)
+		if err != nil {
+			fail(err)
+			return
+		}
+		text(fmt.Sprintf("applied %d box(es): %d created, %d already present; watch hopbox://fleet",
+			len(a.Boxes), len(created), len(a.Boxes)-len(created)))
 	case "fleet.get":
 		text(s.fleetJSON())
 	default:
