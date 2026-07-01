@@ -22,6 +22,7 @@ type sshBackend struct {
 	mu      sync.Mutex
 	order   []string
 	boxes   map[string]*mcp.Box
+	keys    map[string]string // fleet.apply key -> box id
 	subs    map[int]func()
 	nextSub int
 	seq     int
@@ -36,7 +37,8 @@ func newSSHBackend(host string) *sshBackend {
 	if out, err := exec.Command("ssh-keygen", "-t", "ed25519", "-N", "", "-q", "-f", key).CombinedOutput(); err != nil {
 		log.Fatalf("ssh-keygen: %v: %s", err, out)
 	}
-	return &sshBackend{host: host, keyFile: key, dir: dir, boxes: map[string]*mcp.Box{}, subs: map[int]func(){}}
+	return &sshBackend{host: host, keyFile: key, dir: dir,
+		boxes: map[string]*mcp.Box{}, keys: map[string]string{}, subs: map[int]func(){}}
 }
 
 func (b *sshBackend) cleanup() { _ = os.RemoveAll(b.dir) }
@@ -52,13 +54,46 @@ func (b *sshBackend) Fleet(context.Context) []mcp.Box {
 }
 
 func (b *sshBackend) Spawn(_ context.Context, _ string) (string, error) {
-	id, _ := b.newBox("")
+	id, _ := b.newBox("", "")
 	b.set(id, "done", "spawned")
 	return id, nil
 }
 
 func (b *sshBackend) Delegate(_ context.Context, taskCmd string) (string, error) {
-	id, name := b.newBox(taskCmd)
+	id, name := b.newBox("", taskCmd)
+	b.runAsync(id, name, taskCmd)
+	return id, nil
+}
+
+func (b *sshBackend) Apply(_ context.Context, spec []mcp.SpecBox) ([]string, error) {
+	b.mu.Lock()
+	live := map[string]bool{}
+	for _, id := range b.order {
+		live[id] = true
+	}
+	b.mu.Unlock()
+	var created []string
+	for _, sb := range spec {
+		if sb.Key == "" {
+			continue
+		}
+		b.mu.Lock()
+		existing, ok := b.keys[sb.Key]
+		b.mu.Unlock()
+		if ok && live[existing] {
+			continue
+		}
+		id, name := b.newBox("fleet-"+sb.Key, sb.Task)
+		b.runAsync(id, name, sb.Task)
+		b.mu.Lock()
+		b.keys[sb.Key] = id
+		b.mu.Unlock()
+		created = append(created, id)
+	}
+	return created, nil
+}
+
+func (b *sshBackend) runAsync(id, name, taskCmd string) {
 	go func() {
 		out, err := b.run(name, taskCmd)
 		if err != nil {
@@ -67,19 +102,20 @@ func (b *sshBackend) Delegate(_ context.Context, taskCmd string) (string, error)
 		}
 		b.set(id, "done", strings.TrimSpace(out))
 	}()
-	return id, nil
 }
 
-func (b *sshBackend) newBox(taskCmd string) (id, name string) {
+func (b *sshBackend) newBox(name, taskCmd string) (id, boxName string) {
 	b.mu.Lock()
 	b.seq++
 	id = fmt.Sprintf("b%03d", b.seq)
-	name = "mcp-" + id
+	if name == "" {
+		name = "mcp-" + id
+	}
 	b.boxes[id] = &mcp.Box{ID: id, Name: name, Task: taskCmd, State: "working", Updated: time.Now().Unix()}
 	b.order = append(b.order, id)
 	b.mu.Unlock()
 	b.notify()
-	return
+	return id, name
 }
 
 func (b *sshBackend) run(name, taskCmd string) (string, error) {

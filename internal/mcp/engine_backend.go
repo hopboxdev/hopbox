@@ -26,7 +26,8 @@ type EngineBackend struct {
 	owner  string
 
 	mu      sync.Mutex
-	tasks   map[string]*task // box id -> delegated task overlay (state + captured output)
+	tasks   map[string]*task  // box id -> delegated task overlay (state + captured output)
+	keys    map[string]string // fleet.apply key -> box id (idempotency)
 	subs    map[int]func()
 	nextSub int
 }
@@ -35,7 +36,8 @@ type task struct{ task, state, result string }
 
 // NewEngineBackend wires the backend to a daemon's engine + hub.
 func NewEngineBackend(engine *box.Engine, hub execHub) *EngineBackend {
-	b := &EngineBackend{engine: engine, hub: hub, owner: "mcp", tasks: map[string]*task{}, subs: map[int]func(){}}
+	b := &EngineBackend{engine: engine, hub: hub, owner: "mcp",
+		tasks: map[string]*task{}, keys: map[string]string{}, subs: map[int]func(){}}
 	go b.watch()
 	return b
 }
@@ -73,14 +75,52 @@ func (b *EngineBackend) Spawn(ctx context.Context, name string) (string, error) 
 }
 
 func (b *EngineBackend) Delegate(ctx context.Context, taskCmd string) (string, error) {
-	name := fmt.Sprintf("mcp-%d", time.Now().UnixNano()%1e6)
-	bx, release, err := b.engine.Attach(ctx, b.owner, name)
+	return b.delegateNamed(ctx, fmt.Sprintf("mcp-%d", time.Now().UnixNano()%1e6), taskCmd)
+}
+
+// delegateNamed attaches a box by username (name[:image]) and runs a task on it.
+func (b *EngineBackend) delegateNamed(ctx context.Context, username, taskCmd string) (string, error) {
+	bx, release, err := b.engine.Attach(ctx, b.owner, username)
 	if err != nil {
 		return "", err
 	}
 	b.setTask(bx.ID, taskCmd, "working", "")
 	go b.runTask(bx.ID, taskCmd, release)
 	return bx.ID, nil
+}
+
+// Apply converges to a desired set of task-boxes: spawn each key whose box is
+// absent (idempotent — a key whose box is still alive is left as-is).
+func (b *EngineBackend) Apply(ctx context.Context, spec []SpecBox) ([]string, error) {
+	live := map[string]bool{}
+	for _, bx := range b.Fleet(ctx) {
+		live[bx.ID] = true
+	}
+	var created []string
+	for _, sb := range spec {
+		if sb.Key == "" {
+			continue
+		}
+		b.mu.Lock()
+		existing, ok := b.keys[sb.Key]
+		b.mu.Unlock()
+		if ok && live[existing] {
+			continue // already applied + alive -> converged
+		}
+		username := "fleet-" + sb.Key
+		if sb.Image != "" {
+			username += ":" + sb.Image
+		}
+		id, err := b.delegateNamed(ctx, username, sb.Task)
+		if err != nil {
+			return created, err
+		}
+		b.mu.Lock()
+		b.keys[sb.Key] = id
+		b.mu.Unlock()
+		created = append(created, id)
+	}
+	return created, nil
 }
 
 func (b *EngineBackend) runTask(id, taskCmd string, release func()) {
