@@ -77,6 +77,13 @@ func tools(b string) []tool {
 				return "idle timeout set", setIdle(str(a, "timeout"))
 			},
 		},
+		{
+			Name: "box_set_status", Description: "Report what this agent is doing (state: working|blocked|done, plus a status line) — shown in the fleet at-a-glance view.",
+			InputSchema: schema(map[string]any{"state": map[string]any{"type": "string"}, "status": map[string]any{"type": "string"}}),
+			run: func(a map[string]any) (string, error) {
+				return "status set", setStatus(str(a, "state"), str(a, "status"))
+			},
+		},
 	}
 }
 

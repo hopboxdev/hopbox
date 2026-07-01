@@ -46,7 +46,8 @@ func (b *EngineBackend) Fleet(ctx context.Context) []Box {
 	defer b.mu.Unlock()
 	out := make([]Box, 0, len(boxes))
 	for _, bx := range boxes {
-		v := Box{ID: bx.ID, Name: bx.Name, Image: bx.ImageRef, State: string(bx.Phase), IP: bx.IP, Updated: bx.UpdatedAt.Unix()}
+		v := Box{ID: bx.ID, Name: bx.Name, Image: bx.ImageRef, State: string(bx.Phase), IP: bx.IP,
+			AgentState: bx.AgentState, AgentStatus: bx.AgentStatus, Updated: bx.UpdatedAt.Unix()}
 		if t := b.tasks[bx.ID]; t != nil {
 			v.Task, v.Result = t.task, t.result
 			if t.state != "" {
@@ -163,7 +164,7 @@ func (b *EngineBackend) watch() {
 	for range t.C {
 		cur := ""
 		for _, bx := range b.Fleet(context.Background()) {
-			cur += bx.ID + bx.State + ";"
+			cur += bx.ID + bx.State + bx.AgentState + bx.AgentStatus + ";"
 		}
 		if cur != last {
 			last = cur

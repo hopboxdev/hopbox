@@ -9,14 +9,16 @@ import "context"
 
 // Box is one fleet member as the protocol sees it.
 type Box struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Image   string `json:"image,omitempty"`
-	State   string `json:"state"` // box phase (running/…) or task state (working/done/failed)
-	IP      string `json:"ip,omitempty"`
-	Task    string `json:"task,omitempty"`
-	Result  string `json:"result,omitempty"`
-	Updated int64  `json:"updated"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Image       string `json:"image,omitempty"`
+	State       string `json:"state"` // box phase (running/…) or task state (working/done/failed)
+	IP          string `json:"ip,omitempty"`
+	AgentState  string `json:"agent_state,omitempty"`  // the in-box agent's self-report (box-guest status)
+	AgentStatus string `json:"agent_status,omitempty"` // a human status line ("compiling 3/5")
+	Task        string `json:"task,omitempty"`
+	Result      string `json:"result,omitempty"`
+	Updated     int64  `json:"updated"`
 }
 
 // Backend is the box world behind the protocol.

@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -41,6 +42,8 @@ CREATE TABLE IF NOT EXISTS boxes (
   auto_suspend     INTEGER NOT NULL DEFAULT 0,
   keep_alive_until TEXT NOT NULL DEFAULT '',
   idle_timeout_ns  INTEGER NOT NULL DEFAULT 0,
+  agent_state      TEXT NOT NULL DEFAULT '',
+  agent_status     TEXT NOT NULL DEFAULT '',
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
   UNIQUE(tenant_id, owner, name)
@@ -63,6 +66,17 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("box schema: %w", err)
 	}
+	// Migrate existing DBs: the new columns are in the schema above for fresh DBs;
+	// on an existing table the CREATE IF NOT EXISTS is a no-op, so add them here.
+	// The redundant ALTER on a fresh DB errors "duplicate column" and is ignored.
+	for _, m := range []string{
+		`ALTER TABLE boxes ADD COLUMN agent_state TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE boxes ADD COLUMN agent_status TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := db.Exec(m); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return nil, fmt.Errorf("box migrate: %w", err)
+		}
+	}
 	return &Store{db: db}, nil
 }
 
@@ -78,7 +92,7 @@ func b2i(b bool) int {
 }
 
 const cols = `id,tenant_id,owner,name,image_ref,backend,mem_mb,cpu_millis,ephemeral,grace_ns,
-	max_ttl_ns,deadline,phase,instance_ref,ip,bootstrap_token,agent_connected,attached,message,load,last_active,auto_suspend,keep_alive_until,idle_timeout_ns,created_at,updated_at`
+	max_ttl_ns,deadline,phase,instance_ref,ip,bootstrap_token,agent_connected,attached,message,load,last_active,auto_suspend,keep_alive_until,idle_timeout_ns,agent_state,agent_status,created_at,updated_at`
 
 func scan(row interface{ Scan(...any) error }) (*box.Box, error) {
 	var b box.Box
@@ -90,7 +104,7 @@ func scan(row interface{ Scan(...any) error }) (*box.Box, error) {
 	var ephemeral, connected, attached int
 	if err := row.Scan(&b.ID, &b.TenantID, &b.Owner, &b.Name, &b.ImageRef, &backend, &memMB, &cpu,
 		&ephemeral, &graceNS, &maxTTLNS, &deadline, &phase, &b.InstanceRef, &b.IP, &b.BootstrapToken,
-		&connected, &attached, &b.Message, &load, &lastActive, &autoSuspend, &keepAlive, &idleTO, &created, &updated); err != nil {
+		&connected, &attached, &b.Message, &load, &lastActive, &autoSuspend, &keepAlive, &idleTO, &b.AgentState, &b.AgentStatus, &created, &updated); err != nil {
 		return nil, err
 	}
 	b.Backend, b.MemMB, b.CPUMillis = backend, memMB, cpu
@@ -202,11 +216,11 @@ func keepAliveStr(b *box.Box) string {
 func (s *Store) Create(ctx context.Context, b *box.Box) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO boxes (`+cols+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		b.ID, b.TenantID, b.Owner, b.Name, b.ImageRef, b.Backend, b.MemMB, b.CPUMillis,
 		b2i(b.Ephemeral), int64(b.Grace), int64(b.MaxTTL), deadlineStr(b), string(b.Phase),
 		b.InstanceRef, b.IP, b.BootstrapToken, b2i(b.AgentConnected), b2i(b.Attached), b.Message, b.Load, lastActiveStr(b), b2i(b.AutoSuspend), keepAliveStr(b), int64(b.IdleTimeoutOverride),
-		b.CreatedAt.Format(ts), b.UpdatedAt.Format(ts))
+		b.AgentState, b.AgentStatus, b.CreatedAt.Format(ts), b.UpdatedAt.Format(ts))
 	return err
 }
 
@@ -216,11 +230,13 @@ func (s *Store) Update(ctx context.Context, b *box.Box) error {
 		UPDATE boxes SET
 		  image_ref=?, backend=?, mem_mb=?, cpu_millis=?, ephemeral=?, grace_ns=?, max_ttl_ns=?,
 		  deadline=?, phase=?, instance_ref=?, ip=?, bootstrap_token=?, agent_connected=?, attached=?,
-		  message=?, load=?, last_active=?, auto_suspend=?, keep_alive_until=?, idle_timeout_ns=?, updated_at=?
+		  message=?, load=?, last_active=?, auto_suspend=?, keep_alive_until=?, idle_timeout_ns=?,
+		  agent_state=?, agent_status=?, updated_at=?
 		WHERE id=?`,
 		b.ImageRef, b.Backend, b.MemMB, b.CPUMillis, b2i(b.Ephemeral), int64(b.Grace), int64(b.MaxTTL),
 		deadlineStr(b), string(b.Phase), b.InstanceRef, b.IP, b.BootstrapToken, b2i(b.AgentConnected),
-		b2i(b.Attached), b.Message, b.Load, lastActiveStr(b), b2i(b.AutoSuspend), keepAliveStr(b), int64(b.IdleTimeoutOverride), b.UpdatedAt.Format(ts), b.ID)
+		b2i(b.Attached), b.Message, b.Load, lastActiveStr(b), b2i(b.AutoSuspend), keepAliveStr(b), int64(b.IdleTimeoutOverride),
+		b.AgentState, b.AgentStatus, b.UpdatedAt.Format(ts), b.ID)
 	return err
 }
 

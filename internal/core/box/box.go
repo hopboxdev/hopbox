@@ -50,8 +50,12 @@ type Box struct {
 	// activity (observed, written by the metadata heartbeat) — drives idle/suspend.
 	Load       float64   // last reported load average
 	LastActive time.Time // last time the box was busy (attached or load over threshold)
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// self-report: the in-box agent tells the control plane what it's doing (box-guest
+	// status). Drives the fleet at-a-glance view; not interpreted by the reconciler.
+	AgentState  string // working | blocked | done | ""
+	AgentStatus string // free-form status line ("compiling 3/5", "waiting on approval")
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 func newID() string {
