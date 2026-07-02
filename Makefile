@@ -2,27 +2,24 @@ GO ?= go
 BIN := bin
 AGENT_IMAGE ?= ghcr.io/hopboxdev/hopbox-agent:dev
 
-.PHONY: proto agent agent-image build dist test lint run-hopboxd
+.PHONY: agent agent-image build dist test lint run microvm-rootfs
 
-# dist builds the release artifacts the installer downloads: hopboxd, hopbox,
-# hopbox-gw, hopbox-agent for linux/amd64 + linux/arm64, into dist/.
+# The hopbox substrate binaries: the daemon (both compute backends compiled in),
+# the AI-control plane client, the in-box metadata client, and the in-box agent.
+build: agent
+	$(GO) build -tags "docker firecracker" -o $(BIN)/hopboxd   ./cmd/hopboxd
+	$(GO) build                            -o $(BIN)/hopbox-mcp ./cmd/hopbox-mcp
+	$(GO) build                            -o $(BIN)/box-guest  ./cmd/box-guest
+
+# dist builds the release artifacts the installer downloads, linux/{amd64,arm64}.
 dist:
 	rm -rf dist && mkdir -p dist
 	for arch in amd64 arm64; do \
-	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build -tags docker -o dist/hopboxd-linux-$$arch ./cmd/hopboxd; \
-	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build -o dist/hopbox-linux-$$arch ./cmd/hopbox; \
-	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build -o dist/hopbox-gw-linux-$$arch ./cmd/hopbox-gw; \
-	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build -o dist/hopbox-agent-linux-$$arch ./cmd/hopbox-agent; \
+	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build -tags "docker firecracker" -o dist/hopboxd-linux-$$arch   ./cmd/hopboxd; \
+	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build                            -o dist/hopbox-mcp-linux-$$arch ./cmd/hopbox-mcp; \
+	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build                            -o dist/box-guest-linux-$$arch  ./cmd/box-guest; \
+	  GOOS=linux GOARCH=$$arch CGO_ENABLED=0 $(GO) build                            -o dist/hopbox-agent-linux-$$arch ./cmd/hopbox-agent; \
 	done
-	# macOS: ship the client CLI only — hopboxd/gw/agent are Linux + Docker server
-	# components. This is what deploy/install-cli.sh installs on a Mac.
-	for arch in amd64 arm64; do \
-	  GOOS=darwin GOARCH=$$arch CGO_ENABLED=0 $(GO) build -o dist/hopbox-darwin-$$arch ./cmd/hopbox; \
-	done
-
-
-proto:
-	buf generate
 
 agent:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -o $(BIN)/hopbox-agent-linux-amd64 ./cmd/hopbox-agent
@@ -31,22 +28,15 @@ agent:
 agent-image: agent
 	docker build -f cmd/hopbox-agent/Dockerfile -t $(AGENT_IMAGE) .
 
-build: agent
-	$(GO) build -tags docker -o $(BIN)/hopboxd ./cmd/hopboxd
-	$(GO) build -o $(BIN)/hopbox    ./cmd/hopbox
-	$(GO) build -o $(BIN)/hopbox-gw ./cmd/hopbox-gw
-
 test:
 	$(GO) test ./...
 
 lint:
-	$(GO) run ./internal/core/internal/boundarycheck 2>/dev/null || true
+	$(GO) vet ./...
 
-run-hopboxd: build
-	$(BIN)/hopboxd --db ./hopbox.db --agent-bin ./$(BIN)/hopbox-agent-linux-amd64
+run: build
+	$(BIN)/hopboxd --compute docker --db ./hopboxd.db --agent-bin ./$(BIN)/hopbox-agent-linux-amd64
 
-# Build the golden microVM agent rootfs (F6). Run on Linux as root.
-# Override OUT_DIR / AGENT_BIN / GUEST_BIN as needed (see the script header).
+# Build the golden microVM agent rootfs. Run on Linux as root.
 microvm-rootfs:
 	sudo build/microvm/build-rootfs.sh
-.PHONY: microvm-rootfs

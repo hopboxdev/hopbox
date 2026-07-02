@@ -7,36 +7,29 @@ version: 2
 project_name: hopbox
 
 builds:
-  # Client CLI — the only binary shipped for macOS; Homebrew installs this one.
-  - id: hopbox
-    main: ./cmd/hopbox
-    binary: hopbox
-    env: [CGO_ENABLED=0]
-    goos: [linux, darwin]
-    goarch: [amd64, arm64]
-    ldflags: ["-s", "-w"]
-    mod_timestamp: "{{ .CommitTimestamp }}"
-
-  # Control plane — Linux only, needs the `docker` build tag.
+  # The hopbox daemon — the compute-box substrate (`ssh box@host`). Both compute
+  # backends are compiled in; `--compute docker|microvm` selects at runtime.
   - id: hopboxd
     main: ./cmd/hopboxd
     binary: hopboxd
     env: [CGO_ENABLED=0]
     goos: [linux]
     goarch: [amd64, arm64]
-    flags: ["-tags=docker"]
+    flags: ["-tags=docker,firecracker"]
     ldflags: ["-s", "-w"]
     mod_timestamp: "{{ .CommitTimestamp }}"
 
-  - id: hopbox-gw
-    main: ./cmd/hopbox-gw
-    binary: hopbox-gw
+  # The AI-control plane client (MCP): ps glance, watch, --connect bridge.
+  - id: hopbox-mcp
+    main: ./cmd/hopbox-mcp
+    binary: hopbox-mcp
     env: [CGO_ENABLED=0]
-    goos: [linux]
+    goos: [linux, darwin]
     goarch: [amd64, arm64]
     ldflags: ["-s", "-w"]
     mod_timestamp: "{{ .CommitTimestamp }}"
 
+  # In-box agent (init → hub) and the in-box metadata client.
   - id: hopbox-agent
     main: ./cmd/hopbox-agent
     binary: hopbox-agent
@@ -46,19 +39,6 @@ builds:
     ldflags: ["-s", "-w"]
     mod_timestamp: "{{ .CommitTimestamp }}"
 
-  # Box daemon — the standalone compute-box product (`ssh box@host`). Both compute
-  # backends are compiled in; `--compute docker|microvm` selects at runtime.
-  - id: boxd
-    main: ./cmd/boxd
-    binary: boxd
-    env: [CGO_ENABLED=0]
-    goos: [linux]
-    goarch: [amd64, arm64]
-    flags: ["-tags=docker,firecracker"]
-    ldflags: ["-s", "-w"]
-    mod_timestamp: "{{ .CommitTimestamp }}"
-
-  # In-box metadata client (info / keep-alive / auto-suspend / idle / mcp).
   - id: box-guest
     main: ./cmd/box-guest
     binary: box-guest
@@ -69,24 +49,11 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
-  # CLI archive — just `hopbox`, per os/arch. Unversioned name so install-cli.sh
-  # and `/latest/download/` fetch it without resolving the version first.
-  - id: cli
-    ids: [hopbox]
-    name_template: "hopbox_{{ .Os }}_{{ .Arch }}"
-    formats: [tar.gz]
-
-  # Server bundle — hopboxd + gw + agent, Linux only. install.sh fetches this.
-  - id: server
-    ids: [hopboxd, hopbox-gw, hopbox-agent]
-    name_template: "hopbox-server_{{ .Os }}_{{ .Arch }}"
-    formats: [tar.gz]
-
-  # Box product bundle — boxd + the in-box agent + box-guest. install-boxd.sh
+  # The hopbox bundle — daemon + agent + box-guest + mcp, Linux. install-hopbox.sh
   # fetches this. (microVM also needs a golden rootfs; see build/microvm.)
-  - id: box
-    ids: [boxd, hopbox-agent, box-guest]
-    name_template: "hopbox-box_{{ .Os }}_{{ .Arch }}"
+  - id: hopbox
+    ids: [hopboxd, hopbox-agent, box-guest, hopbox-mcp]
+    name_template: "hopbox_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
 
 checksum:
@@ -100,30 +67,6 @@ changelog:
   sort: asc
   filters:
     exclude: ["^docs:", "^test:", "^chore:", "^ci:", "Merge "]
-
-# Homebrew cask (macOS) — `brew install hopboxdev/tap/hopbox`. Casks are the
-# modern way to ship a pre-built binary (formulae are for source builds, and
-# `brews` is deprecated). Linux users install via deploy/install-cli.sh.
-homebrew_casks:
-  - name: hopbox
-    ids: [cli] # the CLI archive only
-    repository:
-      owner: hopboxdev
-      name: homebrew-tap # requires repo hopboxdev/homebrew-tap + HOMEBREW_TAP_TOKEN
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    # Until the tap repo + HOMEBREW_TAP_TOKEN secret exist, skip the push so the
-    # release still succeeds (binaries publish regardless). Auto-enables once set.
-    skip_upload: '{{ if .Env.HOMEBREW_TAP_TOKEN }}false{{ else }}true{{ end }}'
-    homepage: "https://hopbox.dev"
-    description: "Self-hosted, vendor-neutral control plane for dev environments (CLI)"
-    # The binary is unsigned, so strip the Gatekeeper quarantine bit on install
-    # or macOS blocks it ("cannot be opened — unidentified developer").
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/hopbox"]
-          end
 
 release:
   github:

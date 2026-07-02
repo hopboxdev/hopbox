@@ -1,12 +1,11 @@
-// Package box is hopbox's standalone compute-box core — the primitive a user
-// reaches with `ssh box@host`. It owns the box request grammar, backend
-// selection, lifetime/flavor, the box model, and (incrementally) the engine.
+// Package box is hopbox's compute-box core — the primitive a user reaches with
+// `ssh box@host`. It owns the box request grammar, backend selection,
+// lifetime/flavor, the box model, and the engine.
 //
-// Boundary rule: box MUST NOT import the dev-environment layer (core/workspace,
-// api, gateway, identity). The dependency points only inward — workspace and the
-// dev-env build on top of box — so the box product can be compiled and shipped
-// without any of them. Keep `go list -deps ./internal/core/box` free of those
-// packages.
+// Boundary rule: box MUST NOT import a provider SDK or any would-be dev-env layer
+// (the dev-env that builds on top of the substrate lives in a separate repo). The
+// dependency points only inward, so the substrate compiles and ships on its own.
+// See internal/core/boundary_test.go.
 package box
 
 import (
