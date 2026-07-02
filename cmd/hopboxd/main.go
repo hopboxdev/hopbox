@@ -1,10 +1,13 @@
-// Command hopboxd is the Hopbox control plane: store + reconciler + agent hub + gRPC API.
+// Command hopboxd is the standalone compute-box daemon: `ssh box@host` spawns an
+// ephemeral box and bridges the session in. It is the box product with NO
+// dev-env compiled in — it wires box.Engine + the box reconciler + the agent hub
+// + the SSH front door over a persistent (sqlite) box store and a compute provider.
 package main
 
 import (
-	"bufio"
 	"context"
-	"fmt"
+	"flag"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -12,29 +15,84 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
-	"golang.org/x/crypto/ssh"
-	"google.golang.org/grpc"
-
-	hopboxv1 "github.com/hopboxdev/hopbox/gen/hopbox/v1"
-	"github.com/hopboxdev/hopbox/internal/account"
 	"github.com/hopboxdev/hopbox/internal/agenthub"
-	"github.com/hopboxdev/hopbox/internal/api"
-	"github.com/hopboxdev/hopbox/internal/config"
 	"github.com/hopboxdev/hopbox/internal/core/box"
 	"github.com/hopboxdev/hopbox/internal/core/boxmeta"
-	"github.com/hopboxdev/hopbox/internal/core/boxstore"
+	"github.com/hopboxdev/hopbox/internal/core/boxsqlite"
 	"github.com/hopboxdev/hopbox/internal/core/ports"
-	"github.com/hopboxdev/hopbox/internal/core/store/sqlite"
-	"github.com/hopboxdev/hopbox/internal/plugin"
+	"github.com/hopboxdev/hopbox/internal/mcp"
 	"github.com/hopboxdev/hopbox/internal/sshca"
 	"github.com/hopboxdev/hopbox/internal/sshfront"
-	"github.com/hopboxdev/hopbox/providers/identity/oidc"
-	"github.com/hopboxdev/hopbox/providers/identity/static"
-	"github.com/hopboxdev/hopbox/providers/ingress/subdomain"
 )
 
-// portOf extracts the port from a listen address (":8090" -> "8090"), falling back to def.
+func main() {
+	sshAddr := flag.String("ssh-addr", ":2222", "front-door SSH listen (username=box spec, key=identity)")
+	agentListen := flag.String("agent-listen", ":7777", "agent reverse-dial listen address")
+	advertise := flag.String("advertise", "", "address the in-box agent dials back (default: derived from the --compute gateway + agent port)")
+	agentBin := flag.String("agent-bin", "", "host path of the linux hopbox-agent binary to side-load (docker)")
+	hostKeyPath := flag.String("host-key", "./hopboxd-ssh-host-key", "front-door SSH host key (auto-created)")
+	image := flag.String("default-image", "alpine", "image when the spec names none (docker)")
+	cpus := flag.Float64("default-cpus", 2, "CPU cap (vCPU) per box; 0 = unlimited")
+	memMB := flag.Int64("default-mem-mb", 2048, "memory cap (MB) per box; 0 = unlimited")
+	db := flag.String("db", "./hopboxd.db", "box database path")
+	metaAddr := flag.String("meta-addr", ":8090", "metadata API listen address (boxes reach it by source IP)")
+	guestBin := flag.String("guest-bin", "", "host path of the linux box-guest binary to side-load into boxes (docker)")
+	compute := flag.String("compute", "docker", "compute backend: docker | microvm")
+	fcBin := flag.String("fc-bin", "/usr/local/bin/firecracker", "firecracker binary (microvm)")
+	fcKernel := flag.String("fc-kernel", "/opt/hopbox-microvm/vmlinux", "vmlinux kernel (microvm)")
+	fcImagesDir := flag.String("fc-images-dir", "/opt/hopbox-microvm/images", "base-image catalog dir; image <name> -> <dir>/<name>.ext4 (microvm)")
+	fcRunDir := flag.String("fc-rundir", "/var/lib/hopbox/microvm", "per-VM working dir (microvm)")
+	fcBridge := flag.String("fc-bridge", "", "microvm host bridge (default hopbox-vmnet); set with --fc-subnet to run a second fleet beside another daemon")
+	fcSubnet := flag.String("fc-subnet", "", "microvm /24 base, first three octets (default 10.0.0; gateway is .1)")
+	autoSuspend := flag.Bool("auto-suspend", false, "persistent boxes that auto-suspend when idle, waking on reconnect (vs ephemeral reap) — the account/workspace tier")
+	idleTimeout := flag.Duration("idle-timeout", 5*time.Minute, "suspend a box after this long idle (with --auto-suspend)")
+	grace := flag.Duration("grace", 2*time.Minute, "ephemeral reconnect window: keep a box this long after disconnect before reaping (0 = reap immediately)")
+	mcpAddr := flag.String("mcp-addr", "", "serve the AI-control MCP plane here (unix:/path or host:port); empty = off")
+	surfaceAddr := flag.String("surface-addr", "", "serve AI-rendered canvas surfaces over HTTP here (host:port); empty = off")
+	surfaceURL := flag.String("surface-url", "", "public base URL for surface links (default: http://<surface-addr>)")
+	flag.Parse()
+
+	if err := run(cfg{
+		sshAddr: *sshAddr, agentListen: *agentListen, advertise: *advertise, agentBin: *agentBin,
+		hostKeyPath: *hostKeyPath, image: *image, cpus: *cpus, memMB: *memMB, db: *db,
+		metaAddr: *metaAddr, guestBin: *guestBin, compute: *compute,
+		fcBin: *fcBin, fcKernel: *fcKernel, fcImagesDir: *fcImagesDir, fcRunDir: *fcRunDir,
+		fcBridge: *fcBridge, fcSubnet: *fcSubnet,
+		autoSuspend: *autoSuspend, idleTimeout: *idleTimeout, grace: *grace,
+		mcpAddr: *mcpAddr, surfaceAddr: *surfaceAddr, surfaceURL: *surfaceURL,
+	}); err != nil {
+		log.Fatal(err)
+	}
+}
+
+type cfg struct {
+	sshAddr, agentListen, advertise, agentBin, hostKeyPath, image, db, metaAddr, guestBin string
+	compute, fcBin, fcKernel, fcImagesDir, fcRunDir, fcBridge, fcSubnet, mcpAddr          string
+	surfaceAddr, surfaceURL                                                               string
+	cpus                                                                                  float64
+	memMB                                                                                 int64
+	autoSuspend                                                                           bool
+	idleTimeout, grace                                                                    time.Duration
+}
+
+// gatewayHost is the address the in-box agent + box-guest reach the host at, per
+// backend: docker boxes use the magic host alias; microVMs use the bridge gateway
+// (.1 of the fleet's /24).
+func gatewayHost(c cfg) string {
+	if c.compute == "microvm" {
+		sub := c.fcSubnet
+		if sub == "" {
+			sub = "10.0.0"
+		}
+		return sub + ".1"
+	}
+	return "host.docker.internal"
+}
+
+// portOf extracts the port from a listen address (":7777" -> "7777"), falling
+// back to def.
 func portOf(addr, def string) string {
 	if _, p, err := net.SplitHostPort(addr); err == nil && p != "" {
 		return p
@@ -42,338 +100,195 @@ func portOf(addr, def string) string {
 	return def
 }
 
-// splitComma parses a comma-separated flag value, trimming blanks.
-func splitComma(s string) []string {
-	var out []string
-	for _, p := range strings.Split(s, ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
+const engineTenant = "default" // hopboxd is single-tenant
 
-func main() {
-	cfg, err := config.Parse(os.Args[1:])
+// resetSessions clears the Attached flag on every box at startup: no SSH session
+// survives a restart, so a box marked attached is stale. Ephemeral boxes then
+// count down their grace and reap; persistent boxes stay suspended until a real
+// reconnect (rather than spuriously resuming).
+func resetSessions(ctx context.Context, store box.Store) {
+	boxes, err := store.List(ctx, engineTenant)
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		return
 	}
-	if err := run(cfg); err != nil {
-		log.Fatal(err)
+	for _, b := range boxes {
+		if b.Attached {
+			b.Attached = false
+			_ = store.Update(ctx, b)
+		}
 	}
 }
 
-// loadAuthorizedKeys returns the SSH authorized_keys injected into every
-// workspace: the contents of file if set, else the HOPBOX_AUTHORIZED_KEYS env.
-// Empty disables SSH access.
-func loadAuthorizedKeys(file string) string {
-	if file != "" {
-		b, err := os.ReadFile(file)
-		if err != nil {
-			log.Printf("hopboxd: authorized-keys %s: %v (ssh disabled)", file, err)
-			return ""
-		}
-		log.Printf("hopboxd: ssh enabled (authorized keys from %s)", file)
-		return string(b)
-	}
-	if env := os.Getenv("HOPBOX_AUTHORIZED_KEYS"); env != "" {
-		log.Printf("hopboxd: ssh enabled (authorized keys from HOPBOX_AUTHORIZED_KEYS)")
-		return env
-	}
-	return ""
-}
-
-// loadUsers parses a token->principal file (lines `<token> <principal>`, '#'
-// comments) into the static identity provider's key map. Empty path => open
-// single-user mode (no entries).
-func loadUsers(file, tenant string) map[string]ports.Principal {
-	if file == "" {
-		return nil
-	}
-	f, err := os.Open(file)
-	if err != nil {
-		log.Printf("hopboxd: users %s: %v (auth disabled)", file, err)
-		return nil
-	}
-	defer f.Close()
-	users := map[string]ports.Principal{}
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.Fields(line)
-		if len(parts) < 2 {
-			continue
-		}
-		users[parts[0]] = ports.Principal{ID: parts[1], TenantID: tenant, Roles: []string{"owner"}}
-	}
-	return users
-}
-
-func run(cfg config.Config) error {
+func run(c cfg) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	st, err := sqlite.Open(cfg.DBPath)
+	store, err := boxsqlite.Open(c.db)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer store.Close()
+	resetSessions(ctx, store) // no SSH session survives a restart; clear stale Attached
 
-	inprocCompute, err := newCompute(cfg) // nil-returning stub without -tags docker/k8s
-	if err != nil && cfg.ComputeTransport != "remote" {
-		return err
+	// The agent + box-guest reach the host at the backend's gateway. The agent
+	// dials `advertise`; box-guest reads $BOX_META; both derived from one host.
+	gwHost := gatewayHost(c)
+	agentPort := portOf(c.agentListen, "7777")
+	metaPort := portOf(c.metaAddr, "8090")
+	advertise := c.advertise
+	if advertise == "" {
+		advertise = net.JoinHostPort(gwHost, agentPort)
 	}
-	compute, err := plugin.LoadCompute(plugin.ProviderConfig{
-		Kind: cfg.ComputeKind, Transport: cfg.ComputeTransport, RemoteAddr: cfg.ComputeRemote,
-	}, inprocCompute)
+	metaURL := "http://" + net.JoinHostPort(gwHost, metaPort)
+
+	// One write seam backs every metadata mutation (heartbeat + owner commands):
+	// resolve the calling box by IP, apply, persist.
+	mutate := func(ctx context.Context, ip string, fn func(*box.Box)) error {
+		b, err := store.GetByIP(ctx, ip)
+		if err != nil {
+			return err
+		}
+		fn(b)
+		return store.Update(ctx, b)
+	}
+	go func() {
+		mux := boxmeta.New(store.GetByIP, mutate, box.IdleConfig{Timeout: c.idleTimeout, LoadThreshold: box.DefaultIdle.LoadThreshold}).Handler()
+		mln, err := net.Listen("tcp", c.metaAddr)
+		if err != nil {
+			log.Printf("hopboxd: metadata API listen %s: %v", c.metaAddr, err)
+			return
+		}
+		log.Printf("hopboxd: metadata API on %s (boxes reach %s)", c.metaAddr, metaURL)
+		_ = (&http.Server{Handler: mux}).Serve(mln)
+	}()
+
+	compute, err := newCompute(c, advertise, metaPort) // build-tagged backend (docker/microvm); stub otherwise
 	if err != nil {
 		return err
 	}
-
-	storage, err := plugin.LoadStorage(plugin.ProviderConfig{
-		Kind: cfg.StorageKind, Transport: cfg.StorageTransport, RemoteAddr: cfg.StorageRemote,
-	}, newStorage(cfg))
-	if err != nil {
-		return err
+	if cl, ok := compute.(io.Closer); ok {
+		defer cl.Close() // release shared backend resources (e.g. the microVM origin loop)
 	}
 
-	// One subdomain ingress provider instance is shared by the reconciler (which
-	// Exposes endpoints into its route table) and the gateway (which Lookups them).
-	ingress := subdomain.New(cfg.GatewayZone)
-
-	// SSH user CA: either trust an external CA's public key (the org issues certs
-	// with their own tooling — Vault/Smallstep/Teleport) or run a built-in CA,
-	// auto-created on first run, that `hopbox login` issues short-lived certs from.
-	var caSigner ssh.Signer // nil when trusting an external CA (built-in issuance off)
-	var caTrustLine string
-	if cfg.SSHCAPubFile != "" {
-		b, err := os.ReadFile(cfg.SSHCAPubFile)
-		if err != nil {
-			return fmt.Errorf("ssh-ca-pub: %w", err)
-		}
-		caTrustLine = strings.TrimSpace(string(b))
-		log.Printf("hopboxd: trusting external SSH CA from %s (built-in `hopbox login` issuance disabled)", cfg.SSHCAPubFile)
-	} else {
-		signer, err := sshca.LoadOrCreateCA(cfg.SSHCAPath)
-		if err != nil {
-			return fmt.Errorf("ssh ca: %w", err)
-		}
-		caSigner = signer
-		caTrustLine = string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
-		log.Printf("hopboxd: ssh user CA %s (workspaces trust %s)", cfg.SSHCAPath, strings.TrimSpace(caTrustLine))
-	}
-
-	// Account tier: keys in the registered-keys file are accounts (persistent,
-	// auto-suspending boxes); unknown keys are anonymous (ephemeral). The same
-	// directory authenticates the front door and decides the engine's tier.
-	var frontAuthority sshfront.Authority // nil => AnyKey (everyone anonymous)
-	var persistentTier func(string) bool
-	if cfg.AccountsFile != "" {
-		dir, err := account.Load(cfg.AccountsFile)
-		if err != nil {
-			return fmt.Errorf("accounts: %w", err)
-		}
-		frontAuthority, persistentTier = dir, dir.IsAccount
-		log.Printf("hopboxd: account tier on (%d registered keys from %s)", dir.Len(), cfg.AccountsFile)
-	}
-
-	authKeys := loadAuthorizedKeys(cfg.AuthorizedKeysFile)
-
-	// Box metadata API (opt-in via --meta-addr): a box reaches it by source IP to
-	// learn about itself + tune its lifecycle (box-guest). The box reaches it at
-	// the same host it reaches the agent hub (the advertise host), so derive
-	// $BOX_META from there. Works for any backend (docker bridge, microVM gateway).
-	var metaURL string
-	if cfg.MetaAddr != "" {
-		metaHost := cfg.AgentAdvertise
-		if h, _, err := net.SplitHostPort(cfg.AgentAdvertise); err == nil {
-			metaHost = h
-		}
-		metaURL = "http://" + net.JoinHostPort(metaHost, portOf(cfg.MetaAddr, "8090"))
-		resolve := func(ctx context.Context, ip string) (*box.Box, error) {
-			w, err := st.GetByIP(ctx, ip)
-			if err != nil {
-				return nil, err
-			}
-			return &w.Box, nil
-		}
-		mutate := func(ctx context.Context, ip string, fn func(*box.Box)) error {
-			w, err := st.GetByIP(ctx, ip)
-			if err != nil {
-				return err
-			}
-			fn(&w.Box)
-			return st.UpdateWorkspace(ctx, w)
-		}
-		mln, err := net.Listen("tcp", cfg.MetaAddr)
-		if err != nil {
-			return fmt.Errorf("metadata listen %s: %w", cfg.MetaAddr, err)
-		}
-		go func() {
-			log.Printf("hopboxd: box metadata API on %s (boxes reach %s)", cfg.MetaAddr, metaURL)
-			_ = (&http.Server{Handler: boxmeta.New(resolve, mutate, box.DefaultIdle).Handler()}).Serve(mln)
-		}()
-	}
-
-	// One reconciler: box.Reconciler (lifecycle + suspend/persistence) with the
-	// dev-env's storage-home + ingress folded in as hooks. The box-view of the
-	// workspace store is boxstore.New(st).
-	hooks := boxstore.NewHooks(st, storage, ingress, boxstore.HooksConfig{
-		TrustedUserCA:  caTrustLine,
-		AuthorizedKeys: authKeys,
+	// agent hub: resolve the agent's bootstrap token to its box, and report
+	// connect/disconnect back to the store + wake the reconciler.
+	rec := box.NewReconciler(store, compute, box.ReconcileConfig{
+		AgentAddr:  advertise,
+		Agent:      ports.AgentImage{HostBinaryPath: c.agentBin, TargetPath: "/hopbox/hopbox-agent"},
+		MetaURL:    metaURL,
+		GuestBin:   c.guestBin,
+		Idle:       box.IdleConfig{Timeout: c.idleTimeout, LoadThreshold: box.DefaultIdle.LoadThreshold},
+		TrustedSSH: true, // the front door authenticates the user, then proxies the SSH session into the box
 	})
-	rec := box.NewReconciler(boxstore.New(st), compute, box.ReconcileConfig{
-		AgentAddr: cfg.AgentAdvertise,
-		Agent: ports.AgentImage{
-			ImageRef:       cfg.AgentImageRef,
-			BinaryPath:     cfg.AgentBinaryPath,
-			TargetPath:     cfg.AgentTargetPath,
-			HostBinaryPath: cfg.AgentBin, // M1 dev fast-path
-		},
-		MetaURL:  metaURL,      // $BOX_META in each box (box-guest); "" when --meta-addr off
-		GuestBin: cfg.GuestBin, // side-load box-guest into docker boxes; microVM bakes it in
-		Hooks:    hooks,
-	})
-	go rec.Run(ctx)
-
-	// reconcile wake-up bus: in-proc by default (a direct call to rec.Trigger);
-	// NATS fans wake-ups across nodes. Either way the reconciler's interval sweep
-	// remains the backstop, so a lost wake-up only delays — never drops — a reap.
-	bus, err := newEventBus(cfg)
-	if err != nil {
-		return err
-	}
-	defer bus.Close()
-	if err := bus.Subscribe(rec.Trigger); err != nil {
-		return fmt.Errorf("events subscribe: %w", err)
-	}
-
-	// agent hub: resolve tokens via the store, report connect state to the store,
-	// and wake the reconciler on every connect/disconnect (hybrid event path).
 	hub := agenthub.New().
 		WithResolver(func(ctx context.Context, token string) (string, error) {
-			w, err := st.GetByToken(ctx, token)
+			b, err := store.GetByToken(ctx, token)
 			if err != nil {
 				return "", err
 			}
-			return w.ID, nil
+			return b.ID, nil
 		}).
-		WithSink(storeSink{store: st, tenant: cfg.Tenant, trigger: bus.Publish})
+		WithSink(boxSink{store: store, rec: rec})
 
-	agentLn, err := net.Listen("tcp", cfg.AgentListen)
+	go rec.Run(ctx)
+
+	agentLn, err := net.Listen("tcp", c.agentListen)
 	if err != nil {
 		return err
 	}
 	go func() {
-		log.Printf("hopboxd: agent gateway on %s (advertise %s)", cfg.AgentListen, cfg.AgentAdvertise)
+		log.Printf("hopboxd: agent gateway on %s (advertise %s)", c.agentListen, advertise)
 		if err := hub.Serve(ctx, agentLn); err != nil {
 			log.Printf("hopboxd: agent hub stopped: %v", err)
 		}
 	}()
 
-	// krillbox-style SSH front door: `ssh proj:python+5m@host` — the username is a
-	// workspace spec, the client key is the identity. Spawns an ephemeral box and
-	// bridges the session into it; on disconnect the reconciler reaps it.
-	if cfg.SSHAddr != "" {
-		hostKey, err := sshca.LoadOrCreateCA(cfg.SSHHostKeyPath)
-		if err != nil {
-			return fmt.Errorf("ssh front-door host key: %w", err)
-		}
-		engine := box.NewEngine(boxstore.New(st), bus.Publish, box.EngineConfig{
-			Tenant:       cfg.Tenant,
-			DefaultImage: cfg.SSHDefaultImage,
-			Backends:     []string{cfg.ComputeKind},
-			DefaultFlavor: box.Flavor{
-				MemMB:     cfg.SSHDefaultMemMB,
-				CPUMillis: int64(cfg.SSHDefaultCPUs * 1000),
-			},
-			Persistent: persistentTier, // accounts -> persistent; anonymous -> ephemeral
-		})
-		front := sshfront.NewServer(engine, hub, hostKey, frontAuthority) // nil => AnyKey
-		frontLn, err := net.Listen("tcp", cfg.SSHAddr)
-		if err != nil {
-			return err
-		}
-		go func() {
-			log.Printf("hopboxd: SSH front door on %s (default image %s)", cfg.SSHAddr, cfg.SSHDefaultImage)
-			if err := front.Serve(ctx, frontLn); err != nil {
-				log.Printf("hopboxd: SSH front door stopped: %v", err)
-			}
-		}()
-	}
+	engine := box.NewEngine(store, rec.Trigger, box.EngineConfig{
+		Tenant:        engineTenant,
+		DefaultImage:  c.image,
+		Backends:      []string{"docker"},
+		DefaultFlavor: box.Flavor{MemMB: c.memMB, CPUMillis: int64(c.cpus * 1000)},
+		Persistent:    func(string) bool { return c.autoSuspend }, // hopboxd: one global tier
+		DefaultGrace:  c.grace,
+	})
 
-	// Service gateway (hopbox-gw): resolves Host -> workspace via the ingress route
-	// table and proxies INTO the workspace over the agent reverse-connection.
-	if cfg.GatewayAddr != "" {
-		gwLn, err := net.Listen("tcp", cfg.GatewayAddr)
-		if err != nil {
-			return err
-		}
-		gwSrv := &http.Server{Handler: newGateway(ingress, hub)}
-		go func() { <-ctx.Done(); _ = gwSrv.Close() }()
-		go func() {
-			log.Printf("hopboxd: gateway on %s (zone %s)", cfg.GatewayAddr, cfg.GatewayZone)
-			if err := gwSrv.Serve(gwLn); err != nil && err != http.ErrServerClosed {
-				log.Printf("hopboxd: gateway stopped: %v", err)
-			}
-		}()
-	}
-
-	// Gateway tunnel: lets a standalone hopbox-gw fleet reach these workspaces
-	// (resolves Host + bridges to the agent forward stream, server-side).
-	if cfg.TunnelAddr != "" {
-		tunLn, err := net.Listen("tcp", cfg.TunnelAddr)
-		if err != nil {
-			return err
-		}
-		tunSrv := newTunnelServer(ingress, hub)
-		go func() {
-			log.Printf("hopboxd: gateway tunnel on %s", cfg.TunnelAddr)
-			if err := tunSrv.Serve(ctx, tunLn); err != nil {
-				log.Printf("hopboxd: gateway tunnel stopped: %v", err)
-			}
-		}()
-	}
-
-	apiLn, err := net.Listen("tcp", cfg.APIAddr)
+	hostKey, err := sshca.LoadOrCreateCA(c.hostKeyPath)
 	if err != nil {
 		return err
 	}
-	// Multi-user auth. OIDC (SSO) takes precedence; else a static token file; else
-	// open single-user mode (no interceptor, default owner).
-	var idp ports.Identity
-	switch {
-	case cfg.OIDCIssuer != "":
-		ver, err := oidc.NewVerifier(ctx, cfg.OIDCIssuer, cfg.OIDCAudience)
+	front := sshfront.NewServer(engine, hub, hostKey, nil) // AnyKey: the client key is the identity
+	if il, ok := compute.(ports.ImageLister); ok {
+		front = front.WithImages(il.Images) // advertise the catalog in the connect banner
+	}
+	frontLn, err := net.Listen("tcp", c.sshAddr)
+	if err != nil {
+		return err
+	}
+	log.Printf("hopboxd: SSH front door on %s (default image %s)", c.sshAddr, c.image)
+
+	// AI-control plane: serve the MCP protocol (fleet resource + box tools + pushed
+	// changes) over the real engine + hub, so an AI drives the live fleet.
+	if c.mcpAddr != "" {
+		surfaceURL := c.surfaceURL
+		if surfaceURL == "" && c.surfaceAddr != "" {
+			surfaceURL = "http://" + c.surfaceAddr
+		}
+		be := mcp.NewEngineBackend(engine, hub, surfaceURL)
+
+		// canvas loop: serve AI-rendered surfaces (+ capture interactions) over HTTP.
+		if c.surfaceAddr != "" {
+			sln, err := net.Listen("tcp", c.surfaceAddr)
+			if err != nil {
+				return err
+			}
+			go func() {
+				log.Printf("hopboxd: canvas surfaces on %s (base %s)", c.surfaceAddr, surfaceURL)
+				_ = (&http.Server{Handler: be.Surfaces().Handler()}).Serve(sln)
+			}()
+		}
+
+		network, a := "tcp", c.mcpAddr
+		if s, ok := strings.CutPrefix(c.mcpAddr, "unix:"); ok {
+			network, a = "unix", s
+			_ = os.Remove(a)
+		}
+		mcpLn, err := net.Listen(network, a)
 		if err != nil {
 			return err
 		}
-		idp = oidc.New(ver, oidc.Config{
-			TenantID:       cfg.Tenant,
-			PrincipalClaim: cfg.OIDCPrincipalClaim,
-			AdminGroups:    splitComma(cfg.OIDCAdminGroups),
-		})
-		log.Printf("hopboxd: OIDC auth on (issuer %s)", cfg.OIDCIssuer)
-	default:
-		if users := loadUsers(cfg.UsersFile, cfg.Tenant); len(users) > 0 {
-			idp = static.New(users)
-			log.Printf("hopboxd: multi-user auth on (%d principals from %s)", len(users), cfg.UsersFile)
-		}
+		go func() {
+			log.Printf("hopboxd: AI-control MCP plane on %s", c.mcpAddr)
+			if err := mcp.Listen(ctx, mcpLn, be); err != nil {
+				log.Printf("hopboxd: mcp plane stopped: %v", err)
+			}
+		}()
 	}
-	var opts []grpc.ServerOption
-	if idp != nil {
-		opts = append(opts,
-			grpc.UnaryInterceptor(api.AuthUnaryInterceptor(idp)),
-			grpc.StreamInterceptor(api.AuthStreamInterceptor(idp)),
-		)
-	}
-	gs := grpc.NewServer(opts...)
-	hopboxv1.RegisterWorkspaceServiceServer(gs, api.NewServer(st, hub, cfg.Tenant, cfg.Owner, caSigner))
-	go func() { <-ctx.Done(); gs.GracefulStop() }()
 
-	log.Printf("hopboxd: API on %s", cfg.APIAddr)
-	return gs.Serve(apiLn)
+	err = front.Serve(ctx, frontLn)
+
+	// Graceful shutdown: snapshot persistent boxes so the next start resumes them
+	// (disk + memory) rather than re-provisioning. Fresh context — ctx is cancelled.
+	drainCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	log.Printf("hopboxd: draining — suspending persistent boxes")
+	rec.Drain(drainCtx, engineTenant)
+	cancel()
+	return err
+}
+
+// boxSink records agent connect state on the box and wakes the reconciler.
+type boxSink struct {
+	store box.Store
+	rec   *box.Reconciler
+}
+
+func (s boxSink) SetAgentConnected(ctx context.Context, id string, connected bool) {
+	b, err := s.store.Get(ctx, "", id)
+	if err != nil {
+		return
+	}
+	b.AgentConnected = connected
+	if err := s.store.Update(ctx, b); err != nil {
+		return
+	}
+	s.rec.Trigger(id, b.TenantID)
 }

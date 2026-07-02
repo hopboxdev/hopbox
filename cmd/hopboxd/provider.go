@@ -1,25 +1,21 @@
-//go:build !k8s
-
 package main
 
 import (
 	"fmt"
 
-	"github.com/hopboxdev/hopbox/internal/config"
 	"github.com/hopboxdev/hopbox/internal/core/ports"
 )
 
-// newCompute selects the in-process compute backend at runtime (--compute). Each
-// backend is build-tag-gated (docker, firecracker); an unselected one compiles
-// to a stub that errors, so any tag combination builds. kubernetes is its own
-// exclusive build (provider_k8s.go).
-func newCompute(cfg config.Config) (ports.Compute, error) {
-	switch cfg.ComputeKind {
+// newCompute selects the compute backend at runtime (--compute). Each backend is
+// build-tag-gated (docker, firecracker); the unselected ones compile to stubs
+// that error, so any tag combination builds.
+func newCompute(c cfg, advertise, metaPort string) (ports.Compute, error) {
+	switch c.compute {
 	case "microvm":
-		return newMicrovm(cfg)
+		return newMicrovm(c, advertise, metaPort)
 	case "docker", "":
-		return newDocker(cfg)
+		return newDocker(c, advertise, metaPort)
 	default:
-		return nil, fmt.Errorf("unknown --compute %q (want docker|microvm|kubernetes)", cfg.ComputeKind)
+		return nil, fmt.Errorf("unknown --compute %q (want docker|microvm)", c.compute)
 	}
 }
